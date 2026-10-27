@@ -6,6 +6,7 @@ jobs:
   types-and-tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - project: mobile

@@ -29,6 +29,8 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
   Adiciona leases, checkpoints, claims recuperáveis e avanço monotônico da numeração de formulários importados.
 - [`migrations/008_rm_realtime_mobile_catalogs.sql`](./migrations/008_rm_realtime_mobile_catalogs.sql)
   Completa a publicação Realtime de todas as 17 tabelas consumidas pelo mobile.
+- [`migrations/009_rm_fractional_question_indices.sql`](./migrations/009_rm_fractional_question_indices.sql)
+  Preserva índices fracionários de questões e opções, incluindo respostas, rascunhos e os casts das RPCs de importação/envio.
 - [`blueprint/01_integracoes_render_n8n_s3_contratos.md`](./blueprint/01_integracoes_render_n8n_s3_contratos.md)
   Mapeamento completo e contratos JSON dos 3 serviços no Render (`Auth`, `PDF_Proposta`, `Insp`), 13 webhooks do n8n, AWS S3/CloudFront, Google Docs, `rm-gantt-tableau` e `RM Report Builder`.
 - [`blueprint/02_especificacao_paginas_e_prompts_ia.md`](./blueprint/02_especificacao_paginas_e_prompts_ia.md)
@@ -46,7 +48,7 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 
 ### 1. Aplicar as Migrações SQL no Supabase
 
-Aplicar todas as oito migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência para as cinco mutações; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos. Não expor as RPCs legadas diretamente ao aplicativo.
+Aplicar todas as nove migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência para as cinco mutações; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble. Não expor as RPCs legadas diretamente ao aplicativo.
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/001_rm_enums_and_option_sets.sql
@@ -57,6 +59,7 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/005_
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/006_rm_mobile_delegation_and_idempotency.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/007_rm_bridge_leases_and_checkpoints.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/008_rm_realtime_mobile_catalogs.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/009_rm_fractional_question_indices.sql
 ```
 
 ### 2. Executar o ETL Inicial (Bubble -> Supabase)

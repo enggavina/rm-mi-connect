@@ -4,7 +4,7 @@
 
 Foi criado, por solicitação do usuário, o projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)** (`ellpxfbsrbhblyizvbbk`) na organização MI Electric Brasil de plano **Pro** (`rdqixfbnsgawcgrvqegw`), região **São Paulo / sa-east-1**, compute **Micro**, sem adicionais. Nenhum projeto anterior foi alterado.
 
-As migrations **001..008 foram aplicadas** ao banco inicialmente vazio, com cada migration e seu registro em `supabase_migrations.schema_migrations` na mesma transação. A verificação encontrou **52 tabelas RM, todas com RLS**, os três buckets e as policies de mídia. A API negou leitura operacional anônima com HTTP 401; execução direta de RPCs legadas, acesso às credenciais privadas e operação da ponte também estão restritos.
+As migrations **001..009 foram aplicadas**, com cada migration e seu registro em `supabase_migrations.schema_migrations` na mesma transação. A instalação começou em banco vazio; a 009 corrigiu a ordenação fracionária identificada durante a carga real. A verificação encontrou **52 tabelas RM, todas com RLS**, os três buckets e as policies de mídia. A API negou leitura operacional anônima com HTTP 401; execução direta de RPCs legadas, acesso às credenciais privadas e operação da ponte também estão restritos.
 
 Os arquivos locais `.env` de mobile, desktop e infraestrutura foram configurados e estão ignorados pelo Git. O mobile contém apenas URL e chave pública. Senha do banco e chaves de serviço ficam apenas nos arquivos de servidor/infraestrutura. Não foram inseridos dados operacionais fictícios. A conta inicial real descrita abaixo foi provisionada a pedido do usuário. Consulte os relatórios de ETL para o estado atual da carga do catálogo Bubble.
 
@@ -18,11 +18,12 @@ Foram verificados login real no Supabase Auth, leitura do vínculo RM ativo e id
 
 ## Ordem de instalação em outro ambiente
 
-Aplicar **001 até 008, em ordem**, pelo SQL Editor ou pipeline de migrations. O aplicativo depende da 006, o worker depende da 007 e a 008 completa a publicação Realtime dos catálogos; não usar apenas 001..005. O script de testes descrito abaixo sempre usa um cluster local isolado e não configura o Supabase remoto.
+Aplicar **001 até 009, em ordem**, pelo SQL Editor ou pipeline de migrations. O aplicativo depende da 006, o worker depende da 007, a 008 completa a publicação Realtime e a 009 preserva índices fracionários dos catálogos; não usar apenas 001..005. O script de testes descrito abaixo sempre usa um cluster local isolado e não configura o Supabase remoto.
 
 - `006_rm_mobile_delegation_and_idempotency.sql` mantém os contratos legados e restringe sua execução direta ao backend. A conta autenticada do tablet chama `rm_authenticate_operator_v1`, recebe `operator_token` e `token_expires_at` (sete dias) e envia mutações por `rm_mobile_mutate_v1`. A chave UUID de envio deve permanecer a mesma em toda retentativa. O servidor valida operador, dispositivo, célula e permissão de aprovação; impede duplicação mesmo se a resposta se perder após o commit. A função também valida respostas obrigatórias, preserva N/A, permite limpar campos em revisão e atualiza IDs das opções selecionadas.
 - `007_rm_bridge_leases_and_checkpoints.sql` adiciona checkpoints duráveis, exclusão entre workers, claims por evento, recuperação após queda, retentativa exponencial e `dead_letter` após o limite. Somente `service_role` pode operar a ponte.
 - `008_rm_realtime_mobile_catalogs.sql` publica as 17 tabelas consumidas pelo mobile, incluindo definições de formulários, questões, títulos de fotos e projetos. A 004 publicava somente os registros de execução; a 008 permite que mudanças no catálogo também acionem o pull automático.
+- `009_rm_fractional_question_indices.sql` converte `indice` para `numeric` em questões, itens, respostas e rascunhos, preservando valores como `1.5` e `156.5` encontrados na origem. Corrige os casts das RPCs de importação e envio sem mudar assinaturas ou permissões. A suíte local verificou importação, submissão com questão `1.5` e revisão da resposta sem arredondamento.
 - Foi corrigido em `005` o literal de perfil `Administrador` para a chave existente `administrador`. O original não compilava em PostgreSQL porque esse valor não existe no enum de `001`.
 
 ## Provisionamento

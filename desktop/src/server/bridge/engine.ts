@@ -81,15 +81,18 @@ export class Bridge {
     if (typeof modified !== 'string' || !Number.isFinite(Date.parse(modified))) throw new Error('Modified Date Bubble obrigatório.');
     const { data: byBubble, error: readError } = await this.db.from(entity.table).select('*').eq('bubble_id', raw._id).maybeSingle(); fail(readError);
     let existing=byBubble;
-    if(!existing && entity.table==='rm_users' && typeof raw.email_corporativo==='string') {
-      const email=raw.email_corporativo.trim().toLowerCase();
-      if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        for(const column of ['email','email_corporativo']) {
-          const match=await this.db.from('rm_users').select('*').eq(column,email).is('bubble_id',null).limit(2);fail(match.error);
-          if((match.data?.length||0)>1)throw new Error('Email corresponde a mais de uma identidade local.');
-          if(match.data?.length){existing=match.data[0];break;}
-        }
+    if(!existing && entity.table==='rm_users') {
+      const auth=raw.authentication as {email?:{email?:unknown}}|undefined;
+      const emails=[raw.email_corporativo,raw.email,auth?.email?.email]
+        .filter((value):value is string=>typeof value==='string')
+        .map(value=>value.trim().toLowerCase()).filter(value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+      const matches=new Map<string,Row>();
+      for(const email of new Set(emails))for(const column of ['email','email_corporativo']){
+        const match=await this.db.from('rm_users').select('*').eq(column,email).is('bubble_id',null).limit(2);fail(match.error);
+        for(const local of match.data||[])matches.set(String(local.id),local);
       }
+      if(matches.size>1)throw new Error('Email corresponde a mais de uma identidade local.');
+      if(matches.size)existing=[...matches.values()][0];
     }
     if (existing?.bubble_modified_at && Date.parse(existing.bubble_modified_at) >= Date.parse(modified)) {
       if (entity.table === 'rm_registros_formulario' && existing.codigo != null) await this.rpc('rm_advance_form_sequence_v1',{p_form_id:existing.form_id,p_code:existing.codigo});
@@ -108,11 +111,18 @@ export class Bridge {
     if(existing)row.id=existing.id;
     // Auth account linkage and its locally provisioned role remain authoritative.
     if(entity.table==='rm_users' && existing?.auth_user_id){row.perfil=existing.perfil;row.matricula=existing.matricula;}
-    if (existing) {
-      // Pending local mutations take priority until exported. Also protect bundle children.
-      const ids = [existing.id, row.registro_formulario_id, row.projeto_id].filter((v): v is string => typeof v === 'string');
+    {
+      // Guard new children too, including a response's project ancestor.
+      const ids = [existing?.id,existing?.registro_formulario_id,existing?.projeto_id,row.registro_formulario_id,row.projeto_id].filter((v): v is string => typeof v === 'string');
+      const recordId=row.registro_formulario_id||existing?.registro_formulario_id;
+      if(typeof recordId==='string'){
+        const parent=await this.row('rm_registros_formulario',recordId);
+        if(typeof parent.projeto_id==='string')ids.push(parent.projeto_id);
+      }
+      if(ids.length){
       const { data: pending, error } = await this.db.from('rm_sync_outbox').select('id').in('record_id', ids).eq('target_system','bubble_data_api').neq('status','completed').limit(1); fail(error);
       if (pending?.length) throw new Error(`Conflito pendente em ${entity.name}; exportar fila antes de aplicar Desktop.`);
+      }
     }
     const { data, error } = await this.db.from(entity.table).upsert(row, { onConflict: existing?'id':'bubble_id' }).select('id').single(); fail(error);
     if (!data) throw new Error(`Importação sem resultado: ${entity.name}`);
@@ -221,7 +231,9 @@ export class Bridge {
         const cursor = checkpoints.get(entity.endpoint)||initial;
         // Revisit project transitions until every child checkpoint has passed them.
         // This persists hydration retries without a second queue or a lossy in-memory flag.
-        const projectFloor=entity.table==='rm_projetos'?Math.min(...['projetorm','equipamento','celula_projeto','fotosrm','registro_formulario','aprovacao_etapas'].map(endpoint=>Date.parse(checkpoints.get(endpoint)||initial))):Date.parse(cursor);
+        // A child with no checkpoint already reads its whole active scope and
+        // therefore does not force the project cursor back to epoch by itself.
+        const projectFloor=entity.table==='rm_projetos'?Math.min(...['projetorm','equipamento','celula_projeto','fotosrm','registro_formulario','aprovacao_etapas'].map(endpoint=>Date.parse(checkpoints.get(endpoint)||cursor))):Date.parse(cursor);
         const since = new Date(Math.max(0,projectFloor-120_000)).toISOString();
         const active=[...projects].filter(([,row])=>isOperationalProject(row)).map(([id])=>id);
         const hydrateProjects=active.filter(id=>Date.parse(changedProjects.get(id)||'')>Date.parse(cursor));

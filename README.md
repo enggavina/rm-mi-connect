@@ -36,9 +36,11 @@ Fotos são copiadas para armazenamento persistente e comprimidas. A fila envia m
 
 ## Banco e integração
 
-O ambiente inicial está no projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)**, criado na organização Pro, região São Paulo, com compute Micro. As migrações 001–008 já foram aplicadas e as 52 tabelas RM estão protegidas por RLS. Os arquivos `.env` locais apontam para esse ambiente e permanecem fora do repositório.
+O ambiente inicial está no projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)**, criado na organização Pro, região São Paulo, com compute Micro. As migrações 001–009 já foram aplicadas e as 52 tabelas RM estão protegidas por RLS. Os arquivos `.env` locais apontam para esse ambiente e permanecem fora do repositório.
 
-Aplicar as migrações **001 a 008**, em ordem, em ambiente previamente conferido. As cinco primeiras preservam o modelo recebido. `005` contém uma correção necessária: o enum é `administrador`, e não `Administrador`. `006` acrescenta autenticação delegada, limitação de tentativas, permissões de mídia e idempotência para todas as mutações. `007` acrescenta leases, checkpoints e recuperação de falhas do worker. `008` publica no Realtime as 17 tabelas de catálogo/execução consumidas pelo mobile, incluindo formulários, questões e títulos de fotos.
+A carga inicial contém 177 projetos operacionais e seus catálogos. O [relatório da carga](desktop/docs/initial-load.md) detalha volumes, registros legados pendentes e condições para ativar a coexistência. O worker permanece desativado; o desktop está preparado como scaffold para a próxima etapa.
+
+Aplicar as migrações **001 a 009**, em ordem, em ambiente previamente conferido. As cinco primeiras preservam o modelo recebido. `005` contém uma correção necessária: o enum é `administrador`, e não `Administrador`. `006` acrescenta autenticação delegada, limitação de tentativas, permissões de mídia e idempotência para todas as mutações. `007` acrescenta leases, checkpoints e recuperação de falhas do worker. `008` publica no Realtime as 17 tabelas de catálogo/execução consumidas pelo mobile, incluindo formulários, questões e títulos de fotos. `009` preserva os índices fracionários usados na ordenação de questões e opções no Bubble, inclusive no envio e na revisão de respostas.
 
 As RPCs originais são chamadas pelo gateway `rm_mobile_mutate_v1`; o aplicativo não recebe a chave `service_role`. Uma autorização de dispositivo não autoriza forjar outro operador. Campos obrigatórios, revisão e permissão de aprovação também são validados no servidor.
 
