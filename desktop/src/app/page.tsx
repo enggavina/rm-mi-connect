@@ -1,0 +1,5 @@
+export default function Home() {
+  return <main><header><span className="brand">MI<span>CONNECT</span></span><span className="phase">RM · Fase 1</span></header>
+    <section className="hero"><p className="eyebrow">REVISÃO DE MOTORES</p><h1>A operação continua.<br/><em>Mesmo sem conexão.</em></h1><p>O aplicativo de campo reúne recebimento, inspeções, evidências e aprovações. A área desktop está sendo preparada para a próxima fase.</p></section>
+    <section className="cards"><article><span>01</span><h2>Aplicativo de campo</h2><p>Formulários e fotos com salvamento local e sincronização ao voltar à rede.</p><strong>Implementação da Fase 1</strong></article><article><span>02</span><h2>Continuidade com o Bubble</h2><p>Ponte de dados com fila persistente, rastreamento de falhas e retomada de sincronização.</p><strong>Requer configuração do ambiente</strong></article><article><span>03</span><h2>Gestão desktop</h2><p>Planejamento, propostas e geração de relatórios serão incorporados nesta aplicação.</p><strong>Planejado para a Fase 2</strong></article></section><footer>MI Electric · RM — Revisão de Motores</footer></main>;
+}

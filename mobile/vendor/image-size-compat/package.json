@@ -1,0 +1,10 @@
+{
+  "name": "@rm/image-size-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Metro SDK54 synchronous filename adapter for patched image-size 2",
+  "main": "index.cjs",
+  "dependencies": {
+    "image-size-modern": "npm:image-size@2.0.4"
+  }
+}

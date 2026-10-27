@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "RM · MI Connect",
+    "slug": "rm-mi-connect",
+    "scheme": "rm-mi-connect",
+    "version": "1.0.0",
+    "icon": "./assets/icon.png",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "br.com.mielectric.rmconnect"
+    },
+    "android": {
+      "package": "br.com.mielectric.rmconnect",
+      "versionCode": 1,
+      "allowBackup": false,
+      "permissions": [
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Selecione fotos para documentar a inspeção.",
+          "cameraPermission": "Fotografe os equipamentos e as inspeções.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Leia o QR Code do equipamento.",
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-font",
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
