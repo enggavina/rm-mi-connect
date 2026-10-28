@@ -43,7 +43,7 @@ export interface Draft extends DraftContext {
   answers: Answer[];
 }
 export interface AppSnapshot {
-  ready: boolean; configured: boolean; online: boolean; syncing: boolean;
+  ready: boolean; configured: boolean; online: boolean; connectionKnown: boolean; syncing: boolean; syncRecovery: boolean;
   sessionUserId: string | null; operator: Operator | null;
   pendingMedia: number; pendingMutations: number;
   lastSync: string | null; error: string | null; mediaCacheNotice: string | null; revision: number;

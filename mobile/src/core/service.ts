@@ -10,6 +10,7 @@ import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIden
 import { applyOperatorContext } from './operator-policy';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
+import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
@@ -24,7 +25,7 @@ class MobileService {
   private client: SupabaseClient | null = null;
   private snapshot: AppSnapshot = {
     ready: false, configured: /^https:\/\//.test(url) && anonKey.length > 20,
-    online: false, syncing: false, sessionUserId: null, operator: null,
+    online: false, connectionKnown: false, syncing: false, syncRecovery: false, sessionUserId: null, operator: null,
     pendingMedia: 0, pendingMutations: 0, lastSync: null, error: null, mediaCacheNotice: null, revision: 0,
   };
   private listeners = new Set<() => void>();
@@ -75,8 +76,11 @@ class MobileService {
       });
     }
     NetInfo.addEventListener(state => {
-      const online = state.isConnected === true && state.isInternetReachable !== false;
-      this.update({ online });
+      const online = knownConnection(state);
+      if (online === null) return;
+      this.update({ online, connectionKnown: true, syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, {
+        type: 'connection', online, pending: this.snapshot.pendingMedia + this.snapshot.pendingMutations,
+      }) });
       if (online) this.scheduleSync();
     });
     setInterval(() => { if (this.snapshot.online && AppState.currentState === 'active') this.scheduleSync(); }, 30_000);
@@ -365,7 +369,13 @@ class MobileService {
       if (data.session.user.id !== await secureStorage.getItem('rm.device.owner')) throw new Error('A sessão pertence a outra conta.');
       await this.refreshOperatorPermissions();
       let pushError: unknown;
-      try { await uploadThenMutate(() => this.pushMedia(force), () => this.pushMutations(force)); } catch (error) { pushError = error; }
+      try { await uploadThenMutate(() => this.pushMedia(force), () => this.pushMutations(force)); }
+      catch (error) {
+        pushError = error;
+        if (isConnectivityError(error)) this.update({ syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, { type: 'interrupted-send' }) });
+      }
+      // Sending and downloading catalogs are independent: hide recovery once sends are confirmed.
+      await this.refreshCounts();
       // Pull remains useful while one invalid mutation waits for operator intervention.
       await this.pull();
       const at = timestamp();
@@ -373,6 +383,9 @@ class MobileService {
       this.update({ lastSync: at });
       if (pushError) throw pushError;
     } catch (error) {
+      if (isConnectivityError(error) && this.snapshot.pendingMedia + this.snapshot.pendingMutations > 0) {
+        this.update({ syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, { type: 'interrupted-send' }) });
+      }
       this.update({ error: errorText(error) });
       throw error;
     } finally { await this.refreshCounts(); this.update({ syncing: false }); }
@@ -532,9 +545,13 @@ class MobileService {
   }
   private async refreshCounts() {
     const db = this.database.connection();
-    const media = await db.getFirstAsync<{count: number}>("SELECT count(*) AS count FROM local_media_upload_queue WHERE status<>'uploaded'");
-    const mutations = await db.getFirstAsync<{count: number}>("SELECT count(*) AS count FROM local_rpc_outbox WHERE status<>'completed'");
-    this.update({ pendingMedia: media?.count ?? 0, pendingMutations: mutations?.count ?? 0 });
+    const counts = await db.getFirstAsync<{pendingMedia: number; pendingMutations: number}>(`SELECT
+      (SELECT count(*) FROM local_media_upload_queue WHERE status<>'uploaded') AS pendingMedia,
+      (SELECT count(*) FROM local_rpc_outbox WHERE status<>'completed') AS pendingMutations`);
+    const pendingMedia = counts?.pendingMedia ?? 0, pendingMutations = counts?.pendingMutations ?? 0;
+    this.update({ pendingMedia, pendingMutations, syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, {
+      type: 'queue', online: this.snapshot.online, pendingMedia, pendingMutations, restoring: !this.snapshot.ready,
+    }) });
   }
 }
 
