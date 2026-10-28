@@ -1,19 +1,24 @@
 \set ON_ERROR_STOP on
--- Run against an isolated database after bootstrap.sql and migrations 001..009.
+-- Run against an isolated database after bootstrap.sql and migrations 001..010.
 -- All fixture data and mutations are rolled back, including bridge events.
 begin;
 create function pg_temp.check(v boolean,msg text) returns void language plpgsql as $$
 begin if v is distinct from true then raise exception 'FAIL: %',msg; end if; end $$;
 insert into auth.users(id) values('10000000-0000-4000-8000-000000000001'),('10000000-0000-4000-8000-000000000002');
 insert into public.rm_users(id,auth_user_id,matricula,nome,perfil) values
- ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','tablet','Tablet 1','mobile'),
+ ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','tablet','Tablet 1','administrador'),
  ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','tablet2','Tablet 2','mobile'),
- ('20000000-0000-4000-8000-000000000003',null,'123','Operador de teste','mobile');
+ ('20000000-0000-4000-8000-000000000003',null,'123','Operador de teste','mobile'),
+ ('20000000-0000-4000-8000-000000000004',null,'456','Outro operador','mobile');
 insert into rm_private.user_credentials(user_id,palavra_chave_hash) values
- ('20000000-0000-4000-8000-000000000003',extensions.crypt('test-only-password',extensions.gen_salt('bf',4)));
-insert into public.rm_celulas(id,nome) values('30000000-0000-4000-8000-000000000001','Peritagem');
-insert into public.rm_tablet_celula_users(celula_id,usuario_id) values
- ('30000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001');
+ ('20000000-0000-4000-8000-000000000003',extensions.crypt('test-only-password',extensions.gen_salt('bf',4))),
+ ('20000000-0000-4000-8000-000000000004',extensions.crypt('test-only-password',extensions.gen_salt('bf',4)));
+insert into public.rm_celulas(id,nome) values
+ ('30000000-0000-4000-8000-000000000001','Peritagem'),
+ ('30000000-0000-4000-8000-000000000002','Célula de outro operador');
+insert into public.rm_tablet_celula_users(celula_id,usuario_id,identidade_id) values
+ ('30000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000003'),
+ ('30000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000004');
 insert into public.rm_clientes(id,nome) values('40000000-0000-4000-8000-000000000001','Cliente teste');
 insert into public.rm_tipos_equipamento(id,nome) values('50000000-0000-4000-8000-000000000001','Motor');
 insert into public.rm_projetos(id,numero,created_by_user_id) values
@@ -36,6 +41,8 @@ delete from public.rm_questoes where bubble_id='test-question-fractional';
 select pg_temp.check(not has_function_privilege('anon','public.rm_authenticate_operator_v1(text,text,uuid,uuid,text,text)','EXECUTE'),'anonymous auth revoked');
 select pg_temp.check(not has_function_privilege('authenticated','public.rm_submit_form_inspection_v1(uuid,uuid,uuid,uuid,uuid,uuid,integer,jsonb)','EXECUTE'),'legacy mutation bypass revoked');
 select pg_temp.check(not has_function_privilege('authenticated','rm_private.rm_authenticate_operator_v1(text,text,uuid,uuid,text,text)','EXECUTE'),'private auth inaccessible');
+select pg_temp.check(not has_function_privilege('anon','public.rm_operator_context_v1(text)','EXECUTE'),'anonymous operator context denied');
+select pg_temp.check(not has_function_privilege('authenticated','rm_private.operator_context(uuid)','EXECUTE'),'arbitrary operator context denied');
 select pg_temp.check(not exists(
   select 1 from unnest(array['rm_clientes','rm_users','rm_tipos_equipamento','rm_celulas',
     'rm_tablet_celula_users','rm_celula_tipos_equipamento','rm_celula_form_tipos_equipamento',
@@ -50,7 +57,16 @@ do $$ declare a jsonb; begin
   a:=public.rm_authenticate_operator_v1('123','test-only-password');
   perform pg_temp.check((a->>'authenticated')::boolean,'operator login');
   perform pg_temp.check(length(a->>'operator_token')=64,'opaque token');
+  perform pg_temp.check(a->>'cell_access_policy_version'='2','permission policy version');
+  perform pg_temp.check(jsonb_array_length(a->'celulas_vinculadas')=1 and a->'celulas_vinculadas'->0->>'celula_id'='30000000-0000-4000-8000-000000000001','operator does not inherit tablet administrator cells');
   perform set_config('rm.test.token',a->>'operator_token',true);
+  a:=public.rm_authenticate_operator_v1('456','test-only-password');
+  perform pg_temp.check(jsonb_array_length(a->'celulas_vinculadas')=1 and a->'celulas_vinculadas'->0->>'celula_id'='30000000-0000-4000-8000-000000000002','second operator sees only their registered cell');
+  perform pg_temp.check((select count(*)=2 from public.rm_tablet_celula_users where
+    (celula_id='30000000-0000-4000-8000-000000000001' and identidade_id='20000000-0000-4000-8000-000000000003') or
+    (celula_id='30000000-0000-4000-8000-000000000002' and identidade_id='20000000-0000-4000-8000-000000000004')),'operator switching never rewrites registered assignments');
+  a:=public.rm_operator_context_v1(current_setting('rm.test.token'));
+  perform pg_temp.check(jsonb_array_length(a->'celulas_vinculadas')=1 and a->>'operador_id'='20000000-0000-4000-8000-000000000003','context refresh stays bound to delegated actor');
   perform pg_temp.check((select count(*) from public.rm_clientes)>0,'RLS catalogs readable by linked account');
 end $$;
 
@@ -96,11 +112,24 @@ do $$ declare p jsonb; first_result jsonb; replay jsonb; begin
 end $$;
 reset role;
 insert into public.rm_celulas_projeto(projeto_id,celula_id,forms_ids,visibilidade) values
- (current_setting('rm.test.project')::uuid,'30000000-0000-4000-8000-000000000001',array['60000000-0000-4000-8000-000000000001']::uuid[],true);
+ (current_setting('rm.test.project')::uuid,'30000000-0000-4000-8000-000000000001',array['60000000-0000-4000-8000-000000000001']::uuid[],true),
+ (current_setting('rm.test.project')::uuid,'30000000-0000-4000-8000-000000000002',array['60000000-0000-4000-8000-000000000001']::uuid[],true);
 insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id) values
  ('a0000000-0000-4000-8000-000000000001',current_setting('rm.test.project')::uuid,'30000000-0000-4000-8000-000000000001');
 set local role authenticated;
 do $$ declare p jsonb; result jsonb; begin
+  begin
+    perform public.rm_mobile_mutate_v1(gen_random_uuid(),'rm_submit_form_inspection_v1',
+      jsonb_build_object('p_projeto_id',current_setting('rm.test.project'),'p_celula_id','30000000-0000-4000-8000-000000000002',
+        'p_form_id','60000000-0000-4000-8000-000000000001','p_respostas','[]'::jsonb),current_setting('rm.test.token'));
+    raise exception 'FAIL: operator inherited another operator cell through administrator tablet';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.rm_mobile_mutate_v1(gen_random_uuid(),'rm_record_cell_photo_v1',
+      jsonb_build_object('p_projeto_id',current_setting('rm.test.project'),'p_celula_id','30000000-0000-4000-8000-000000000002',
+        'p_foto_url','https://example.invalid/test.jpg'),current_setting('rm.test.token'));
+    raise exception 'FAIL: photo accepted in another operator cell';
+  exception when insufficient_privilege then null; end;
   p:=jsonb_build_object('p_projeto_id',current_setting('rm.test.project'),'p_celula_id','30000000-0000-4000-8000-000000000001',
     'p_form_id','60000000-0000-4000-8000-000000000001','p_respostas','[]'::jsonb);
   begin
@@ -152,11 +181,27 @@ end $$;
 select set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',true);
 do $$ begin
   begin
+    perform public.rm_operator_context_v1(current_setting('rm.test.token'));
+    raise exception 'FAIL: another device refreshed operator context';
+  exception when invalid_authorization_specification then null; end;
+  begin
     perform public.rm_mobile_mutate_v1(gen_random_uuid(),'rm_submit_recebimento_v1','{}',current_setting('rm.test.token'));
     raise exception 'FAIL: token accepted by wrong device';
   exception when invalid_authorization_specification then null; end;
 end $$;
 select set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',true);
+-- Permission refresh sees registration changes without changing the offline expiry.
+reset role;
+delete from public.rm_tablet_celula_users where identidade_id='20000000-0000-4000-8000-000000000003';
+update public.rm_users set perfil='administrador' where id='20000000-0000-4000-8000-000000000004';
+set local role authenticated;
+do $$ declare a jsonb; begin
+  a:=public.rm_operator_context_v1(current_setting('rm.test.token'));
+  perform pg_temp.check(jsonb_array_length(a->'celulas_vinculadas')=0,'context refresh observes removed assignment');
+  a:=public.rm_authenticate_operator_v1('456','test-only-password');
+  perform pg_temp.check(a->>'perfil'='administrador' and jsonb_array_length(a->'celulas_vinculadas')=2,'operator administrator retains administrative access');
+end $$;
+
 do $$ declare a jsonb; begin
   for i in 1..5 loop
     a:=public.rm_authenticate_operator_v1('123','wrong-password');

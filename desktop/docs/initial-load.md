@@ -1,4 +1,4 @@
-# Carga operacional inicial — 27/10/2026
+# EM — Carga operacional inicial — 27/10/2026
 
 Destino: projeto Supabase `oficina-em-mi-off`, referência `ellpxfbsrbhblyizvbbk`. Origem: Bubble `rmmi`, live, exclusivamente leitura. A saída da ponte permaneceu desativada e a fila de saída terminou vazia. A conta administrativa inicial, seu vínculo com Supabase Auth e sua matrícula foram preservados.
 

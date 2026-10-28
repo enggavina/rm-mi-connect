@@ -4,6 +4,7 @@ import { pbkdf2Async } from '@noble/hashes/pbkdf2';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import type { Operator } from './types';
+import { applyOperatorContext, hasCurrentCellPolicy } from './operator-policy';
 
 const OPTIONS = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 /** Chunk JWT sessions because some native Keychains reject values over 2 KB. */
@@ -36,6 +37,7 @@ async function derive(password: string, salt: string) {
   return bytesToHex(await pbkdf2Async(sha256, utf8ToBytes(password), utf8ToBytes(salt), { c: 210_000, dkLen: 32, asyncTick: 10 }));
 }
 export async function cacheIdentity(operator: Operator, token: string, password: string, owner: string) {
+  if (!hasCurrentCellPolicy(operator)) throw new Error('Atualize as permissões do servidor antes de identificar o operador.');
   const salt = bytesToHex(await Crypto.getRandomBytesAsync(32));
   const entry: CachedIdentity = {
     operator, token, salt, hash: await derive(password, salt), owner,
@@ -44,10 +46,23 @@ export async function cacheIdentity(operator: Operator, token: string, password:
   };
   await secureStorage.setItem(await identityKey(operator.matricula), JSON.stringify(entry));
 }
+export async function refreshCachedIdentity(operator: Operator, token: string, owner: string) {
+  const key = await identityKey(operator.matricula), raw = await secureStorage.getItem(key);
+  if (!raw) return;
+  const entry = JSON.parse(raw) as CachedIdentity;
+  if (entry.owner !== owner || entry.token !== token || entry.operator.operador_id !== operator.operador_id) return;
+  entry.operator = applyOperatorContext(entry.operator, operator);
+  // Keep the original password verifier, attempt count and offline expiration.
+  await secureStorage.setItem(key, JSON.stringify(entry));
+}
+export async function forgetCachedIdentity(matricula: string) {
+  await secureStorage.removeItem(await identityKey(matricula));
+}
 export async function offlineIdentity(matricula: string, password: string, owner: string): Promise<{operator: Operator; token: string}> {
   const key = await identityKey(matricula), raw = await secureStorage.getItem(key);
   if (!raw) throw new Error('Primeira identificação deste operador exige conexão.');
   const entry = JSON.parse(raw) as CachedIdentity;
+  if (!hasCurrentCellPolicy(entry.operator)) throw new Error('Conecte para atualizar as células permitidas deste operador.');
   if (entry.owner !== owner || entry.expires < Date.now()) throw new Error('Identificação offline expirada. Conecte e identifique-se novamente.');
   if (entry.blockedUntil > Date.now()) throw new Error('Identificação temporariamente bloqueada. Aguarde 15 minutos ou conecte para validar.');
   const hash = await derive(password, entry.salt);

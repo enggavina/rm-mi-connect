@@ -11,18 +11,18 @@ import { Button, C, Notice, s } from './components';
 export function MediaImage({ uri, height = 180 }: { uri: string; height?: number }) {
   const [url, setUrl] = useState(uri); const [failed, setFailed] = useState(false);
   useEffect(() => { let live = true; setFailed(false); service.getMediaUrl(uri).then(u => { if (live) setUrl(u); }).catch(() => { if (live) setFailed(true); }); return () => { live = false; }; }, [uri]);
-  return failed ? <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice> : <Image accessibilityLabel="Evidência da inspeção" source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: '#E7EDF3' }} resizeMode="contain" onError={() => setFailed(true)} />;
+  return failed ? <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice> : <Image accessibilityLabel="Evidência da inspeção" source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" onError={() => setFailed(true)} />;
 }
-export function Photos({ values, onChange, disabled, beforeAfter = false, onBusyChange }: { values: string[]; onChange: (uris: string[]) => void; disabled?: boolean; beforeAfter?: boolean; onBusyChange?: (busy: boolean) => void }) {
+export function Photos({ values, onChange, disabled, beforeAfter = false, single = false, onBusyChange }: { values: string[]; onChange: (uris: string[]) => void; disabled?: boolean; beforeAfter?: boolean; single?: boolean; onBusyChange?: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   async function pick(camera: boolean, index?: number) {
     setBusy(true); onBusyChange?.(true); setError('');
     try {
       if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted) throw new Error('Autorize o acesso à câmera nas configurações do dispositivo.');
-      const result = camera ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 }) : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: index === undefined, quality: 1 });
+      const result = camera ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 }) : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: !single && index === undefined, quality: 1 });
       if (!result.canceled) {
         const saved: string[] = []; for (const asset of result.assets) saved.push(await service.addMedia(asset.uri, 'rm-fotos'));
-        if (index !== undefined) { const next = [values[0] || '',values[1] || '']; next[index] = saved[0]; onChange(next); } else onChange([...values, ...saved]);
+        if (index !== undefined) { const next = [values[0] || '',values[1] || '']; next[index] = saved[0]; onChange(next); } else onChange(single ? saved.slice(-1) : [...values, ...saved]);
       }
     } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível salvar a foto.'); } finally { setBusy(false); onBusyChange?.(false); }
   }

@@ -20,6 +20,7 @@ export interface Operator {
   cargo?: string; perfil_assinante: string[]; equipe_id?: string;
   celulas_vinculadas: {celula_id: string; nome: string; codigo?: string}[];
   authenticated_at: string; token_expires_at?: string;
+  cell_access_policy_version?: number;
 }
 export interface Answer {
   questao_id: string; indice: number; enunciado: string; tipo: string;

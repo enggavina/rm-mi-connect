@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "RM · MI Connect",
-    "slug": "rm-mi-connect",
+    "name": "EM",
+    "slug": "em-mi-electric-brasil",
     "scheme": "rm-mi-connect",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "icon": "./assets/icon.png",
     "orientation": "default",
     "userInterfaceStyle": "light",
@@ -14,7 +14,11 @@
     },
     "android": {
       "package": "br.com.mielectric.rmconnect",
-      "versionCode": 1,
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
       "allowBackup": false,
       "permissions": [
         "CAMERA"

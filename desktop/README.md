@@ -1,6 +1,6 @@
-# RM — MI Connect / Desktop e ponte Bubble
+# EM · MI Electric Brasil — Desktop e ponte Bubble
 
-Scaffold Next.js 15 com App Router e runtime Node. A página inicial comunica a Fase 1; o ERP desktop e as rotas de relatórios/TOTP estão reservados para a Fase 2.
+Scaffold Next.js 15 com App Router e runtime Node. A página inicial apresenta o EM, da MI Electric Brasil, com a jornada célula → projeto → formulários ou galeria. O desktop operacional e as rotas de relatórios/TOTP estão reservados para a Fase 2. A identidade usa o logo original fornecido e as cores vermelho `#e73e42`, grafite `#0e1724` e branco.
 
 ## Executar localmente
 
@@ -20,7 +20,7 @@ O build não exige credenciais. As APIs e o worker só constroem o cliente Supab
 
 ## Preparar a coexistência
 
-1. Aplicar as migrações `001` a `009` em ordem no Supabase. `006` adiciona delegação/idempotência do mobile, `007` adiciona leases/checkpoints do worker, `008` completa a publicação Realtime e `009` preserva índices fracionários de questões e opções.
+1. Aplicar as migrações `001` a `010` em ordem no Supabase. `006` adiciona delegação/idempotência do mobile, `007` adiciona leases/checkpoints do worker, `008` completa a publicação Realtime, `009` preserva índices fracionários de questões e opções e `010` aplica as células cadastradas para a identidade do operador.
 2. Habilitar a Data API no Bubble para os tipos de `src/server/bridge/mapping.ts`. Os endpoints dos catálogos, projetos, fotos e formulários foram validados com leitura live. O endpoint de aprovações ainda retorna 404; os nomes públicos tentados e o Swagger indisponível estão registrados em `docs/bubble-preparation.md`. Se o nome público divergir, configurar `BUBBLE_ENDPOINT_OVERRIDES` somente após conferir o nome efetivamente exposto.
 3. O campo **texto `supabase_id`** já foi preparado em **Main/test** nos cinco tipos criados pela ponte: `projetorm`, `equipamento`, `fotosrm`, `registro_formulario` e `respostas`. Ver [registro da preparação](docs/bubble-preparation.md). Publicar o schema no Bubble antes de apontar ao ambiente live. O campo é configurável em `BUBBLE_SYNC_ID_FIELD`. Um POST com resposta perdida é reconciliado por esse UUID antes da nova tentativa. Sem o campo, a fila falha e preserva o evento para correção; não há fallback inseguro para criação cega. Atualizações de células/aprovações com `bubble_id` já conhecido usam PATCH e dispensam campos novos.
 4. Os campos em `mapping.ts` foram confrontados com o Swagger local e com os schemas atuais do editor Main/test, incluindo tipos auxiliares e aprovações. Conferir os nomes públicos dos endpoints auxiliares após habilitar a Data API do ambiente escolhido.
@@ -33,7 +33,7 @@ O build não exige credenciais. As APIs e o worker só constroem o cliente Supab
 
 Criar o serviço web com **Root Directory `/desktop`**, Dockerfile e `railway.json`. Injetar variáveis server-side no Railway. Criar um segundo serviço a partir do mesmo diretório, usando `railway.worker.json` como config e `npm run worker` como comando; o worker não oferece endpoint HTTP nem healthcheck web. A imagem inclui o runtime TypeScript para esse processo separado. Para desenvolvimento, um ciclo também pode ser acionado com `npm run worker:once` ou a rota protegida abaixo.
 
-O projeto Supabase `oficina-em-mi-off` foi provisionado, recebeu as migrações `001..009` e a carga operacional inicial foi concluída com 177 projetos, 13.631 fotos, 778 cabeçalhos de formulários e 875 aprovações, mantendo a saída desativada. Há 276 registros legados inválidos em quarentena; consulte [volumes, recorte e limitações](docs/initial-load.md). Não houve deploy no Railway. No Bubble, somente os cinco campos de sincronização em Main/test foram adicionados; a versão live foi usada apenas como origem de leitura.
+O projeto Supabase `oficina-em-mi-off` foi provisionado, recebeu as migrações `001..010` e a carga operacional inicial foi concluída com 177 projetos, 13.631 fotos, 778 cabeçalhos de formulários e 875 aprovações, mantendo a saída desativada. Há 276 registros legados inválidos em quarentena; consulte [volumes, recorte e limitações](docs/initial-load.md). Não houve deploy no Railway. No Bubble, somente os cinco campos de sincronização em Main/test foram adicionados; a versão live foi usada apenas como origem de leitura.
 
 ## Recorte operacional da carga e do worker
 

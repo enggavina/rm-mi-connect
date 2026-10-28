@@ -6,7 +6,8 @@ import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { LocalDatabase } from './database';
-import { cacheIdentity, offlineIdentity, secureStorage } from './secure';
+import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
+import { applyOperatorContext } from './operator-policy';
 import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
@@ -110,7 +111,7 @@ class MobileService {
         try {
         const { data, error } = await this.supabase().rpc('rm_authenticate_operator_v1', {
           p_matricula: matricula.trim(), p_palavra_chave: password,
-          p_tablet_user_id: this.tabletUserId, p_local: 'RM MI Connect / Expo',
+          p_tablet_user_id: this.tabletUserId, p_local: 'EM / MI Electric Brasil',
         });
         if (error) throw error;
         if (data?.authenticated === false) throw new Error(data.error ?? 'Credenciais inválidas.');
@@ -307,6 +308,7 @@ class MobileService {
       const { data, error } = await this.supabase().auth.getSession();
       if (error || !data.session) throw new Error('Renove o login do dispositivo para sincronizar. Os dados continuam salvos.');
       if (data.session.user.id !== await secureStorage.getItem('rm.device.owner')) throw new Error('A sessão pertence a outra conta.');
+      await this.refreshOperatorPermissions();
       let pushError: unknown;
       try { await uploadThenMutate(() => this.pushMedia(force), () => this.pushMutations(force)); } catch (error) { pushError = error; }
       // Pull remains useful while one invalid mutation waits for operator intervention.
@@ -319,6 +321,28 @@ class MobileService {
       this.update({ error: errorText(error) });
       throw error;
     } finally { await this.refreshCounts(); this.update({ syncing: false }); }
+  }
+  private async refreshOperatorPermissions() {
+    const operator = this.snapshot.operator, token = this.operatorToken, owner = this.snapshot.sessionUserId;
+    if (!operator || !token || !owner || this.identityBusy) return;
+    const { data, error } = await this.supabase().rpc('rm_operator_context_v1', { p_operator_token: token });
+    // A response for a previous operator must never replace the current identity.
+    if (this.operatorToken !== token || this.snapshot.operator?.operador_id !== operator.operador_id) return;
+    if (error) {
+      if (['28000', '42501'].includes(error.code)) {
+        this.operatorToken = null;
+        this.update({ operator: null });
+        await forgetCachedIdentity(operator.matricula);
+      }
+      throw error;
+    }
+    const refreshed = applyOperatorContext(operator, data as Operator);
+    await refreshCachedIdentity(refreshed, token, owner);
+    await this.database.write(db => db.runAsync(
+      'UPDATE local_operator_session SET perfil=?,perfil_assinante_json=?,celulas_vinculadas_json=? WHERE operador_id=?',
+      refreshed.perfil, JSON.stringify(refreshed.perfil_assinante ?? []), JSON.stringify(refreshed.celulas_vinculadas), refreshed.operador_id,
+    ));
+    if (this.operatorToken === token && this.snapshot.operator?.operador_id === operator.operador_id) this.update({ operator: refreshed });
   }
   private async pushMedia(force: boolean) {
     const rows = await this.database.connection().getAllAsync<MediaRow>(`SELECT q.*,m.next_retry_at FROM local_media_upload_queue q JOIN local_queue_meta m USING(id) WHERE q.status<>'uploaded' ORDER BY q.created_at,q.rowid`);

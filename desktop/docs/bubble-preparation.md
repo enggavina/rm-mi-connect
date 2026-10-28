@@ -1,4 +1,4 @@
-# Preparação do Bubble para coexistência — 27/10/2026
+# EM — Preparação do Bubble para coexistência — 27/10/2026
 
 Aplicativo `rmmi`, branch **Main (`test`)**. Nenhum deploy em `live` foi realizado. O plano consultado permite zero branches adicionais; as mudanças aditivas foram feitas em Main.
 
