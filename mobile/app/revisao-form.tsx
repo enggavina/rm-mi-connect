@@ -7,13 +7,13 @@ import { JourneyUnavailable, journeyLabel, projectHref, useJourney } from '../sr
 import { canReviseRecord } from '../src/domain/journey';
 
 export default function Revisao() {
-  const { registro, projeto, celula } = useLocalSearchParams<{ registro?: string; projeto?: string; celula?: string }>();
+  const { registro, projeto, celula, modo, questao } = useLocalSearchParams<{ registro?: string; projeto?: string; celula?: string; modo?: string; questao?: string }>();
   const records = useRows('rm_registros_formulario'); const { context, error } = useJourney(celula, projeto);
-  if (registro) return <FormScreen recordId={registro} projectId={projeto} cellId={celula} />;
+  if (registro) return <FormScreen recordId={registro} projectId={projeto} cellId={celula} mode={modo === 'visualizar' ? 'view' : 'revision'} focusQuestionId={questao} />;
   if (!context.ok) return <JourneyUnavailable context={context} error={error} title="Selecione um projeto" />;
   const rows = records.rows.filter(record => canReviseRecord(context, record));
   return <Screen title="Revisões solicitadas" eyebrow={journeyLabel(context)} backHref={projectHref(context)} backLabel="Detalhe do projeto" subtitle="Corrija as observações da engenharia e envie para nova análise.">
     {records.error && <Notice error>{records.error}</Notice>}{!rows.length && <Notice>Nenhum formulário em revisão neste projeto e célula.</Notice>}
-    {rows.map(record => <Card key={record.id}><Badge text="Revisar" alert /><Text style={s.h2}>{record.descricao || 'Formulário'} · {record.codigo_text}</Text><Notice error>{record.parecer || (record.observacao_list ?? []).join('\n') || 'Revisão solicitada pela engenharia.'}</Notice><Button title="Abrir correção" disabled={!context.canEdit} onPress={() => router.push({ pathname: '/revisao-form', params: { registro: record.id, projeto: context.project.id, celula: context.cell.id } })} /></Card>)}
+    {rows.map(record => <Card key={record.id}><Badge text="Revisar" alert /><Text style={s.h2}>{record.descricao || 'Formulário'} · {record.codigo_text}</Text><Notice error>{record.parecer || (record.observacao_list ?? []).join('\n') || 'Revisão solicitada pela engenharia.'}</Notice><Button title="Abrir correção" disabled={!context.canEdit} onPress={() => router.push({ pathname: '/revisao-form', params: { registro: record.id, projeto: context.project.id, celula: context.cell.id, modo: 'corrigir' } })} /><Button secondary title="Visualizar respostas" onPress={() => router.push({ pathname: '/revisao-form', params: { registro: record.id, projeto: context.project.id, celula: context.cell.id, modo: 'visualizar' } })} /></Card>)}
   </Screen>;
 }

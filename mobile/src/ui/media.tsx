@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Modal, PanResponder, Text, View } from 'react-native';
+import { Alert, Image, Modal, PanResponder, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import Svg, { Path } from 'react-native-svg';
@@ -8,10 +8,14 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { service } from '../core';
 import { Button, C, Notice, s } from './components';
 
-export function MediaImage({ uri, height = 180 }: { uri: string; height?: number }) {
+export function MediaImage({ uri, height = 180, expand = false, label = 'Evidência da inspeção' }: { uri: string; height?: number; expand?: boolean; label?: string }) {
   const [url, setUrl] = useState(uri); const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
   useEffect(() => { let live = true; setFailed(false); service.getMediaUrl(uri).then(u => { if (live) setUrl(u); }).catch(() => { if (live) setFailed(true); }); return () => { live = false; }; }, [uri]);
-  return failed ? <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice> : <Image accessibilityLabel="Evidência da inspeção" source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" onError={() => setFailed(true)} />;
+  return failed ? <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice> : <>
+    <Pressable disabled={!expand} accessibilityRole={expand ? 'button' : 'image'} accessibilityLabel={expand ? `Ampliar ${label}` : label} onPress={() => setOpen(true)}><Image source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" onError={() => setFailed(true)} /></Pressable>
+    <Modal visible={open} animationType="fade" onRequestClose={() => setOpen(false)}><SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: C.bg, gap: 16 }}><Text style={s.h2}>{label}</Text><Image source={{ uri: url }} style={{ flex: 1, width: '100%' }} resizeMode="contain" /><Button title="Fechar foto" onPress={() => setOpen(false)} /></SafeAreaView></Modal>
+  </>;
 }
 export function Photos({ values, onChange, disabled, beforeAfter = false, single = false, onBusyChange }: { values: string[]; onChange: (uris: string[]) => void; disabled?: boolean; beforeAfter?: boolean; single?: boolean; onBusyChange?: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');

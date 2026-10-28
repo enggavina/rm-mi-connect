@@ -54,8 +54,8 @@ export function Badge({ text, alert }: { text: string; alert?: boolean }) {
     <Text style={{ color: alert ? C.amber : C.muted, fontSize: 12, fontWeight: '700' }}>{text}</Text>
   </View>;
 }
-type ScreenProps = { title: string; subtitle?: string; children: React.ReactNode; auth?: boolean; backHref?: Href; backLabel?: string; eyebrow?: string; };
-export function Screen({ title, subtitle, children, auth = false, backHref, backLabel = 'Voltar', eyebrow }: ScreenProps) {
+type ScreenProps = { title: string; subtitle?: string; children: React.ReactNode; auth?: boolean; backHref?: Href; backLabel?: string; eyebrow?: string; scrollRef?: React.RefObject<ScrollView | null>; floatingFooter?: React.ReactNode; };
+export function Screen({ title, subtitle, children, auth = false, backHref, backLabel = 'Voltar', eyebrow, scrollRef, floatingFooter }: ScreenProps) {
   const state = useApp();
   const [menu, setMenu] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -78,7 +78,7 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
     {!auth && <View style={{ backgroundColor: C.ink, paddingHorizontal: 20, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <Text numberOfLines={1} style={{ color: C.white, fontSize: 12, fontWeight: '600' }}>{state.operator?.nome || 'Operação'} · {state.online ? 'Online' : 'Offline'}</Text>
-        <Text style={{ color: '#C4C8D0', fontSize: 11 }}>{pending ? `${state.pendingMedia} fotos · ${state.pendingMutations} envios pendentes` : 'Nenhum envio pendente'}</Text>
+        <Text style={{ color: '#C4C8D0', fontSize: 11 }}>{pending ? `${state.pendingMedia} arquivos · ${state.pendingMutations} envios pendentes` : 'Nenhum envio pendente'}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Sincronizar agora" accessibilityState={{ disabled: state.syncing || !state.online }} disabled={state.syncing || !state.online}
         onPress={() => { void service.sync(true).catch(() => {}); }} style={{ minHeight: 40, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -87,7 +87,7 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
       </Pressable>
     </View>}
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 56, gap: 20, maxWidth: auth ? 560 : 1200, width: '100%', alignSelf: 'center' }}>
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 56, gap: 20, maxWidth: auth ? 560 : 1200, width: '100%', alignSelf: 'center' }}>
         {backHref && <Pressable accessibilityRole="button" accessibilityLabel={backLabel} onPress={() => router.navigate(backHref)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, alignSelf: 'flex-start' }}>
           <Feather name="arrow-left" color={C.primary} size={20} /><Text style={{ color: C.primary, fontSize: 15, fontWeight: '700' }}>{backLabel}</Text>
         </Pressable>}
@@ -96,8 +96,10 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
           <Text style={s.title}>{title}</Text>{subtitle && <Text style={s.muted}>{subtitle}</Text>}
         </View>
         {!auth && state.error && <Notice error>{state.error}</Notice>}
+        {!auth && state.mediaCacheNotice && <Notice>{state.mediaCacheNotice}</Notice>}
         {children}
       </ScrollView>
+      {floatingFooter && <View style={{ padding: 12, paddingBottom: 24, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.white }}>{floatingFooter}</View>}
     </KeyboardAvoidingView>
     <Modal visible={menu} onRequestClose={() => setMenu(false)} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
@@ -110,7 +112,6 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
           </Card>
           <Card><Text style={s.h2}>Outras atividades</Text>
             <Button secondary title="Recebimento de equipamento" onPress={() => open('/recebimento')} />
-            <Button secondary title="Aprovações de etapas" onPress={() => open('/aprovacao')} />
           </Card>
           <Text style={s.muted}>A troca de operador mantém os rascunhos e os envios pendentes de cada pessoa.</Text>
         </ScrollView>

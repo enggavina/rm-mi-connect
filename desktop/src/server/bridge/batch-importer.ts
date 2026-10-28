@@ -1,5 +1,6 @@
 import type { Bridge } from './engine';
 import { entities, fieldValue, getEntity, type Entity, type Field, type Row } from './mapping';
+import { preserveImportedPdf } from './pdf-document';
 
 type Cached = Row & { id: string; bubble_id?: string | null; bubble_modified_at?: string | null };
 type Prepared = { raw: Row; row: Row; existing?: Cached; onConflict: 'id' | 'bubble_id' };
@@ -30,6 +31,7 @@ export class BatchImporter {
     for (const key of ['projeto_id', 'registro_formulario_id']) if (key in entity.fields) result.push(key);
     if (entity.table === 'rm_users') result.push('auth_user_id', 'email', 'email_corporativo', 'perfil', 'matricula');
     if (entity.table === 'rm_registros_formulario') result.push('form_id', 'codigo');
+    if (entity.table === 'rm_documentos') result.push('s3_key', 'arquivo_url');
     return result.join(',');
   }
 
@@ -219,6 +221,7 @@ export class BatchImporter {
           }
         }
         if (existing) row.id = existing.id;
+        if (entity.table === 'rm_documentos') preserveImportedPdf(row, existing);
         // Never map auth_user_id or credential fields from a Bubble payload.
         if (entity.table === 'rm_users' && existing?.auth_user_id) {
           row.perfil = existing.perfil;

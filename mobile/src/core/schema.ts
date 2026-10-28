@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS local_operator_session (
 -- 2. Cache offline de Catálogos e Projetos da Célula
 CREATE TABLE IF NOT EXISTS local_projetos_cache (
   id TEXT PRIMARY KEY,
-  numero TEXT NOT NULL,
+  numero TEXT,
   nome TEXT,
   cliente_nome TEXT,
   escopo_abreviado TEXT,
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS local_respostas_draft (
 -- 4. Fila de Upload de Mídias (Fotos de Recebimento, Fotos de Célula e Assinaturas)
 CREATE TABLE IF NOT EXISTS local_media_upload_queue (
   id TEXT PRIMARY KEY,
-  bucket TEXT NOT NULL CHECK (bucket IN ('rm-fotos', 'rm-assinaturas')),
+  bucket TEXT NOT NULL CHECK (bucket IN ('rm-fotos', 'rm-assinaturas', 'rm-documentos')),
   local_uri TEXT NOT NULL,
   remote_path TEXT NOT NULL,
   public_url TEXT,
@@ -141,7 +141,9 @@ CREATE TABLE IF NOT EXISTS local_rpc_outbox (
       'rm_submit_form_inspection_v1',
       'rm_submit_form_revision_v1',
       'rm_transition_stage_approval_v1',
-      'rm_record_cell_photo_v1'
+      'rm_record_cell_photo_v1',
+      'rm_update_cell_status_v1',
+      'rm_add_cell_comment_v1'
     )
   ),
   params_json TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { RM_MOBILE_SQLITE_DDL } from './schema';
-import { TABLES, type CatalogTable, type Row } from './types';
+import { TABLES, type CatalogFilter, type CatalogTable, type Row } from './types';
+import { QUEUE_DOCUMENTS_MIGRATION, QUEUE_DOCUMENTS_VERSION } from './queue-migration';
 
 const EXTENSION_DDL = `
 CREATE TABLE IF NOT EXISTS local_catalog (
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS local_queue_meta (
 );
 CREATE TABLE IF NOT EXISTS local_media_download_queue (url TEXT PRIMARY KEY, local_uri TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_local_catalog_table ON local_catalog(table_name);
+CREATE INDEX IF NOT EXISTS idx_local_catalog_record ON local_catalog(table_name,json_extract(payload,'$.registro_formulario_id'));
 CREATE INDEX IF NOT EXISTS idx_local_outbox_pending ON local_rpc_outbox(status,created_at);
 CREATE INDEX IF NOT EXISTS idx_local_media_pending ON local_media_upload_queue(status,created_at);
 `;
@@ -32,6 +34,9 @@ export class LocalDatabase {
   async initialize() {
     this.db = await SQLite.openDatabaseAsync('rm-mi-connect.db');
     await this.db.execAsync(RM_MOBILE_SQLITE_DDL + EXTENSION_DDL);
+    if ((await this.local<number>('queue_schema_version') ?? 0) < QUEUE_DOCUMENTS_VERSION) {
+      await this.write(db => db.execAsync(QUEUE_DOCUMENTS_MIGRATION));
+    }
     await this.db.runAsync("UPDATE local_rpc_outbox SET status='pending' WHERE status='syncing'");
     await this.db.runAsync("UPDATE local_media_upload_queue SET status='pending' WHERE status='uploading'");
   }
@@ -48,6 +53,7 @@ export class LocalDatabase {
   }
   async idle() { await this.writes; }
   async local<T>(key: string): Promise<T | null> {
+    await this.idle();
     const record = await this.connection().getFirstAsync<{value: string}>('SELECT value FROM local_meta WHERE key=?', key);
     return record ? JSON.parse(record.value) as T : null;
   }
@@ -57,9 +63,12 @@ export class LocalDatabase {
   assertTable(table: string): asserts table is CatalogTable {
     if (!(TABLES as readonly string[]).includes(table)) throw new Error('Catálogo local não permitido.');
   }
-  async list(table: string): Promise<Row[]> {
+  async list(table: string, filter?: CatalogFilter): Promise<Row[]> {
     this.assertTable(table);
-    const records = await this.connection().getAllAsync<{payload: string}>('SELECT payload FROM local_catalog WHERE table_name=?', table);
+    if (filter && !['registro_formulario_id', 'projeto_id', 'form_id', 'celula_id'].includes(filter.field)) throw new Error('Filtro de catálogo inválido.');
+    const records = filter
+      ? await this.connection().getAllAsync<{payload: string}>(`SELECT payload FROM local_catalog WHERE table_name=? AND json_extract(payload,'$.${filter.field}')=?`, table, filter.value)
+      : await this.connection().getAllAsync<{payload: string}>('SELECT payload FROM local_catalog WHERE table_name=?', table);
     return records.map(r => JSON.parse(r.payload) as Row);
   }
   async get(table: string, id: string): Promise<Row | null> {
@@ -75,7 +84,7 @@ export class LocalDatabase {
         // Preserve the supplied concrete SQLite cache tables; richer fields remain losslessly in local_catalog.
         if (table === 'rm_projetos') await db.runAsync(`INSERT INTO local_projetos_cache(id,numero,nome,cliente_nome,escopo_abreviado,status,status_pcp,updated_at)
           VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET numero=excluded.numero,nome=excluded.nome,cliente_nome=excluded.cliente_nome,escopo_abreviado=excluded.escopo_abreviado,status=excluded.status,status_pcp=excluded.status_pcp,updated_at=excluded.updated_at`,
-          r.id, r.numero, r.nome ?? null, r.cliente_nome_exportacao ?? null, r.escopo_abreviado ?? null, r.status ?? null, r.status_pcp ?? null, updated);
+          r.id, r.numero ?? null, r.nome ?? null, r.cliente_nome_exportacao ?? null, r.escopo_abreviado ?? null, r.status ?? null, r.status_pcp ?? null, updated);
         if (table === 'rm_celulas_projeto') await db.runAsync(`INSERT INTO local_celulas_projeto_cache(id,projeto_id,celula_id,numero_projeto,status,visibilidade,bloqueada,motivo_bloqueio,prioridade,data_inicio,data_limite,forms_ids_json,updated_at)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,visibilidade=excluded.visibilidade,bloqueada=excluded.bloqueada,motivo_bloqueio=excluded.motivo_bloqueio,prioridade=excluded.prioridade,data_inicio=excluded.data_inicio,data_limite=excluded.data_limite,forms_ids_json=excluded.forms_ids_json,updated_at=excluded.updated_at`,
           r.id, r.projeto_id, r.celula_id, r.numero_projeto ?? null, r.status, r.visibilidade ? 1 : 0, r.bloqueada ?? null, r.motivo_bloqueio ?? null, r.prioridade == null ? null : String(r.prioridade), r.data_inicio ?? null, r.data_limite ?? null, JSON.stringify(r.forms_ids ?? []), updated);
@@ -87,7 +96,8 @@ export class LocalDatabase {
     });
   }
   async removeMissing(table: CatalogTable, present: Set<string>) {
-    const records = await this.list(table);
+    this.assertTable(table);
+    const records = await this.connection().getAllAsync<{id: string}>('SELECT id FROM local_catalog WHERE table_name=?', table);
     const cacheTables: Partial<Record<CatalogTable, string>> = {
       rm_projetos: 'local_projetos_cache', rm_celulas_projeto: 'local_celulas_projeto_cache',
       rm_forms: 'local_forms_cache', rm_fotos: 'local_fotos_slots_cache',

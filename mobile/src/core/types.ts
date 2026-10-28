@@ -5,16 +5,19 @@ export const TABLES = [
   'rm_celula_form_tipos_equipamento', 'rm_forms', 'rm_questoes',
   'rm_itens_questoes', 'rm_projetos', 'rm_equipamentos',
   'rm_celulas_projeto', 'rm_fotos', 'rm_registros_formulario',
-  'rm_respostas', 'rm_aprovacoes_etapas',
+  'rm_respostas', 'rm_aprovacoes_etapas', 'rm_comentarios',
+  'rm_logs_aprovacao', 'rm_documentos', 'rm_docs', 'rm_cadastro_fotos',
 ] as const;
 export type CatalogTable = typeof TABLES[number];
+export type CatalogFilterField = 'registro_formulario_id' | 'projeto_id' | 'form_id' | 'celula_id';
+export type CatalogFilter = { field: CatalogFilterField; value: string };
 export const RPC_NAMES = [
   'rm_submit_recebimento_v1', 'rm_submit_form_inspection_v1',
   'rm_submit_form_revision_v1', 'rm_transition_stage_approval_v1',
-  'rm_record_cell_photo_v1',
+  'rm_record_cell_photo_v1', 'rm_update_cell_status_v1', 'rm_add_cell_comment_v1',
 ] as const;
 export type RpcName = typeof RPC_NAMES[number];
-export type Bucket = 'rm-fotos' | 'rm-assinaturas';
+export type Bucket = 'rm-fotos' | 'rm-assinaturas' | 'rm-documentos';
 export interface Operator {
   operador_id: string; matricula: string; nome: string; perfil: string;
   cargo?: string; perfil_assinante: string[]; equipe_id?: string;
@@ -43,12 +46,13 @@ export interface AppSnapshot {
   ready: boolean; configured: boolean; online: boolean; syncing: boolean;
   sessionUserId: string | null; operator: Operator | null;
   pendingMedia: number; pendingMutations: number;
-  lastSync: string | null; error: string | null; revision: number;
+  lastSync: string | null; error: string | null; mediaCacheNotice: string | null; revision: number;
 }
 export interface MediaRow {
   id: string; bucket: Bucket; local_uri: string; remote_path: string;
   public_url: string | null; status: string; attempts: number;
   created_at: string; next_retry_at: number;
+  mime_type?: string | null; file_name?: string | null;
 }
 export interface OutboxRow {
   id: string; rpc_name: RpcName; params_json: string; status: string;

@@ -105,6 +105,22 @@ test('different shapes retain server defaults and explicit false values', async 
   assert.ok(db.calls.filter(call => call.operation === 'upsert').every(call => call.options?.defaultToNull === false));
 });
 
+for (const mode of ['single', 'batch'] as const) test(`${mode} document metadata import retains the resolved PDF only for the same source key`, async () => {
+  const { db, bridge, importer } = fixture();
+  const id = '49c12f88-1074-4c38-814d-3b2b95cb727d';
+  const url = `https://example.supabase.co/storage/v1/object/authenticated/rm-documentos/legacy/${id}.pdf`;
+  db.rows('rm_projetos').push({ id: 'project-id', bubble_id: 'remote-project' });
+  db.rows('rm_documentos').push({ id, projeto_id: 'project-id', bubble_id: 'remote-document', bubble_modified_at: '2026-10-26T00:00:00Z', s3_key: 'original.pdf', arquivo_url: url, nome: 'Original' });
+  if (mode === 'batch') await importer.preload();
+  const apply = async (raw: Row) => mode === 'single' ? bridge.apply(getEntity('rm_documentos'), raw) : importer.importPage(getEntity('rm_documentos'), [raw], () => assert.fail('unexpected quarantine'));
+  await apply({ _id: 'remote-document', 'Modified Date': date, Projeto: 'remote-project', Nome: 'Updated metadata', PDF: 'original.pdf' });
+  assert.equal(db.rows('rm_documentos')[0].arquivo_url, url);
+  assert.equal(db.rows('rm_documentos')[0].nome, 'Updated metadata');
+  await apply({ _id: 'remote-document', 'Modified Date': '2026-10-28T00:00:00Z', Projeto: 'remote-project', Nome: 'New source file', PDF: 'replacement.pdf' });
+  assert.equal(db.rows('rm_documentos')[0].arquivo_url, null);
+  assert.equal(db.rows('rm_documentos')[0].s3_key, 'replacement.pdf');
+});
+
 test('email merge keeps the real Auth link, local administrator role and matricula', async () => {
   const { db, importer } = fixture();
   db.rows('rm_users').push({ id: 'local-admin', bubble_id: null, auth_user_id: 'auth-admin', email: 'digital@example.test',

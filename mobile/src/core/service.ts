@@ -8,8 +8,10 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
+import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
+import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
-import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
+import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -23,7 +25,7 @@ class MobileService {
   private snapshot: AppSnapshot = {
     ready: false, configured: /^https:\/\//.test(url) && anonKey.length > 20,
     online: false, syncing: false, sessionUserId: null, operator: null,
-    pendingMedia: 0, pendingMutations: 0, lastSync: null, error: null, revision: 0,
+    pendingMedia: 0, pendingMutations: 0, lastSync: null, error: null, mediaCacheNotice: null, revision: 0,
   };
   private listeners = new Set<() => void>();
   private initialized?: Promise<void>;
@@ -145,7 +147,7 @@ class MobileService {
     await this.database.idle();
     this.operatorToken = null; this.update({ operator: null, error: null });
   }
-  list = (table: string) => this.database.list(table);
+  list = (table: string, filter?: CatalogFilter) => this.database.list(table, filter);
   get = (table: string, id: string) => this.database.get(table, id);
   getLocal = <T = unknown>(key: string) => this.database.local<T>(key);
   async saveLocal(key: string, value: unknown) { await this.database.saveLocal(key, value); this.update({}); }
@@ -189,7 +191,8 @@ class MobileService {
       draft = created;
       if (sourceRecord) await this.database.saveLocal(`draft_version:${id}`, sourceRecord.updated_at);
       if (context.registro_formulario_id) {
-        const originals = (await this.list('rm_respostas')).filter(r => r.registro_formulario_id === context.registro_formulario_id);
+        // Historical snapshots without a surviving question are read-only; they never become editable drafts.
+        const originals = (await this.list('rm_respostas', { field: 'registro_formulario_id', value: context.registro_formulario_id })).filter(r => typeof r.questao_id === 'string' && !!r.questao_id);
         for (const r of originals) await this.saveAnswer(id, { ...r, resposta_id: r.id, is_na: r.resposta === 'N/A' } as unknown as Answer);
       }
     }
@@ -262,6 +265,55 @@ class MobileService {
     this.mediaWork.add(work);
     void work.finally(() => this.mediaWork.delete(work)).catch(() => undefined);
     return work;
+  }
+  addDocument(uri: string, name: string, mimeType?: string): Promise<string> {
+    const work = this.persistDocument(uri, name, mimeType);
+    this.mediaWork.add(work);
+    void work.finally(() => this.mediaWork.delete(work)).catch(() => undefined);
+    return work;
+  }
+  private async persistDocument(uri: string, name: string, mimeType?: string): Promise<string> {
+    this.actor();
+    if (!this.snapshot.sessionUserId) throw new Error('Entre com a conta do dispositivo.');
+    const type = documentType(name, mimeType), id = Crypto.randomUUID();
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists || !info.size) throw new Error('O arquivo está vazio ou indisponível.');
+    if (info.size > MAX_DOCUMENT_BYTES) throw new Error('O arquivo deve ter até 20 MB.');
+    const destination = `${mediaDirectory}${id}.${type.extension}`;
+    await FileSystem.copyAsync({ from: uri, to: destination });
+    await this.database.write(async db => {
+      await db.runAsync('INSERT INTO local_media_upload_queue(id,bucket,local_uri,remote_path,created_at,mime_type,file_name) VALUES (?,?,?,?,?,?,?)', id, 'rm-documentos', destination, `${this.snapshot.sessionUserId}/${id}.${type.extension}`, timestamp(), type.mimeType, name);
+      await db.runAsync('INSERT INTO local_queue_meta(id) VALUES (?)', id);
+    });
+    await this.database.saveLocal(`document:${destination}`, { name, mimeType: type.mimeType });
+    await this.refreshCounts();
+    return destination;
+  }
+  async documentInfo(uri: string): Promise<{name: string; mimeType?: string}> {
+    return await this.database.local<{name: string; mimeType?: string}>(`document:${uri}`) ?? { name: documentFileName(uri) };
+  }
+  private async resolveDocumentUrl(uri: string): Promise<string> {
+    const path = privateDocumentPath(uri, url);
+    if (!path) return uri;
+    const { data, error } = await this.supabase().storage.from('rm-documentos').createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) throw error ?? new Error('Não foi possível acessar o documento.');
+    return data.signedUrl;
+  }
+  async getDocumentFile(uri: string): Promise<string> {
+    const cached = await this.getMediaUrl(uri);
+    if (isLocalUri(cached)) return cached;
+    if (!this.snapshot.online) throw new Error('Este documento ainda não foi baixado. Conecte uma vez para disponibilizá-lo offline.');
+    if (!/^https:\/\//.test(uri)) throw new Error('Endereço de documento inválido.');
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, uri);
+    const suffix = documentFileName(uri).match(/\.(pdf|png|jpe?g|docx?|xlsx?|txt|xml)$/i)?.[1] ?? 'pdf';
+    const target = `${mediaDirectory}document-${hash}.${suffix}`;
+    const result = await FileSystem.downloadAsync(await this.resolveDocumentUrl(uri), target);
+    if (result.status < 200 || result.status >= 300) throw new Error('Não foi possível baixar o documento. Tente novamente com conexão.');
+    await this.database.saveLocal(`media:${uri}`, target);
+    const mimeType = result.headers?.['Content-Type'] ?? result.headers?.['content-type'];
+    await this.database.saveLocal(`document:${target}`, { name: documentFileName(uri), mimeType: mimeType?.split(';')[0] });
+    this.update({});
+    return target;
   }
   private async persistMedia(uri: string, bucket: Bucket): Promise<string> {
     this.actor();
@@ -351,10 +403,12 @@ class MobileService {
       await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploading' WHERE id=?", row.id));
       try {
         const base64 = await FileSystem.readAsStringAsync(row.local_uri, { encoding: FileSystem.EncodingType.Base64 });
-        const { error } = await this.supabase().storage.from(row.bucket).upload(row.remote_path, decodeBase64(base64), { contentType: row.bucket === 'rm-assinaturas' ? 'image/png' : 'image/jpeg', upsert: true });
+        const { error } = await this.supabase().storage.from(row.bucket).upload(row.remote_path, decodeBase64(base64), { contentType: row.mime_type || (row.bucket === 'rm-assinaturas' ? 'image/png' : 'image/jpeg'), upsert: true });
         if (error) throw error;
         const { data } = this.supabase().storage.from(row.bucket).getPublicUrl(row.remote_path);
-        await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploaded',public_url=?,last_error=NULL WHERE id=?", data.publicUrl, row.id));
+        const remoteUrl = row.bucket === 'rm-documentos' ? `${url}/storage/v1/object/authenticated/rm-documentos/${row.remote_path}` : data.publicUrl;
+        await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploaded',public_url=?,last_error=NULL WHERE id=?", remoteUrl, row.id));
+        await this.database.saveLocal(`media:${remoteUrl}`, row.local_uri);
       } catch (error) {
         await this.fail('local_media_upload_queue', row.id, row.attempts, error);
         throw error;
@@ -442,6 +496,7 @@ class MobileService {
   }
   private async cacheRecordMedia(table: CatalogTable, record: Row) {
     const urls: string[] = table === 'rm_fotos' ? [record.foto_url] : table === 'rm_respostas' ? [...(record.fotos_urls ?? []), record.assinatura_url] : [];
+    // Documents are downloaded on demand; their metadata stays available offline.
     for (const uri of urls.filter(u => typeof u === 'string' && /^https:\/\//.test(u))) {
       if (await this.database.local(`media:${uri}`)) continue;
       const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, uri);
@@ -451,7 +506,7 @@ class MobileService {
   }
   private async downloadPendingMedia() {
     const pending = await this.database.connection().getAllAsync<{url: string; local_uri: string}>('SELECT * FROM local_media_download_queue LIMIT 50');
-    for (const item of pending) {
+    const pause = await prefetchWithSpaceReserve(pending, () => FileSystem.getFreeDiskStorageAsync(), async item => {
       try {
         const result = await FileSystem.downloadAsync(item.url, item.local_uri);
         if (result.status >= 200 && result.status < 300) {
@@ -459,7 +514,13 @@ class MobileService {
           await this.database.write(db => db.runAsync('DELETE FROM local_media_download_queue WHERE url=?', item.url));
         }
       } catch { /* Durable download queue retries on the next synchronization. */ }
-    }
+    });
+    const mediaCacheNotice = pause === 'low_space'
+      ? 'Pouco espaço no dispositivo: o download automático de fotos foi pausado para preservar espaço para novas atividades. Os arquivos existentes e os envios pendentes foram mantidos.'
+      : pause === 'space_unavailable'
+        ? 'Não foi possível verificar o espaço do dispositivo. O download automático de fotos foi pausado; os arquivos existentes e os envios pendentes foram mantidos.'
+        : null;
+    if (mediaCacheNotice !== this.snapshot.mediaCacheNotice) this.update({ mediaCacheNotice });
   }
   private async refreshCounts() {
     const db = this.database.connection();

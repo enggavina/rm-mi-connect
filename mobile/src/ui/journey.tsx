@@ -16,7 +16,7 @@ export function projectHref(context: JourneyContext): Href {
 }
 
 export function journeyLabel(context: JourneyContext): string {
-  return context.ok ? `${context.cell.nome} · OS ${context.project.numero || context.allocation.numero_projeto}` : 'Célula · Projeto';
+  return context.ok ? `${context.cell.nome} · ${context.project.numero || context.allocation.numero_projeto ? `OS ${context.project.numero || context.allocation.numero_projeto}` : 'Recebimento'}` : 'Célula · Projeto';
 }
 
 export function JourneyUnavailable({ context, error, title = 'Projeto indisponível' }: { context: JourneyContext; error?: string; title?: string }) {
@@ -24,7 +24,8 @@ export function JourneyUnavailable({ context, error, title = 'Projeto indisponí
 }
 
 export function ProjectSummary({ context }: { context: JourneyContext }) {
+  const clients = useRows('rm_clientes');
   if (!context.ok) return null;
   const { project, allocation } = context;
-  return <Card><Badge text={label(allocation.status)} /><Text style={s.h2}>{project.nome || allocation.tipo_equipamento_nome_export || 'Equipamento'}</Text><Text style={s.body}>{project.cliente_nome_exportacao || allocation.cliente_nome_export || 'Cliente não informado'}</Text>{(project.escopo_abreviado || allocation.escopo_abreviado) && <Text style={s.muted}>{project.escopo_abreviado || allocation.escopo_abreviado}</Text>}{!context.canEdit && <Notice error>{allocation.motivo_bloqueio || 'Execução bloqueada pelo planejamento. A consulta continua disponível.'}</Notice>}</Card>;
+  return <Card><Badge text={label(allocation.status)} /><Text style={s.h2}>{project.descricao_equipamento || project.nome || allocation.tipo_equipamento_nome_export || 'Equipamento'}</Text><Text style={s.body}>{clients.rows.find(client => client.id === project.cliente_id)?.nome || project.cliente_nome_exportacao || allocation.cliente_nome_export || 'Cliente não informado'}</Text>{(project.escopo_abreviado || allocation.escopo_abreviado) && <Text style={s.muted}>{project.escopo_abreviado || allocation.escopo_abreviado}</Text>}{!context.canEdit && <Notice error>{allocation.motivo_bloqueio || 'Execução bloqueada pelo planejamento. A consulta continua disponível.'}</Notice>}</Card>;
 }

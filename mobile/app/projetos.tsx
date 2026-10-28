@@ -1,26 +1,59 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import Feather from '@expo/vector-icons/Feather';
+import type { OutboxRow, Row } from '../src/core';
 import { canAccessCell, cellAllocations } from '../src/domain/journey';
+import { cellProjectLogs, cellProjectStages, cellStatusOptions, frontProjectPhoto, projectClientName } from '../src/domain/project-actions';
 import { label } from '../src/domain/forms';
 import { useApp, useRows } from '../src/ui/state';
-import { Badge, Button, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
+import { useQueue } from '../src/ui/queue';
+import { CellStatusAction } from '../src/ui/cell-status-action';
+import { MediaImage } from '../src/ui/media';
+import { Badge, Button, C, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
+
+function ProjectCard({ allocation, project, clients, photos, records, catalogsLoaded, stages, logs, users, queue, queueReady }: { allocation: Row; project?: Row; clients: Row[]; photos: Row[]; records: Row[]; catalogsLoaded: boolean; stages: Row[]; logs: Row[]; users: Row[]; queue: OutboxRow[]; queueReady: boolean }) {
+  const [history, setHistory] = useState(false);
+  const front = frontProjectPhoto(allocation.projeto_id, photos); const ownStages = cellProjectStages(allocation, stages); const ownLogs = cellProjectLogs(allocation, logs);
+  const number = project?.numero || allocation.numero_projeto; const title = number ? `OS ${number}` : 'Projeto em recebimento';
+  const params = { celula: allocation.celula_id, projeto: allocation.projeto_id };
+  const approved = ownStages.filter(stage => stage.status === 'aprovado').length;
+  return <Card>
+    <View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Comentários · ${title}`} onPress={() => router.push({ pathname: '/comentarios', params })} style={{ minHeight: 46, minWidth: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.soft }}><Feather name="message-square" size={22} color={C.primary} /></Pressable></View>
+    <Text style={s.body}>{projectClientName(project, allocation, clients)}</Text><Text style={s.muted}>{project?.nome || allocation.tipo_equipamento_nome_export || allocation.escopo_abreviado}</Text>
+    {front ? <MediaImage expand uri={front.foto_url} height={190} label={`Vista frontal · ${title}`} /> : <Text style={s.muted}>Foto frontal ainda não registrada.</Text>}
+    <CellStatusAction allocation={allocation} queue={queue} ready={queueReady} records={records} photos={photos} catalogsLoaded={catalogsLoaded} />
+    <View style={s.row}><Badge text={`${approved} ${approved === 1 ? 'etapa aprovada' : 'etapas aprovadas'}`} /><Badge text={`${ownLogs.length} ${ownLogs.length === 1 ? 'registro no histórico' : 'registros no histórico'}`} /></View>
+    {!!ownLogs.length && <Button secondary title={history ? 'Recolher histórico de aprovações' : 'Consultar histórico de aprovações'} onPress={() => setHistory(!history)} />}
+    {history && ownLogs.map(log => <View key={log.id} style={{ gap: 4, borderTopWidth: 1, borderColor: C.line, paddingTop: 10 }}><Text style={s.body}>{label(log.status_aprovacao)} · {users.find(user => user.id === log.aprovador_id)?.nome || 'Aprovador registrado'}</Text><Text style={s.muted}>{new Date(log.data_aprovacao || log.created_at).toLocaleString('pt-BR')}</Text></View>)}
+    {allocation.bloqueada === 'sim' && <Badge text="Execução bloqueada" alert />}
+    {allocation.data_limite && <Badge text={`Prazo: ${new Date(allocation.data_limite).toLocaleDateString('pt-BR')}`} alert={Date.parse(allocation.data_limite) < Date.now() && allocation.status !== 'finalizado'} />}
+    <Button title="Abrir projeto" onPress={() => router.push({ pathname: '/projeto', params })} />
+  </Card>;
+}
 
 export default function Projetos() {
   const { celula } = useLocalSearchParams<{ celula?: string }>(); const app = useApp();
   const cells = useRows('rm_celulas'); const projects = useRows('rm_projetos'); const allocations = useRows('rm_celulas_projeto'); const stages = useRows('rm_aprovacoes_etapas');
+  const clients = useRows('rm_clientes'); const photos = useRows('rm_fotos'); const logs = useRows('rm_logs_aprovacao'); const users = useRows('rm_users'); const queue = useQueue();
+  const records = useRows('rm_registros_formulario', { field: 'celula_id', value: celula });
   const [search, setSearch] = useState(''); const [filter, setFilter] = useState('');
-  const cell = cells.rows.find(c => c.id === celula); const allowed = canAccessCell(app.operator, celula);
+  const cell = cells.rows.find(row => row.id === celula); const allowed = canAccessCell(app.operator, celula);
   const allocated = cellAllocations(app.operator, celula, projects.rows, allocations.rows);
-  const visible = allocated.filter(a => (!filter || (filter === 'waiting' ? stages.rows.some(stage => stage.projeto_id === a.projeto_id && stage.celula_origem_id === celula && stage.status === 'nulo') : a.status === filter)) && `${a.numero_projeto} ${a.cliente_nome_export} ${a.tipo_equipamento_nome_export}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-  return <Screen title="Projetos alocados" eyebrow={cell?.nome || 'Célula'} backHref="/celula" backLabel="Trocar célula" subtitle="Abra um projeto para acessar seus formulários e fotos.">
+  const visible = allocated.filter(allocation => {
+    const project = projects.rows.find(row => row.id === allocation.projeto_id);
+    return (!filter || (filter === 'waiting' ? cellProjectStages(allocation, stages.rows).some(stage => stage.status == null || stage.status === 'nulo') : allocation.status === filter))
+      && `${project?.numero || allocation.numero_projeto} ${projectClientName(project, allocation, clients.rows)} ${project?.nome || ''} ${allocation.tipo_equipamento_nome_export || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+  });
+  const error = allocations.error || projects.error || cells.error || clients.error || photos.error || records.error || logs.error || queue.error;
+  return <Screen title="Projetos alocados" eyebrow={cell?.nome || 'Célula'} backHref="/celula" backLabel="Trocar célula" subtitle="Abra um projeto ou consulte as atividades da célula.">
     {!allowed || !cell ? <><Notice error>{!allowed ? 'Escolha uma célula vinculada ao operador identificado.' : 'Esta célula ainda não está disponível no catálogo local. Sincronize novamente.'}</Notice><Button title="Escolher célula" onPress={() => router.replace('/celula')} /></> : <>
       <Badge text={`${allocated.length} ${allocated.length === 1 ? 'projeto alocado' : 'projetos alocados'}`} />
       <Field label="Buscar projeto / OS, cliente ou equipamento" value={search} onChangeText={setSearch} />
-      <Select label="Status" value={filter} options={[{ value: '', label: 'Todos' }, ...['pendente', 'em_dia', 'atrasado', 'waiting', 'finalizado', 'retornado'].map(value => ({ value, label: value === 'waiting' ? 'Aguardando aprovação' : label(value) }))]} onChange={v => setFilter(v[0] ?? '')} />
-      {(allocations.error || projects.error || cells.error) && <Notice error>{allocations.error || projects.error || cells.error}</Notice>}
+      <Select label="Status" value={filter} options={[{ value: '', label: 'Todos' }, ...cellStatusOptions, { value: 'waiting', label: 'Aguardando aprovação' }]} onChange={values => setFilter(values[0] ?? '')} />
+      {!!error && <Notice error>{error}</Notice>}
       {!visible.length && <Notice>{allocated.length ? 'Nenhum projeto corresponde à busca e ao status selecionados.' : 'Nenhum projeto liberado para esta célula no catálogo local. Sincronize para receber as alocações do planejamento.'}</Notice>}
-      {visible.map(a => <Card key={a.id}><View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>OS {a.numero_projeto}</Text><Badge text={label(a.status)} /></View><Text style={s.body}>{a.cliente_nome_export}</Text><Text style={s.muted}>{a.tipo_equipamento_nome_export || a.escopo_abreviado}</Text>{a.bloqueada === 'sim' && <Badge text="Execução bloqueada" alert />}{a.data_limite && <Badge text={`Prazo: ${new Date(a.data_limite).toLocaleDateString('pt-BR')}`} alert={Date.parse(a.data_limite) < Date.now() && a.status !== 'finalizado'} />}<Button title="Abrir projeto" onPress={() => router.push({ pathname: '/projeto', params: { celula: celula!, projeto: a.projeto_id } })} /></Card>)}
+      {visible.map(allocation => <ProjectCard key={allocation.id} allocation={allocation} project={projects.rows.find(project => project.id === allocation.projeto_id)} clients={clients.rows} photos={photos.rows} records={records.rows} catalogsLoaded={allocations.loaded && records.loaded && photos.loaded && !allocations.error && !records.error && !photos.error} stages={stages.rows} logs={logs.rows} users={users.rows} queue={queue.rows} queueReady={queue.ready} />)}
     </>}
   </Screen>;
 }

@@ -63,15 +63,16 @@ export function validateAnswers(questions: Row[], answers: Answer[]): string[] {
 export function decodeBase64(encoded: string): Uint8Array {
   const clean = encoded.replace(/\s/g, '');
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const bytes: number[] = [];
-  let accumulator = 0, bits = 0;
+  const payloadLength = clean.indexOf('=') < 0 ? clean.length : clean.indexOf('=');
+  const bytes = new Uint8Array(Math.floor(payloadLength * 6 / 8));
+  let accumulator = 0, bits = 0, position = 0;
   for (const ch of clean) {
     if (ch === '=') break;
     const index = alphabet.indexOf(ch);
     if (index < 0) throw new Error('Mídia Base64 inválida.');
     accumulator = (accumulator << 6) | index;
     bits += 6;
-    if (bits >= 8) { bits -= 8; bytes.push((accumulator >> bits) & 255); }
+    if (bits >= 8) { bits -= 8; bytes[position++] = (accumulator >> bits) & 255; }
   }
-  return Uint8Array.from(bytes);
+  return bytes;
 }

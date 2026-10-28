@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { adminClient, bridgeConfig } from '../config';
 import { BubbleClient } from './client';
-import { entities, getEntity, fieldValue, normalizeUrl, type Entity, type Field, type Row } from './mapping';
+import { entities, getEntity, fieldValue, fieldUrl, type Entity, type Field, type Row } from './mapping';
 import { isOperationalProject, scopedGroups } from './scope';
+import { preserveImportedPdf } from './pdf-document';
 
 function fail(error: { message: string } | null) { if (error) throw new Error(error.message); }
 export class Bridge {
@@ -39,7 +40,7 @@ export class Bridge {
       if(!Array.isArray(values))throw new Error(`Lista inválida: ${field.bubble}`);
       for(const item of values) {
         if(field.option)this.option(field.option,item,false);
-        if(field.url)normalizeUrl(item);
+        if(field.url)fieldUrl(field,item);
         if(field.ref && item!=null && typeof item!=='string')throw new Error(`Referência inválida: ${field.bubble}`);
       }
     }
@@ -72,7 +73,7 @@ export class Bridge {
       if (!row.bubble_id) throw new Error(`Dependência ainda não exportada: ${field.ref}`);
       return row.bubble_id;
     }
-    return field.url ? normalizeUrl(value) : value;
+    return field.url ? fieldUrl(field,value) : value;
   }
   async apply(entity: Entity, raw: Row): Promise<string> {
     this.validate(entity, raw);
@@ -109,6 +110,7 @@ export class Bridge {
     }
     if (!existing) for (const key of entity.required || []) if (row[key] == null || row[key] === '') throw new Error(`Campo obrigatório ausente: ${entity.name}.${key}`);
     if(existing)row.id=existing.id;
+    if(entity.table==='rm_documentos')preserveImportedPdf(row,existing);
     // Auth account linkage and its locally provisioned role remain authoritative.
     if(entity.table==='rm_users' && existing?.auth_user_id){row.perfil=existing.perfil;row.matricula=existing.matricula;}
     {
@@ -178,10 +180,18 @@ export class Bridge {
         await this.bubble.write('registro_formulario',regId,id,{ Respostas: responseIds }); return;
       }
       case 'Fotos_RM_Sync': await this.exportRow('rm_fotos',id); return;
+      case 'Celula_Projeto_Status': await this.exportRow('rm_celulas_projeto',id); return;
+      case 'Comentario_Celula': await this.exportRow('rm_comentarios',id); return;
       case 'Aprovacao_Etapa_Transition': {
         const stage = await this.row('rm_aprovacoes_etapas',id);
         await this.exportRow('rm_aprovacoes_etapas',id);
+        const payload = (event.payload || {}) as Row;
+        for (const reverse of Array.isArray(payload.affected_approval_ids) ? payload.affected_approval_ids : []) {
+          if (String(reverse) !== id) await this.exportRow('rm_aprovacoes_etapas',String(reverse));
+        }
         for (const cell of await this.related('rm_celulas_projeto','projeto_id',String(stage.projeto_id))) await this.exportRow('rm_celulas_projeto',String(cell.id));
+        if (payload.log_id) await this.exportRow('rm_logs_aprovacao',String(payload.log_id));
+        if (payload.comentario_id) await this.exportRow('rm_comentarios',String(payload.comentario_id));
         return;
       }
       default: throw new Error(`Evento não suportado: ${String(event.entity_type)}`);
@@ -233,7 +243,7 @@ export class Bridge {
         // This persists hydration retries without a second queue or a lossy in-memory flag.
         // A child with no checkpoint already reads its whole active scope and
         // therefore does not force the project cursor back to epoch by itself.
-        const projectFloor=entity.table==='rm_projetos'?Math.min(...['projetorm','equipamento','celula_projeto','fotosrm','registro_formulario','aprovacao_etapas'].map(endpoint=>Date.parse(checkpoints.get(endpoint)||cursor))):Date.parse(cursor);
+        const projectFloor=entity.table==='rm_projetos'?Math.min(...['projetorm','equipamento','celula_projeto','fotosrm','registro_formulario','aprovacao_etapas','comentarios','log_aprocacao','docs','documentos'].map(endpoint=>Date.parse(checkpoints.get(endpoint)||cursor))):Date.parse(cursor);
         const since = new Date(Math.max(0,projectFloor-120_000)).toISOString();
         const active=[...projects].filter(([,row])=>isOperationalProject(row)).map(([id])=>id);
         const hydrateProjects=active.filter(id=>Date.parse(changedProjects.get(id)||'')>Date.parse(cursor));
@@ -247,7 +257,7 @@ export class Bridge {
         // Revision answers are deliberately re-read in full: a status transition may
         // expose answers whose own Modified Date predates the answer checkpoint.
         const hydrateRevisions=revisionIds;
-        const isChild=['rm_equipamentos','rm_celulas_projeto','rm_fotos','rm_registros_formulario','rm_aprovacoes_etapas'].includes(entity.table);
+        const isChild=['rm_equipamentos','rm_celulas_projeto','rm_fotos','rm_registros_formulario','rm_aprovacoes_etapas','rm_comentarios','rm_logs_aprovacao','rm_docs','rm_documentos'].includes(entity.table);
         const hydrateIds=entity.table==='rm_respostas'?hydrateRevisions:hydrateProjects;
         const windows=(isChild||entity.table==='rm_respostas')?[
           {since:'1970-01-01T00:00:00.000Z',groups:scopedGroups(entity,hydrateProjects,hydrateRevisions)},

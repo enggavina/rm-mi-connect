@@ -2,7 +2,7 @@
 
 Este diretório contém a infraestrutura de banco de dados (PostgreSQL/Supabase), scripts de ETL da Data API do Bubble (`rmmi`), worker de sincronização bidirecional temporária (`Supabase <-> Bubble Desktop / n8n`) e schema SQLite offline-first do aplicativo **EM**, da **MI Electric Brasil**, em **React Native (Expo + TypeScript)**. Os identificadores técnicos `rm_*` e os nomes da infraestrutura existente permanecem preservados.
 
-O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL está em `../desktop`. Consulte [MOBILE_DEPLOYMENT.md](MOBILE_DEPLOYMENT.md) para provisionamento e [desktop/README.md](../desktop/README.md) para contratos e operação atualizados.
+O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL está em `../desktop`. Consulte [MOBILE_DEPLOYMENT.md](MOBILE_DEPLOYMENT.md) para provisionamento, [PROJECT_OPERATIONS.md](PROJECT_OPERATIONS.md) para operações e carga histórica e [desktop/README.md](../desktop/README.md) para contratos e operação da ponte.
 
 ## Estrutura de Arquivos
 
@@ -33,6 +33,10 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
   Preserva índices fracionários de questões e opções, incluindo respostas, rascunhos e os casts das RPCs de importação/envio.
 - [`migrations/010_rm_operator_cell_permissions.sql`](./migrations/010_rm_operator_cell_permissions.sql)
   Usa as células cadastradas para a identidade do operador, preserva os vínculos durante o login e permite atualizar o contexto sem renovar o turno offline.
+- [`migrations/011_rm_project_operations.sql`](./migrations/011_rm_project_operations.sql)
+  Adiciona status e comentários da célula, regras contextuais de aprovação, documentos privados e recebimento com NF sem exigir número de projeto ou tipo de equipamento.
+- [`migrations/012_rm_historical_answer_snapshots.sql`](./migrations/012_rm_historical_answer_snapshots.sql)
+  Preserva respostas históricas importadas cujo vínculo de questão foi removido na origem, sem permitir novos envios ou correções sem questão válida.
 - [`blueprint/01_integracoes_render_n8n_s3_contratos.md`](./blueprint/01_integracoes_render_n8n_s3_contratos.md)
   Mapeamento completo e contratos JSON dos 3 serviços no Render (`Auth`, `PDF_Proposta`, `Insp`), 13 webhooks do n8n, AWS S3/CloudFront, Google Docs, `rm-gantt-tableau` e `RM Report Builder`.
 - [`blueprint/02_especificacao_paginas_e_prompts_ia.md`](./blueprint/02_especificacao_paginas_e_prompts_ia.md)
@@ -50,7 +54,7 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 
 ### 1. Aplicar as Migrações SQL no Supabase
 
-Aplicar todas as dez migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência para as cinco mutações; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble; `010` aplica as permissões de célula do operador, sem herdar as da conta do tablet. Não expor as RPCs legadas diretamente ao aplicativo.
+Aplicar todas as doze migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble; `010` aplica as permissões de célula do operador, sem herdar as da conta do tablet; `011` suporta as operações de projeto/célula e o recebimento simplificado com NF; `012` preserva snapshots de respostas históricas sem questão. Não expor as RPCs legadas diretamente ao aplicativo.
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/001_rm_enums_and_option_sets.sql
@@ -63,6 +67,8 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/007_
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/008_rm_realtime_mobile_catalogs.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/009_rm_fractional_question_indices.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/010_rm_operator_cell_permissions.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/011_rm_project_operations.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/012_rm_historical_answer_snapshots.sql
 ```
 
 ### 2. Executar o ETL Inicial (Bubble -> Supabase)
