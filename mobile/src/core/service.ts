@@ -35,9 +35,12 @@ class MobileService {
   private debounce?: ReturnType<typeof setTimeout>;
   private identityBusy = false;
   private mediaWork = new Set<Promise<string>>();
+  private catalogRevision = 0;
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.snapshot;
+  // Autosave, network notices and upload counters do not invalidate catalog reads.
+  getCatalogRevision = () => this.snapshot.ready ? this.catalogRevision : -1;
   private update(patch: Partial<AppSnapshot>) {
     this.snapshot = { ...this.snapshot, ...patch, revision: this.snapshot.revision + 1 };
     this.listeners.forEach(listener => listener());
@@ -222,7 +225,7 @@ class MobileService {
     if (!row) throw new Error('Rascunho não encontrado.');
     const draft = await this.getDraft(row);
     if (draft.status !== 'in_progress') return draft.client_submission_id;
-    const questions = (await this.list('rm_questoes')).filter(q => q.form_id === draft.form_id);
+    const questions = await this.list('rm_questoes', { field: 'form_id', value: draft.form_id });
     const recordId = revisionRecordId ?? draft.registro_formulario_id;
     const submittedAnswers = recordId ? draft.answers.filter(a => a.revisar === true) : draft.answers;
     const submittedQuestions = recordId ? questions.filter(q => submittedAnswers.some(a => a.questao_id === q.id)) : questions;
@@ -449,6 +452,7 @@ class MobileService {
     });
   }
   private async pull() {
+    try {
     for (const table of TABLES) {
       const cursor = await this.database.local<string>(`cursor:${table}`);
       let after: {at: string; id: string} | null = cursor ? { at: new Date(Date.parse(cursor) - 1000).toISOString(), id: '00000000-0000-0000-0000-000000000000' } : null;
@@ -476,7 +480,11 @@ class MobileService {
       if (table === 'rm_projetos' || Date.now() - reconciled > 15 * 60_000) await this.reconcile(table);
     }
     await this.downloadPendingMedia();
-    this.update({});
+    } finally {
+      // A partially successful pull also exposes its durable rows after a later failure.
+      this.catalogRevision++;
+      this.update({});
+    }
   }
   private async reconcile(table: CatalogTable) {
     // Lightweight ID manifests remove hard-deleted records without deleting any drafts/outbox.

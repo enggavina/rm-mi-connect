@@ -10,7 +10,7 @@ import { label } from '../src/domain/forms';
 
 export default function Documentos() {
   const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>(); const { context, error } = useJourney(celula, projeto);
-  const attachments = useRows('rm_docs'); const reports = useRows('rm_documentos'); const [search, setSearch] = useState('');
+  const attachments = useRows('rm_docs', { field: 'projeto_id', value: projeto }); const reports = useRows('rm_documentos', { field: 'projeto_id', value: projeto }); const [search, setSearch] = useState('');
   if (!context.ok) return <JourneyUnavailable context={context} error={error} />;
   const p = context.project; const special: Row[] = [];
   if (p.arquivo_nota_fiscal_url) special.push({ id: `invoice:${p.id}`, nome: `Nota fiscal${p.nota_fiscal ? ` ${p.nota_fiscal}` : ''}`, arquivo_url: p.arquivo_nota_fiscal_url, tipo_documento: 'Nota fiscal' });

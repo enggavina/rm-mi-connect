@@ -1,4 +1,4 @@
-import { Text } from 'react-native';
+import { ActivityIndicator, Text } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { resolveJourneyContext, type JourneyContext } from '../domain/journey';
 import { label } from '../domain/forms';
@@ -7,8 +7,11 @@ import { Badge, Button, Card, Notice, Screen, s } from './components';
 
 export function useJourney(cellId?: string, projectId?: string) {
   const app = useApp();
-  const cells = useRows('rm_celulas'); const projects = useRows('rm_projetos'); const allocations = useRows('rm_celulas_projeto');
-  return { context: resolveJourneyContext(app.operator, cellId, projectId, cells.rows, projects.rows, allocations.rows), error: cells.error || projects.error || allocations.error };
+  const cells = useRows('rm_celulas'); const projects = useRows('rm_projetos'); const allocations = useRows('rm_celulas_projeto', { field: 'celula_id', value: cellId });
+  const error = cells.error || projects.error || allocations.error;
+  const context = resolveJourneyContext(app.operator, cellId, projectId, cells.rows, projects.rows, allocations.rows);
+  return { context: !context.ok && !error && (!cells.loaded || !projects.loaded || !allocations.loaded)
+    ? { ok: false as const, reason: 'Carregando o projeto salvo neste dispositivo…', loading: true } : context, error };
 }
 
 export function projectHref(context: JourneyContext): Href {
@@ -20,6 +23,7 @@ export function journeyLabel(context: JourneyContext): string {
 }
 
 export function JourneyUnavailable({ context, error, title = 'Projeto indisponível' }: { context: JourneyContext; error?: string; title?: string }) {
+  if (!context.ok && context.loading) return <Screen title="Carregando projeto"><ActivityIndicator /><Text style={s.muted}>{context.reason}</Text></Screen>;
   return <Screen title={title} backHref="/celula" backLabel="Escolher célula"><Notice error>{error || (!context.ok ? context.reason : 'Selecione novamente o projeto.')}</Notice><Button title="Escolher célula" onPress={() => router.replace('/celula')} /></Screen>;
 }
 

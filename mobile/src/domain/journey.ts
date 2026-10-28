@@ -19,7 +19,7 @@ export function cellAllocations(operator: Operator | null, cellId: string | unde
     .sort((a, b) => (a.posicao ?? a.indice ?? 0) - (b.posicao ?? b.indice ?? 0));
 }
 
-export type JourneyContext = { ok: false; reason: string } | { ok: true; cell: Row; project: Row; allocation: Row; canEdit: boolean };
+export type JourneyContext = { ok: false; reason: string; loading?: boolean } | { ok: true; cell: Row; project: Row; allocation: Row; canEdit: boolean };
 export function resolveJourneyContext(operator: Operator | null, cellId: string | undefined, projectId: string | undefined, cells: Row[], projects: Row[], allocations: Row[]): JourneyContext {
   if (!cellId || !projectId) return { ok: false, reason: 'Escolha uma célula e um projeto para continuar.' };
   if (!canAccessCell(operator, cellId)) return { ok: false, reason: 'Esta célula não está vinculada ao operador identificado.' };

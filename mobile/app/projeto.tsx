@@ -1,19 +1,17 @@
-import { useEffect, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
-import { service, type OutboxRow } from '../src/core';
 import { assignedForms, pendingProjectPhotos, projectPhotos, requiredPhotoProgress } from '../src/domain/journey';
 import { galleryPhotos } from '../src/domain/gallery';
-import { useApp, useRows } from '../src/ui/state';
+import { useRows } from '../src/ui/state';
+import { useQueue } from '../src/ui/queue';
 import { Badge, C, Notice, Screen, s } from '../src/ui/components';
 import { JourneyUnavailable, ProjectSummary, journeyLabel, useJourney } from '../src/ui/journey';
 
 export default function Projeto() {
   const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>(); const { width } = useWindowDimensions();
-  const app = useApp(); const [queue, setQueue] = useState<OutboxRow[]>([]); const [queueError, setQueueError] = useState('');
-  useEffect(() => { let live = true; service.listQueue().then(rows => { if (live) { setQueue(rows); setQueueError(''); } }).catch(e => { if (live) setQueueError(e.message); }); return () => { live = false; }; }, [app.revision]);
-  const { context, error } = useJourney(celula, projeto); const forms = useRows('rm_forms'); const records = useRows('rm_registros_formulario'); const photos = useRows('rm_fotos'); const stages = useRows('rm_aprovacoes_etapas');
+  const { rows: queue, error: queueError } = useQueue();
+  const { context, error } = useJourney(celula, projeto); const forms = useRows('rm_forms'); const records = useRows('rm_registros_formulario', { field: 'projeto_id', value: projeto }); const photos = useRows('rm_fotos', { field: 'projeto_id', value: projeto }); const stages = useRows('rm_aprovacoes_etapas', { field: 'projeto_id', value: projeto });
   if (!context.ok) return <JourneyUnavailable context={context} error={error} />;
   const assigned = assignedForms(context.allocation, forms.rows); const gallery = projectPhotos(context, photos.rows);
   const revisions = records.rows.filter(r => r.projeto_id === projeto && r.celula_id === celula && r.status === 'direcionado' && assigned.some(form => form.id === r.form_id)).length;

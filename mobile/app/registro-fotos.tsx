@@ -1,19 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { service, type OutboxRow } from '../src/core';
 import { pendingProjectPhotos, projectPhotos } from '../src/domain/journey';
 import { cellPhotoTitles } from '../src/domain/gallery';
-import { useApp, useRows } from '../src/ui/state';
+import { useRows } from '../src/ui/state';
+import { useQueue } from '../src/ui/queue';
 import { Badge, C, Notice, Screen, s } from '../src/ui/components';
 import { JourneyUnavailable, journeyLabel, projectHref, useJourney } from '../src/ui/journey';
 import { PhotoEditor } from '../src/ui/photo-editor';
 
 export default function RegistrarFotos() {
-  const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>(); const app = useApp();
+  const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>();
   const { context, error } = useJourney(celula, projeto); const photos = useRows('rm_fotos', { field: 'projeto_id', value: projeto }); const titles = useRows('rm_cadastro_fotos');
-  const [tab, setTab] = useState<'obrigat_ria' | 'complementar'>('obrigat_ria'); const [queue, setQueue] = useState<OutboxRow[]>([]); const [queueError, setQueueError] = useState('');
-  useEffect(() => { let live = true; service.listQueue().then(rows => { if (live) { setQueue(rows); setQueueError(''); } }).catch(e => { if (live) setQueueError(e.message); }); return () => { live = false; }; }, [app.revision]);
+  const [tab, setTab] = useState<'obrigat_ria' | 'complementar'>('obrigat_ria'); const { rows: queue, error: queueError } = useQueue();
   if (!context.ok) return <JourneyUnavailable context={context} error={error} title="Registro de fotos indisponível" />;
   const gallery = projectPhotos(context, photos.rows); const pending = pendingProjectPhotos(context, photos.rows, queue);
   return <Screen title="Registrar fotos" eyebrow={journeyLabel(context)} backHref={projectHref(context)} backLabel="Detalhe do projeto" subtitle="Escolha o tipo de foto que deseja registrar nesta célula.">

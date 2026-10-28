@@ -15,9 +15,10 @@ export function FormScreen({ projectId, cellId, formId, recordId, mode = 'revisi
   projectId?: string; cellId?: string; formId?: string; recordId?: string; mode?: 'view' | 'revision'; focusQuestionId?: string;
 }) {
   const app = useApp();
-  const forms = useRows('rm_forms'); const questions = useRows('rm_questoes'); const items = useRows('rm_itens_questoes'); const users = useRows('rm_users'); const clients = useRows('rm_clientes'); const records = useRows('rm_registros_formulario'); const remoteAnswers = useRows('rm_respostas', { field: 'registro_formulario_id', value: recordId });
+  const forms = useRows('rm_forms'); const items = useRows('rm_itens_questoes'); const users = useRows('rm_users'); const clients = useRows('rm_clientes'); const records = useRows('rm_registros_formulario'); const remoteAnswers = useRows('rm_respostas', { field: 'registro_formulario_id', value: recordId });
   const record = records.rows.find(row => row.id === recordId);
   const fId = formId || record?.form_id; const pId = projectId || record?.projeto_id; const cId = cellId || record?.celula_id;
+  const questions = useRows('rm_questoes', { field: 'form_id', value: fId });
   const { context, error: journeyError } = useJourney(cId, pId);
   const form = forms.rows.find(row => row.id === fId);
   const templates = questions.rows.filter(question => question.form_id === fId).sort((a, b) => a.indice - b.indice);

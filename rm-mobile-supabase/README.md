@@ -37,6 +37,8 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
   Adiciona status e comentários da célula, regras contextuais de aprovação, documentos privados e recebimento com NF sem exigir número de projeto ou tipo de equipamento.
 - [`migrations/012_rm_historical_answer_snapshots.sql`](./migrations/012_rm_historical_answer_snapshots.sql)
   Preserva respostas históricas importadas cujo vínculo de questão foi removido na origem, sem permitir novos envios ou correções sem questão válida.
+- [`migrations/013_rm_mobile_pull_performance.sql`](./migrations/013_rm_mobile_pull_performance.sql)
+  Indexa a paginação mobile por `updated_at,id` e avalia a mesma autorização RLS uma vez por consulta, eliminando o timeout do histórico de respostas.
 - [`blueprint/01_integracoes_render_n8n_s3_contratos.md`](./blueprint/01_integracoes_render_n8n_s3_contratos.md)
   Mapeamento completo e contratos JSON dos 3 serviços no Render (`Auth`, `PDF_Proposta`, `Insp`), 13 webhooks do n8n, AWS S3/CloudFront, Google Docs, `rm-gantt-tableau` e `RM Report Builder`.
 - [`blueprint/02_especificacao_paginas_e_prompts_ia.md`](./blueprint/02_especificacao_paginas_e_prompts_ia.md)
@@ -54,7 +56,7 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 
 ### 1. Aplicar as Migrações SQL no Supabase
 
-Aplicar todas as doze migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble; `010` aplica as permissões de célula do operador, sem herdar as da conta do tablet; `011` suporta as operações de projeto/célula e o recebimento simplificado com NF; `012` preserva snapshots de respostas históricas sem questão. Não expor as RPCs legadas diretamente ao aplicativo.
+Aplicar todas as treze migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble; `010` aplica as permissões de célula do operador, sem herdar as da conta do tablet; `011` suporta as operações de projeto/célula e o recebimento simplificado com NF; `012` preserva snapshots de respostas históricas sem questão; `013` elimina o timeout da sincronização paginada. Não expor as RPCs legadas diretamente ao aplicativo.
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/001_rm_enums_and_option_sets.sql
@@ -69,6 +71,7 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/009_
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/010_rm_operator_cell_permissions.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/011_rm_project_operations.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/012_rm_historical_answer_snapshots.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/013_rm_mobile_pull_performance.sql
 ```
 
 ### 2. Executar o ETL Inicial (Bubble -> Supabase)

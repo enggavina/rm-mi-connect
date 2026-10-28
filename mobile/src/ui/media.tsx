@@ -7,14 +7,28 @@ import ViewShot from 'react-native-view-shot';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { service } from '../core';
 import { Button, C, Notice, s } from './components';
+import { useRouteFocused } from './state';
 
 export function MediaImage({ uri, height = 180, expand = false, label = 'Evidência da inspeção' }: { uri: string; height?: number; expand?: boolean; label?: string }) {
-  const [url, setUrl] = useState(uri); const [failed, setFailed] = useState(false);
+  const focused = useRouteFocused();
+  const [resolved, setResolved] = useState<{ source: string; url: string } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  useEffect(() => { let live = true; setFailed(false); service.getMediaUrl(uri).then(u => { if (live) setUrl(u); }).catch(() => { if (live) setFailed(true); }); return () => { live = false; }; }, [uri]);
-  return failed ? <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice> : <>
-    <Pressable disabled={!expand} accessibilityRole={expand ? 'button' : 'image'} accessibilityLabel={expand ? `Ampliar ${label}` : label} onPress={() => setOpen(true)}><Image source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" onError={() => setFailed(true)} /></Pressable>
-    <Modal visible={open} animationType="fade" onRequestClose={() => setOpen(false)}><SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: C.bg, gap: 16 }}><Text style={s.h2}>{label}</Text><Image source={{ uri: url }} style={{ flex: 1, width: '100%' }} resizeMode="contain" /><Button title="Fechar foto" onPress={() => setOpen(false)} /></SafeAreaView></Modal>
+  useEffect(() => {
+    let live = true;
+    setOpen(false); setFailed(null); setResolved(null);
+    if (focused) service.getMediaUrl(uri).then(url => {
+      if (!live) return;
+      if (url) setResolved({ source: uri, url }); else setFailed(uri);
+    }).catch(() => { if (live) setFailed(uri); });
+    return () => { live = false; };
+  }, [uri, focused]);
+  const url = focused && resolved?.source === uri ? resolved.url : null;
+  if (focused && failed === uri) return <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice>;
+  if (!url) return <View style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft, alignItems: 'center', justifyContent: 'center' }}>{focused && <Text style={s.muted}>Carregando foto…</Text>}</View>;
+  return <>
+    <Pressable disabled={!expand} accessibilityRole={expand ? 'button' : 'image'} accessibilityLabel={expand ? `Ampliar ${label}` : label} onPress={() => setOpen(true)}><Image source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" resizeMethod="resize" onError={() => setFailed(uri)} /></Pressable>
+    {open && expand && <Modal visible animationType="fade" onRequestClose={() => setOpen(false)}><SafeAreaView style={{ flex: 1, padding: 16, backgroundColor: C.bg, gap: 16 }}><Text style={s.h2}>{label}</Text><Image source={{ uri: url }} style={{ flex: 1, width: '100%' }} resizeMode="contain" resizeMethod="resize" /><Button title="Fechar foto" onPress={() => setOpen(false)} /></SafeAreaView></Modal>}
   </>;
 }
 export function Photos({ values, onChange, disabled, beforeAfter = false, single = false, onBusyChange }: { values: string[]; onChange: (uris: string[]) => void; disabled?: boolean; beforeAfter?: boolean; single?: boolean; onBusyChange?: (busy: boolean) => void }) {

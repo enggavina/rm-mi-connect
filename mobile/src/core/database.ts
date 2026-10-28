@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS local_queue_meta (
 CREATE TABLE IF NOT EXISTS local_media_download_queue (url TEXT PRIMARY KEY, local_uri TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_local_catalog_table ON local_catalog(table_name);
 CREATE INDEX IF NOT EXISTS idx_local_catalog_record ON local_catalog(table_name,json_extract(payload,'$.registro_formulario_id'));
+CREATE INDEX IF NOT EXISTS idx_local_catalog_project ON local_catalog(table_name,json_extract(payload,'$.projeto_id'));
+CREATE INDEX IF NOT EXISTS idx_local_catalog_cell ON local_catalog(table_name,json_extract(payload,'$.celula_id'));
+CREATE INDEX IF NOT EXISTS idx_local_catalog_form ON local_catalog(table_name,json_extract(payload,'$.form_id'));
 CREATE INDEX IF NOT EXISTS idx_local_outbox_pending ON local_rpc_outbox(status,created_at);
 CREATE INDEX IF NOT EXISTS idx_local_media_pending ON local_media_upload_queue(status,created_at);
 `;

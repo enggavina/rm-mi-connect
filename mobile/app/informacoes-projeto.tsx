@@ -21,7 +21,7 @@ const fields = (row: Row | undefined, mapping: [string, string][]): Detail[] => 
 
 export default function InformacoesProjeto() {
   const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>(); const { context, error } = useJourney(celula, projeto);
-  const clients = useRows('rm_clientes'); const equipment = useRows('rm_equipamentos'); const users = useRows('rm_users'); const types = useRows('rm_tipos_equipamento');
+  const clients = useRows('rm_clientes'); const equipment = useRows('rm_equipamentos', { field: 'projeto_id', value: projeto }); const users = useRows('rm_users'); const types = useRows('rm_tipos_equipamento');
   if (!context.ok) return <JourneyUnavailable context={context} error={error} />;
   const p = context.project, a = context.allocation; const e = equipment.rows.find(row => row.projeto_id === p.id); const customer = clients.rows.find(row => row.id === p.cliente_id);
   const person = (id?: string) => users.rows.find(user => user.id === id)?.nome;

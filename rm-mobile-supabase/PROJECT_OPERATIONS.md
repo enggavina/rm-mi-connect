@@ -1,6 +1,6 @@
 # Operações de projeto no EM
 
-Implementação de 28/10/2026, aplicada ao projeto Supabase `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`). Instalação nova exige as migrações `001`–`012`, em ordem. O Bubble foi consultado somente para leitura. O webhook legado de download foi usado para obter 11 PDFs já existentes. Nenhum worker, geração/compilação de PDF ou envio de e-mail foi executado.
+Implementação de 28/10/2026, aplicada ao projeto Supabase `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`). Instalação nova exige as migrações `001`–`013`, em ordem. O Bubble foi consultado somente para leitura. O webhook legado de download foi usado para obter 11 PDFs já existentes. Nenhum worker, geração/compilação de PDF ou envio de e-mail foi executado.
 
 ## Contratos do aplicativo
 
@@ -78,3 +78,20 @@ Os 11 PDFs reais foram preservados no Storage. Um deles foi baixado pela conta i
 O worker permanece desligado. Antes de coexistência com escrita simultânea, continuam pendentes a trava transacional compartilhada de importação e a autoridade única de numeração descritas no relatório de carga inicial. Os novos eventos de status/comentário e as alterações de etapa, log e comentário já têm handlers testados; o contrato de notificação anterior é apenas enfileirado, nunca disparado diretamente pela RPC.
 
 O histórico completo acima é o snapshot importado nesta execução. O worker incremental anterior ainda restringe respostas recebidas do Bubble aos registros em revisão; antes de ativar atualização contínua de todo o histórico, esse recorte precisa incluir também os demais registros ativos (e sua reidratação). O script de carga histórica permite uma nova leitura explícita sem ligar o worker.
+
+## Correção do timeout de sincronização
+
+O QA nativo encontrou `57014: canceling statement due to statement timeout`. A reprodução autenticada localizou o erro em `rm_respostas.select('*').order('updated_at').order('id').limit(250)`, tanto na primeira página como no ramo incremental. O plano anterior fazia varredura e ordenação do histórico inteiro, avaliando `is_rm_authenticated()` por linha. As consultas de reconciliação por `id` já funcionavam.
+
+A migração `013`, aplicada em 28/10/2026, adiciona os índices `(updated_at,id)` às 22 tabelas do pull e envolve a mesma função de autorização em um subselect avaliado uma vez por statement. Só foram reescritas policies SELECT cuja expressão era exatamente essa função; regras de célula/operador, permissões de escrita, credenciais e timeout de 8 segundos foram preservados.
+
+| Consulta autenticada real | Antes | Depois |
+|---|---:|---:|
+| Respostas, primeira página | timeout em 8.053 ms | 82 ms |
+| Respostas, cursor incremental | timeout em 8.043 ms | 81 ms |
+| Fotos, primeira página | 1.736 ms | 69 ms |
+| Questões, primeira página | 575 ms | 58 ms |
+
+As primeiras páginas, os ramos incrementais e as reconciliações das 22 tabelas foram repetidos sem erro. O teste `pull_performance.sql` verifica plano com índice/InitPlan, conta ativa permitida, contas sem vínculo/inativas negadas e a revogação de acesso observada já no próximo statement. A suíte completa 001–013 passou em PostgreSQL isolado. Testes autenticados encerram somente a própria sessão com `signOut({scope:'local'})`, preservando as sessões dos tablets.
+
+A verificação completa autenticada percorreu as 61.803 respostas em 248 páginas e as reconciliou com 62 páginas do manifesto de IDs: sem duplicações ou perdas, 21,5 segundos no total, mediana de 70 ms e máximo de 173 ms por página. Esse tempo mede rede/API; o processamento SQLite e cache de mídia do aparelho são adicionais.
