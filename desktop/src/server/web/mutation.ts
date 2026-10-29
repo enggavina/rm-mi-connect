@@ -28,6 +28,10 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   if (operation === 'save_engineering' || operation === 'save_photo_title') {
     revalidatePath('/engenharia', 'layout');
   }
+  if (['create_form_template', 'save_form_template', 'publish_form_template'].includes(operation)) {
+    revalidatePath('/modelos-formularios', 'layout');
+    if (operation === 'publish_form_template') { revalidatePath('/engenharia', 'layout'); revalidatePath('/cadastros'); }
+  }
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
   if (result.projeto_id) revalidatePath(`/projetos/${result.projeto_id}`);
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);

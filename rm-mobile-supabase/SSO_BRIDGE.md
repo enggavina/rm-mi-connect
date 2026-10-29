@@ -60,14 +60,14 @@ Com `require_sso=false`, apenas contas **sem nenhum vínculo SSO** mantêm a esc
 Foram aprovados dois perfis **web dedicados**, sem rebaixar/remapear cadastros mobile:
 
 - `mgavina@mielectric.com.br` (Mauricio Gavina, nome conferido no cadastro autorizado): sujeito corporativo `01316705-7361-459f-ba3b-9971777aa607`; novo RM `administrador`, matrícula `WEB-MGAVINA`.
-- `softdev05@mielectric.com.br` (Igor Nascimento, nome conferido no cadastro autorizado): sujeito corporativo `a9e45880-1924-4b2d-a2b1-dc12fd029bff`; novo RM `auditor`, matrícula `WEB-SOFTDEV05`, somente consulta no catálogo central.
+- `softdev05@mielectric.com.br` (Igor Nascimento, nome conferido no cadastro autorizado): sujeito corporativo `a9e45880-1924-4b2d-a2b1-dc12fd029bff`; RM dedicado `WEB-SOFTDEV05`, inicialmente auditor e promovido a **administrador do EM** em 29/10/2026 por novo pedido explícito do usuário. A promoção não altera a administração global da Central.
 
 O email Auth local é `em-sso-<subject>@identity.invalid`, confirmado pela API administrativa, sem email enviado ou senha informada/distribuída. O email corporativo serve apenas como display do novo RM. O legado softdev05 é administrador mobile e permanece intacto; DIGITAL também permanece intacto. O callback nunca faz esse provisionamento.
 
 | Perfil web | RM UUID | Auth UUID | Vínculo UUID |
 | --- | --- | --- | --- |
 | WEB-MGAVINA / administrador | `e80d9dd1-372c-40fc-a980-fe00067806df` | `54dd446f-d458-42cf-9f7c-b826aab87b51` | `cf815974-5d88-4e5c-8639-71139300ea1a` |
-| WEB-SOFTDEV05 / auditor | `2e70c7e9-3ed2-47fa-9860-9501aeac96cc` | `7dfa16ac-55ac-4631-b138-7b1c1234ca6a` | `ae29e9a9-9c50-4d25-81eb-6a01202bc20a` |
+| WEB-SOFTDEV05 / administrador | `2e70c7e9-3ed2-47fa-9860-9501aeac96cc` | `7dfa16ac-55ac-4631-b138-7b1c1234ca6a` | `ae29e9a9-9c50-4d25-81eb-6a01202bc20a` |
 
 `approved_by` usa o administrador DIGITAL como **ator técnico do bootstrap**, por instrução explícita, sem simular autenticação humana. `approval_metadata` registra `approved_by_kind=technical_bootstrap_actor`, `authorization_source=explicit_user_request`, método administrativo e login autorizado. A aprovação não depende de claims recebidos no callback.
 
@@ -89,7 +89,7 @@ A correção posterior `36075d1` foi publicada no deploy Railway `87aeb8cb-079c-
 
 Em 29/10/2026, após esse deploy, o titular de **mgavina confirmou o login Microsoft completo e a abertura do painel**. A consulta final, somente leitura, confirmou `require_sso=true`, `WEB-MGAVINA` com perfil `administrador`, status ativo, vínculo ativo e **duas sessões BFF vigentes**. Nenhuma dessas sessões legítimas foi removida ou alterada; hashes, tokens e ciphertext não foram exibidos.
 
-O login SSO interativo real de **softdev05 ainda não foi executado**. Para essa conta, permanecem comprovados o provisionamento como auditor, as concessões de consulta e a primitiva Auth EM testada anteriormente; isso não substitui a validação interativa pelo titular.
+O login SSO interativo real de **softdev05 ainda não foi executado**. A promoção posterior a administrador do EM foi conferida administrativamente nos dois bancos, com replay idempotente e comparação dos demais perfis, identidades, permissões, vínculos de tablet, credenciais e outbox. O papel global da Central permaneceu `user`; somente o papel do aplicativo EM e o perfil RM dedicado passaram a administrador. O [script de promoção](scripts/promote_approved_web_administrator.sql) mantém rollback como padrão. A auditoria registra a autorização explícita e o ator técnico, sem afirmar login humano ou MFA; não substitui a autenticação interativa pelo titular.
 
 ## Validação local
 

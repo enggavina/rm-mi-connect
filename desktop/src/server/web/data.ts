@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { editableCatalogKindSchema, type EditableCatalogKind } from './catalog-policy';
+import { withFormVersionLabels } from './form-version-labels';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -154,7 +155,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     ]);
     const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
     return { project, client: customers[0] || null, equipment: equipmentRows.find(row => row.id === project.equipamento_id) || equipmentRows[0] || null,
-      allocations, hasAllocations, cells, forms, records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
+      allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {
     requireCapability('em.forms.read');
@@ -174,7 +175,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       }
       return answer;
     });
-    return { record, project, form, answers: visibleAnswers, questions, items, users };
+    return { record, project, form: form ? (await withFormVersionLabels(client, [form]))[0] : null, answers: visibleAnswers, questions, items, users };
   }
   async function listPlanning(filters: PlanningFilters = {}) {
     requireCapability('em.planning.read');
@@ -197,7 +198,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       page(query.order('updated_at', { ascending: false }).order('id'), filters.page, 25), all('rm_forms', FORM, undefined, 'titulo'),
       allowed('em.projects.read') ? all('rm_projetos', 'id,numero,nome', undefined, 'numero') : [], options('status_registro0'),
     ]);
-    return { ...result, forms, projects, statuses };
+    return { ...result, forms: await withFormVersionLabels(client, forms), projects, statuses };
   }
   async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) {
     requireCapability('em.catalogs.read');
@@ -205,7 +206,8 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const catalog = catalogs[kind];
     let query: any = client.from(catalog.table).select(kind === 'users' ? userColumns : catalog.columns, { count: 'exact' });
     query = applySearch(query, filters.q, catalog.search.split(','));
-    return { ...await page(query.order(catalog.order).order('id'), filters.page, 50), kind, kinds: catalogKinds };
+    const result = await page(query.order(catalog.order).order('id'), filters.page, 50);
+    return { ...result, rows: kind === 'forms' ? await withFormVersionLabels(client, result.rows) : result.rows, kind, kinds: catalogKinds };
   }
   async function editorChoices(scope: 'project' | 'planning' = 'project') {
     requireCapability(scope === 'project' ? 'em.projects.manage' : 'em.planning.manage');
@@ -216,7 +218,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       scope === 'planning' ? all('rm_forms', 'id,titulo,ativo', undefined, 'titulo') : [],
       scope === 'project' ? options('status_pcp') : [],
     ]);
-    return { clients, types, users, forms, statuses };
+    return { clients, types, users, forms: await withFormVersionLabels(client, forms), statuses };
   }
   async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
     requireCapability('em.catalogs.manage');

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WebRow } from './data';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import { withFormVersionLabels } from './form-version-labels';
 
 const MATRIX = 'id,celula_id,tipo_equipamento_id,ativo,visibilidade,numero_fotos,updated_at';
 const CELL = 'id,nome,codigo,indice,ordem';
@@ -105,7 +106,7 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
     };
     const linkedUsers = new Set(cellUserLinks.map(link => link.identidade_id));
     return { ...base,
-      forms: merge(activeForms, currentForms, formIds, 'titulo'),
+      forms: await withFormVersionLabels(client, merge(activeForms, currentForms, formIds, 'titulo')),
       users: merge(activeUsers.filter(user => linkedUsers.has(user.id)), currentUsers, userIds, 'nome'),
       cellUserLinks, photoTitles: photoTitles.map(row => photoTitleScope(row, base.cells)),
       statuses: (checked(statusResult).data || []).map((row: any) => ({ ...row, id: row.option_key })),

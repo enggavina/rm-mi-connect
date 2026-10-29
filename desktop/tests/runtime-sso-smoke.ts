@@ -70,7 +70,9 @@ globalThis.fetch = (input, init) => {
     for (const headers of [{}, { Cookie: 'em-sso-session=forged' }] as Record<string, string>[]) {
       for (const path of ['/', '/painel', '/projetos', '/planejamento', '/cronograma', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/types/00000000-0000-4000-8000-000000000001/editar',
         '/engenharia', '/engenharia/novo', '/engenharia/00000000-0000-4000-8000-000000000001', '/engenharia/00000000-0000-4000-8000-000000000001/editar',
-        '/engenharia/titulos', '/engenharia/titulos/novo', '/engenharia/titulos/00000000-0000-4000-8000-000000000001/editar', '/login/sso-mfa']) {
+        '/engenharia/titulos', '/engenharia/titulos/novo', '/engenharia/titulos/00000000-0000-4000-8000-000000000001/editar',
+        '/modelos-formularios', '/modelos-formularios/novo', '/modelos-formularios/00000000-0000-4000-8000-000000000001',
+        '/modelos-formularios/publicados/00000000-0000-4000-8000-000000000001', '/login/sso-mfa']) {
         let current = path, arrived = false;
         for (let hop = 0; hop < 4; hop++) {
           const response = await request(current, { headers }); noStore(response);

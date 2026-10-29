@@ -37,6 +37,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'sso_bridge.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_catalogs.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_engineering.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_form_templates.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile

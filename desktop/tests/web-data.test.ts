@@ -165,10 +165,12 @@ test('editor reference choices require manage and expose only fields needed by t
   const { db, data } = setup(['em.portal.read', 'em.planning.manage']);
   db.tables.set('rm_users', [{ id: id(1), nome: 'Operador', status: 'ativo', matricula: 'private', foto_url: 'https://private.test/photo', auth_user_id: id(2) }]);
   db.tables.set('rm_forms', [{ id: id(3), titulo: 'Modelo', ativo: true, descricao: 'Not needed by editor' }]);
+  db.tables.set('rm_form_template_versions', [{ id: id(3), form_id: id(3), version: 2, id_mapping: { private: 'not needed' } }]);
   const choices = await data.editorChoices('planning');
   assert.deepEqual(choices.users, [{ id: id(1), nome: 'Operador', status: 'ativo' }]);
-  assert.deepEqual(choices.forms, [{ id: id(3), titulo: 'Modelo', ativo: true }]);
-  assert.ok(db.calls.every(call => ['rm_users', 'rm_forms'].includes(call.table)));
+  assert.deepEqual(choices.forms, [{ id: id(3), titulo: 'Modelo · v2', ativo: true, titulo_modelo: 'Modelo', versao_modelo: 2 }]);
+  assert.ok(db.calls.every(call => ['rm_users', 'rm_forms', 'rm_form_template_versions'].includes(call.table)));
+  assert.equal(db.calls.find(call => call.table === 'rm_form_template_versions')?.columns, 'form_id,version');
 });
 
 test('catalog permission alone excludes user images, and every domain still requires portal permission', async () => {

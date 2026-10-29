@@ -74,7 +74,8 @@ Os pacotes são dependências e critérios de conclusão, não uma promessa de d
 
 - Bubble será fonte de consulta nesta revisão. O desenvolvimento ocorre no EM; nenhuma alteração do Bubble é necessária para os pacotes 1A/1B.1.
 - Migrações novas e aditivas; não editar migrações já aplicadas (atualmente 001–018). Novas mutações mantêm o envelope web e a permissão SSO de uso único, com UUID, conteúdo e sessão vinculados. Nenhum JWT administrativo vai ao navegador.
-- Registrar a nova capacidade na Central separadamente da concessão. Atualizar primeiro o contrato EM que aceita a capacidade; depois conceder somente ao administrador autorizado. `softdev05` não recebe gestão de cadastros.
+- Registrar a nova capacidade na Central separadamente da concessão. Atualizar primeiro o contrato EM que aceita a capacidade; depois conceder aos administradores autorizados. Em 29/10/2026, o usuário também autorizou `softdev05` como administrador do EM, junto de `mgavina`; isso não concede administração global da Central ou de outros aplicativos.
+- Após cada desenvolvimento validado, publicar em produção e confirmar o deploy, conforme instrução permanente do usuário. Falhas de validação devem ser corrigidas antes da publicação.
 - Não apagar cadastro referenciado por projeto, modelo, usuário, foto ou outro histórico. Exclusão não pode causar cascatas silenciosas ou invalidar o offline. Não limpar dados reais para testar.
 - Comercial precisa corrigir a divergência entre os campos Live de precificação (serviço, polos, motor, área, valor e potência) e o modelo aproximado da 005. Laboratório precisa resolver os vínculos por número textual e a desmontagem sem projeto explícito na ação legada.
 - Validar PostgreSQL isolado, tipos/testes/build, runtime sem credenciais, negações de acesso e concorrência. Confirmar a publicação e registrar separadamente validação automatizada e teste feito pelo titular.

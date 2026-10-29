@@ -82,6 +82,16 @@ test('engineering read and manage are explicit independent grants, never implied
   await assert.rejects(readonly.auth.validateCorporateSession(readonly.token, { subject: SUBJECT }, 'em.engineering.manage'), code('CORP_FORBIDDEN'));
 });
 
+test('form-template permissions are explicit and never implied by records or engineering grants', async () => {
+  const old = fixture({ decision: { ...decision(), capabilities: CORPORATE_CAPABILITIES.filter(cap => !cap.startsWith('em.form_templates.')) } });
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.forms.review');
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.engineering.manage');
+  for (const capability of ['em.form_templates.read', 'em.form_templates.manage'] as const) await assert.rejects(old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, capability), code('CORP_FORBIDDEN'));
+  const reader = fixture({ decision: { ...decision(), capabilities: ['em.portal.read', 'em.form_templates.read'] } });
+  await reader.auth.validateCorporateSession(reader.token, { subject: SUBJECT }, 'em.form_templates.read');
+  await assert.rejects(reader.auth.validateCorporateSession(reader.token, { subject: SUBJECT }, 'em.form_templates.manage'), code('CORP_FORBIDDEN'));
+});
+
 test('corporate configuration is opt-in and pins the issuer, app and exact HTTPS callback', () => {
   assert.equal(corporateSettings({}), null);
   assert.equal(settings.callbackUrl, 'https://em.example.test/auth/sso/callback');

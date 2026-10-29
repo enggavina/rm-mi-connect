@@ -10,6 +10,7 @@ const navigation: { href: string; label: string; icon: IconName; capability: Cor
   { href: '/planejamento', label: 'Planejamento', icon: 'board', capability: 'em.planning.read' }, { href: '/cronograma', label: 'Cronograma', icon: 'calendar', capability: 'em.planning.read' },
   { href: '/formularios', label: 'Formulários', icon: 'clipboard', capability: 'em.forms.read' }, { href: '/cadastros', label: 'Cadastros', icon: 'settings', capability: 'em.catalogs.read' },
   { href: '/engenharia', label: 'Engenharia', icon: 'board', capability: 'em.engineering.read' },
+  { href: '/modelos-formularios', label: 'Modelos de formulário', icon: 'clipboard', capability: 'em.form_templates.read' },
 ];
 export function PortalShell({ profile, capabilities, children }: { profile: { nome: string; perfil: string; cargo?: string | null }; capabilities?: CorporateCapability[]; children: React.ReactNode }) {
   const path = usePathname(); const [open, setOpen] = useState(false);
