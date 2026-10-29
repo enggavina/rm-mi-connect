@@ -24,7 +24,7 @@ function ProjectCard({ allocation, project, clients, records, catalogsLoaded, st
   return <Card>
     <View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Comentários · ${title}`} onPress={() => router.push({ pathname: '/comentarios', params })} style={{ minHeight: 46, minWidth: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.soft }}><Feather name="message-square" size={22} color={C.primary} /></Pressable></View>
     <Text style={s.body}>{projectClientName(project, allocation, clients)}</Text><Text style={s.muted}>{project?.nome || allocation.tipo_equipamento_nome_export || allocation.escopo_abreviado}</Text>
-    {front ? <MediaImage expand uri={front.foto_url} height={190} label={`Vista frontal · ${title}`} /> : <Text style={s.muted}>Foto frontal ainda não registrada.</Text>}
+    {front ? <View style={{ gap: 6 }}><MediaImage expand uri={front.foto_url} height={190} label={`Vista frontal · ${title}`} /><Text style={s.muted}>Toque na foto frontal para ampliar.</Text></View> : <Text style={s.muted}>{photos.loaded ? 'Foto frontal não disponível neste projeto.' : 'Carregando foto frontal…'}</Text>}
     {!!photos.error && <Notice error>{photos.error}</Notice>}
     <CellStatusAction allocation={allocation} queue={queue} ready={queueReady} records={records} photos={photos.rows} catalogsLoaded={catalogsLoaded && photos.loaded && !photos.error} />
     <View style={s.row}><Badge text={`${approved} ${approved === 1 ? 'etapa aprovada' : 'etapas aprovadas'}`} /><Badge text={`${ownLogs.length} ${ownLogs.length === 1 ? 'registro no histórico' : 'registros no histórico'}`} /></View>

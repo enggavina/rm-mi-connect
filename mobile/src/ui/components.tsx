@@ -122,21 +122,34 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
 }
 export function Select({ label, value, options, onChange, multiple = false, disabled = false }: { label: string; value: string | string[]; options: { value: string; label: string }[]; onChange: (value: string[]) => void; multiple?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
-  const selected = Array.isArray(value) ? value : value ? [value] : [];
+  const [draft, setDraft] = useState<string[]>([]);
+  const selected = Array.isArray(value) ? value : typeof value === 'string' && (value !== '' || options.some(option => option.value === '')) ? [value] : [];
+  const active = multiple ? draft : selected;
   const visible = options.filter(option => option.label.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  const cancel = () => { setOpen(false); setDraft([]); setSearch(''); };
   return <View style={{ gap: 7 }}>
     <Text style={{ fontSize: 14, fontWeight: '600', color: C.ink }}>{label}</Text>
-    <Button secondary disabled={disabled} title={selected.length ? options.filter(option => selected.includes(option.value)).map(option => option.label).join(', ') || 'Selecionado' : 'Selecionar…'} onPress={() => { setSearch(''); setOpen(true); }} />
-    <Modal visible={open} onRequestClose={() => setOpen(false)} animationType="slide">
+    <Button secondary disabled={disabled} title={selected.length ? options.filter(option => selected.includes(option.value)).map(option => option.label).join(', ') || 'Selecionado' : 'Selecionar…'} onPress={() => { setDraft([...selected]); setSearch(''); setOpen(true); }} />
+    <Modal visible={open} onRequestClose={cancel} animationType="slide">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg, padding: 20, gap: 14 }}>
-        <Text style={s.h2}>{label}</Text><Field label="Buscar" value={search} onChangeText={setSearch} />
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
-          {visible.map(option => <Button key={option.value} secondary={!selected.includes(option.value)} title={`${selected.includes(option.value) ? '✓ ' : ''}${option.label}`} onPress={() => {
-            onChange(multiple ? selected.includes(option.value) ? selected.filter(item => item !== option.value) : [...selected, option.value] : [option.value]);
-            if (!multiple) setOpen(false);
-          }} />)}
-          {!visible.length && <Notice>{options.length ? 'Nenhum resultado para esta busca.' : 'Nenhum item disponível.'}</Notice>}
-        </ScrollView><Button title="Concluir seleção" onPress={() => setOpen(false)} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Text style={[s.h2, { flex: 1 }]}>{label}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Cancelar seleção de ${label}`} onPress={cancel} style={{ minHeight: 48, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Feather name="x" size={20} color={C.primary} /><Text style={{ color: C.primary, fontWeight: '700', fontSize: 16 }}>Cancelar</Text>
+          </Pressable>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1, gap: 14 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Field label="Buscar" value={search} onChangeText={setSearch} />
+          {multiple && <Text style={s.muted}>Marque as opções e confirme para salvar a seleção.</Text>}
+          <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+            {visible.map(option => <Button key={option.value} secondary={!active.includes(option.value)} disabled={disabled} title={`${active.includes(option.value) ? '✓ ' : ''}${option.label}`} onPress={() => {
+              if (multiple) setDraft(current => current.includes(option.value) ? current.filter(item => item !== option.value) : [...current, option.value]);
+              else { onChange([option.value]); setOpen(false); }
+            }} />)}
+            {!visible.length && <Notice>{options.length ? 'Nenhum resultado para esta busca.' : 'Nenhum item disponível.'}</Notice>}
+          </ScrollView>
+          {multiple && <Button title="Confirmar seleção" disabled={disabled} onPress={() => { onChange([...draft]); setOpen(false); }} />}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   </View>;

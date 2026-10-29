@@ -17,9 +17,11 @@ export function projectClientName(project: Row | undefined, allocation: Row, cli
 }
 
 export function frontProjectPhoto(projectId: string, photos: Row[]): Row | undefined {
-  const frontTitle = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLocaleLowerCase() === 'vistafrontal';
-  return photos.filter(photo => photo.projeto_id === projectId && !photo.lixeira && !!photo.foto_url && (photo.tipo_recebimento === 'frente' || frontTitle(photo.titulo)))
-    .sort((a, b) => Number(b.tipo_recebimento === 'frente') - Number(a.tipo_recebimento === 'frente') || (a.numero ?? 0) - (b.numero ?? 0))[0];
+  // Receiving uses an enum; existing project inspection slots materialize their catalog title.
+  const titles = new Set(['frontal', 'vistafrontal', 'vistadianteira', 'inspecaovisualdomotorvistafrontal', 'inspecaovisualdomotorvistadianteira']);
+  const frontTitle = (value: unknown) => titles.has(String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLocaleLowerCase());
+  return photos.filter(photo => photo.projeto_id === projectId && !photo.lixeira && typeof photo.foto_url === 'string' && !!photo.foto_url.trim() && (photo.tipo_recebimento === 'frente' || frontTitle(photo.titulo)))
+    .sort((a, b) => Number(b.tipo_recebimento === 'frente') - Number(a.tipo_recebimento === 'frente') || (a.numero ?? 0) - (b.numero ?? 0) || a.id.localeCompare(b.id))[0];
 }
 
 export function cellProjectStages(allocation: Row, stages: Row[]): Row[] {

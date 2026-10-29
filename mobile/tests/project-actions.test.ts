@@ -59,6 +59,32 @@ test('front image must be a real, non-deleted front photo of this project, never
   assert.equal(frontProjectPhoto('project', [...photos, { id: 'typed', projeto_id: 'project', tipo_recebimento: 'frente', foto_url: 'https://photos/typed' }])?.id, 'typed');
 });
 
+test('front image recognizes the real project inspection title and keeps receiving priority', () => {
+  const inspection: Row = Object.freeze({ id: 'inspection', projeto_id: 'project', titulo: 'Inspeção visual do motor (vista dianteira)', tipo_recebimento: null, numero: 1, foto_url: 'https://photos/inspection' });
+  const other: Row = { id: 'back', projeto_id: 'project', titulo: 'Inspeção visual do motor (vista traseira)', numero: 0, foto_url: 'https://photos/back' };
+  const photos = [other, inspection];
+  assert.equal(frontProjectPhoto('project', photos), inspection);
+  assert.deepEqual(photos.map(photo => photo.id), ['back', 'inspection'], 'selection cannot reorder the catalog');
+  assert.equal(frontProjectPhoto('project', [{ ...inspection, titulo: '  INSPEÇÃO VISUAL DO MOTOR — VISTA DIANTEIRA  ' }])?.id, 'inspection');
+  assert.equal(frontProjectPhoto('project', [{ ...inspection, titulo: 'Frontal' }])?.id, 'inspection', 'complementary photos use the real catalog label Frontal');
+  assert.equal(frontProjectPhoto('project', [...photos, { id: 'receiving', projeto_id: 'project', tipo_recebimento: 'frente', numero: 99, foto_url: 'https://photos/receiving' }])?.id, 'receiving');
+});
+
+test('front image never substitutes a generic, rear, deleted, empty or foreign inspection photo', () => {
+  const base = { projeto_id: 'project', titulo: 'Inspeção visual do motor (vista dianteira)', foto_url: 'https://photos/front' };
+  const photos: Row[] = [
+    { ...base, id: 'foreign', projeto_id: 'other' }, { ...base, id: 'deleted', lixeira: true },
+    { ...base, id: 'empty', foto_url: '   ' }, { ...base, id: 'missing', foto_url: null },
+    { ...base, id: 'generic', titulo: 'Inspeção visual do equipamento' },
+    { ...base, id: 'rear', titulo: 'Inspeção visual do motor (vista traseira)' },
+    { ...base, id: 'component', titulo: 'Inspeção visual da tampa dianteira' },
+  ];
+  assert.equal(frontProjectPhoto('project', photos), undefined);
+  const a = { ...base, id: 'a' }, b = { ...base, id: 'b' };
+  assert.equal(frontProjectPhoto('project', [b, a])?.id, 'a');
+  assert.equal(frontProjectPhoto('project', [a, b])?.id, 'a');
+});
+
 test('project client resolves the actual relationship before legacy exported name fallbacks', () => {
   assert.equal(projectClientName({ id: 'p', cliente_id: 'client', cliente_nome_exportacao: 'Outdated' }, { ...allocation, cliente_nome_export: 'Old cell label' }, [{ id: 'client', nome: 'Current client' }]), 'Current client');
   assert.equal(projectClientName({ id: 'p', cliente_nome_exportacao: 'Project export' }, allocation, []), 'Project export');

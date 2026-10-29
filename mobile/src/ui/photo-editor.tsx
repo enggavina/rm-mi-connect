@@ -5,13 +5,13 @@ import * as Crypto from 'expo-crypto';
 import { service, type Row } from '../core';
 import { canEditPhoto, type JourneyContext, type PendingPhoto } from '../domain/journey';
 import { useApp } from './state';
-import { Badge, Button, Card, Field, Notice, Select, s } from './components';
+import { Badge, Button, Card, Field, Notice, s } from './components';
 import { MediaImage, Photos } from './media';
 
-type PhotoDraft = { id: string; uri: string; title: string; caption: string; catalogId?: string; submitted?: boolean };
+type PhotoDraft = { id: string; uri: string; title: string; caption: string; submitted?: boolean };
 const freshPhoto = (): PhotoDraft => ({ id: Crypto.randomUUID(), uri: '', title: '', caption: '' });
 
-export function PhotoEditor({ slot, context, queuedPhoto, titles = [] }: { slot?: Row; context: Extract<JourneyContext, { ok: true }>; queuedPhoto?: PendingPhoto; titles?: Row[] }) {
+export function PhotoEditor({ slot, context, queuedPhoto }: { slot?: Row; context: Extract<JourneyContext, { ok: true }>; queuedPhoto?: PendingPhoto }) {
   const app = useApp(); const [data, setData] = useState<PhotoDraft | null>(null); const [saved, setSaved] = useState('');
   const [open, setOpen] = useState(!slot?.foto_url); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [saving, setSaving] = useState(0); const [mediaBusy, setMediaBusy] = useState(false); const [confirmed, setConfirmed] = useState(false);
   const current = useRef<PhotoDraft | null>(null); const pending = useRef(Promise.resolve()); const saveError = useRef(''); const inFlight = useRef(false);
@@ -43,7 +43,7 @@ export function PhotoEditor({ slot, context, queuedPhoto, titles = [] }: { slot?
       // Save the protocol before enqueue so reopening the page never creates a duplicate submission.
       await service.saveLocal(key, draft);
       if (!mounted.current || activeKey.current !== key || service.getSnapshot().operator?.operador_id !== actorId) throw new Error('O operador ou projeto mudou. O rascunho foi preservado; volte com o autor para enviar.');
-      await service.enqueue('rm_record_cell_photo_v1', { p_foto_id: slot?.id ?? null, p_projeto_id: context.project.id, p_celula_id: context.cell.id, p_celula_projeto_id: context.allocation.id, p_foto_url: draft.uri, p_legenda: draft.caption, p_titulo: slot?.titulo ?? draft.title.trim(), p_cadastro_foto_id: slot ? null : draft.catalogId || null, p_categoria_foto: slot?.categoria_foto ?? 'complementar' }, draft.id);
+      await service.enqueue('rm_record_cell_photo_v1', { p_foto_id: slot?.id ?? null, p_projeto_id: context.project.id, p_celula_id: context.cell.id, p_celula_projeto_id: context.allocation.id, p_foto_url: draft.uri, p_legenda: draft.caption, p_titulo: slot?.titulo ?? draft.title.trim(), p_cadastro_foto_id: null, p_categoria_foto: slot?.categoria_foto ?? 'complementar' }, draft.id);
       const submitted = { ...draft, submitted: true }; current.current = submitted; setData(submitted); setSaved(draft.uri); setConfirmed(false); setOpen(false);
       await service.saveLocal(key, submitted);
     } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível registrar a foto.'); } finally { inFlight.current = false; setBusy(false); }
@@ -57,7 +57,7 @@ export function PhotoEditor({ slot, context, queuedPhoto, titles = [] }: { slot?
     {!data && editable && <Notice>Carregando rascunho da foto…</Notice>}
     {editable && data && (data.submitted || !open) && <Button secondary title={slot ? 'Registrar outra foto neste item' : 'Adicionar outra foto complementar'} disabled={busy || !!saving} onPress={() => { if (data.submitted) persist(freshPhoto()); setOpen(true); setError(''); }} />}
     {editable && data && open && !data.submitted && <>
-      {!slot && (titles.length ? <Select label="Título da foto *" value={data.catalogId || (data.title ? 'legacy-draft' : '')} options={[...(data.title && !data.catalogId ? [{ value: 'legacy-draft', label: `${data.title} (rascunho anterior)` }] : []), ...titles.map(item => ({ value: item.id, label: item.titulo }))]} disabled={busy} onChange={([id]) => { if (id !== 'legacy-draft') update({ catalogId: id, title: titles.find(item => item.id === id)?.titulo || '' }); }} /> : <Field label="Título da foto *" value={data.title} onChangeText={title => update({ title })} editable={!busy} />)}
+      {!slot && <Field label="Título da foto *" placeholder="Digite o título da foto" value={data.title} onChangeText={title => update({ title })} editable={!busy} />}
       <Photos single values={data.uri ? [data.uri] : []} onChange={uris => update({ uri: uris.at(-1) ?? '' })} disabled={busy} onBusyChange={setMediaBusy} />
       <Field label="Comentário da foto (opcional)" value={data.caption} onChangeText={caption => update({ caption })} multiline editable={!busy} />
       {!!saving && <Text style={s.muted}>Salvando rascunho…</Text>}{mediaBusy && <Notice>Salvando a foto no dispositivo…</Notice>}
