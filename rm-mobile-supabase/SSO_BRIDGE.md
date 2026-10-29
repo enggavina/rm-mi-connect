@@ -1,6 +1,6 @@
-# Ponte SSO web — migração 016 aplicada em preparação
+# Ponte SSO web — migração 016 ativa em produção
 
-Estado: **016 aplicada em 29/10/2026** ao projeto `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`), com histórico 001–016 e `rm_private.sso_settings.require_sso=false`. Nenhum vínculo ou usuário é criado pelo SQL da migração; o provisionamento administrativo separado dos dois usuários autorizados foi concluído em seguida. O valor global só deve mudar depois da implantação e verificação do BFF.
+Estado: **016 aplicada e SSO obrigatório ativado em produção em 29/10/2026** no projeto `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`), com histórico 001–016 e `rm_private.sso_settings.require_sso=true`. A migração foi inicialmente aplicada com o valor falso; a ativação ocorreu somente após implantação e verificação pública do BFF. Nenhum vínculo ou usuário é criado pelo SQL da migração; o provisionamento administrativo separado dos dois usuários autorizados foi concluído antes da ativação.
 
 ## Identidade e fronteiras
 
@@ -75,7 +75,17 @@ Antes/depois foram preservados localmente em `.tmp/sso-provisioning-016-before.j
 
 QA da primitiva EM: para cada identidade nova, `auth.admin.generateLink(type:'magiclink')` seguido de `verifyOtp(type:'magiclink',token_hash)` produziu o Auth UUID esperado, perfil RM correto, JWT AAL1 e `session_id` existente em `auth.sessions`. Isso valida somente a ponte Auth local, **não simula login Microsoft nem atesta o SSO corporativo completo**. Logout usou `scope:'local'`; nenhum token/hash/link foi impresso e nenhum projeto ou formulário foi alterado. Resultado não secreto em `.tmp/sso-auth-primitive-result.json`.
 
-Ativação posterior: [scripts/activate_web_sso.sql](scripts/activate_web_sso.sql) exige que o operador execute `SET em.sso_bff_verified='true'` na mesma conexão após verificar o BFF em produção, callback e concessões centrais. O script confere 016, os dois vínculos e as permissões RPC antes de ativar `require_sso=true`. **Não foi executado remotamente**. O teste local confirma que sua execução acidental sem essa marca é recusada.
+Ativação: [scripts/activate_web_sso.sql](scripts/activate_web_sso.sql) foi executado remotamente com `SET LOCAL em.sso_bff_verified='true'` na mesma transação, após verificar o BFF em produção, callback e concessões centrais. O script conferiu 016, os dois vínculos e as permissões RPC antes de ativar `require_sso=true`. O teste local confirma que sua execução acidental sem essa marca é recusada.
+
+## Validação da implantação e estado final
+
+Deploy Railway `669d7c9b-14b5-4358-8dd9-0df2b41c125c` concluído com sucesso no commit `0bd6793`. CI `40827656339` passou para web e mobile; a entrega registrou 97 testes desktop, build e dois smoke tests aprovados.
+
+A QA HTTP pública confirmou: login somente Microsoft, portal negado sem SSO, cookie forjado negado, POST de outra origem recusado com 403, callback estrito, cookie de fluxo opaco com Secure/HttpOnly/SameSite=Lax, PKCE S256, redirecionamento real Supabase corporativo → `login.microsoftonline.com` e consumo do fluxo pelo logout. Prova local sem segredos: `.tmp/public-sso-qa.json`.
+
+Após a ativação, a consulta de conferência registrou `require_sso=true`, exatamente dois vínculos ativos, **zero sessões BFF, zero fluxos pendentes, zero permissões de ação e zero mutações web de negócio**. DIGITAL continuou ativo, administrador e associado ao mesmo Auth UUID; o gateway mobile manteve EXECUTE autenticado. O core privado, a emissão de permissões e as tabelas de sessão permaneceram indisponíveis aos clientes. Prova local: `.tmp/sso-strict-activation-proof.json`.
+
+O login Microsoft interativo completo permanece **pendente do titular**. A automação da interface foi interrompida pela política quando não identificou a URL; não se simulou uma autenticação corporativa. Os testes realizados comprovam o início real do OAuth, a primitiva Auth EM, as barreiras públicas e os contratos locais, sem afirmar conclusão de uma sessão SSO humana. Nenhum usuário permanece conectado pelos testes.
 
 ## Validação local
 

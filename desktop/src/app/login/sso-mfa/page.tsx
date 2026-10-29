@@ -5,7 +5,7 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { SsoMfaForm } from './mfa-form';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { referrer: 'no-referrer' as const };
+export const metadata = { referrer: 'same-origin' as const };
 export default async function SsoMfaPage() {
   if (process.env.EM_SSO_ENABLED !== 'true') redirect('/login');
   let pending: Awaited<ReturnType<typeof pendingSsoMfa>>;

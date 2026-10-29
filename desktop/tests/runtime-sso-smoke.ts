@@ -61,7 +61,9 @@ globalThis.fetch = (input, init) => {
     }
     assert.equal(ready, true, 'Servidor não iniciou em 30 segundos.');
     const login = await request('/login'), html = await login.text();
-    assert.equal(login.status, 200); privateAuth(login);
+    assert.equal(login.status, 200); noStore(login);
+    assert.equal(login.headers.get('referrer-policy'), 'same-origin', 'Native login POST must retain its first-party Origin header.');
+    assert.match(html, /<meta name="referrer" content="same-origin"/);
     assert.match(html, /Entrar com Microsoft/); assert.match(html, /action="\/auth\/sso\/start"/);
     assert.doesNotMatch(html, /name="(?:email|password)"/);
 
@@ -85,7 +87,7 @@ globalThis.fetch = (input, init) => {
     }
     assert.equal((await request('/auth/sso/start')).status, 405);
     for (const path of ['/auth/sso/start', '/auth/logout']) {
-      for (const headers of [{}, { Origin: origin }, { Origin: 'https://cross-site.example.invalid', 'X-Forwarded-Host': 'cross-site.example.invalid' }] as Record<string, string>[]) {
+      for (const headers of [{}, { Origin: 'null' }, { Origin: origin }, { Origin: 'https://cross-site.example.invalid', 'X-Forwarded-Host': 'cross-site.example.invalid' }] as Record<string, string>[]) {
         const denied = await request(path, { method: 'POST', headers }); assert.equal(denied.status, 403); privateAuth(denied);
       }
     }

@@ -2,7 +2,7 @@
 
 Estado: **014 e 015 aplicadas em 29/10/2026** ao projeto autorizado `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`), com histórico 001–015 registrado. Nome/organização, URL utilizada pela aplicação e sequência das migrações foram conferidos antes da aplicação transacional. A 014 não modifica o gateway, as delegações de operador ou as políticas de leitura usadas pelo mobile; a 015 corrige somente o código de conflito para HTTP409.
 
-A instalação atual também inclui a **016**, que coloca uma guarda SSO diante deste core sem modificar seus payloads. Ela foi aplicada com exigência global desativada; usuários com vínculo SSO já exigem autorização curta do BFF. Consulte [SSO_BRIDGE.md](SSO_BRIDGE.md) para implantação, identidades dedicadas e ativação posterior. As cinco suítes atuais validam 001–016.
+A instalação atual também inclui a **016**, que coloca uma guarda SSO diante deste core sem modificar seus payloads. Depois da implantação e QA pública do BFF, a exigência global foi ativada: toda escrita web exige autorização curta do BFF. Consulte [SSO_BRIDGE.md](SSO_BRIDGE.md) para implantação, identidades dedicadas e provas da ativação. As cinco suítes atuais validam 001–016.
 
 ## Identidade e sessão
 

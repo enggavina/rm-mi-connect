@@ -27,7 +27,10 @@ export async function middleware(request: NextRequest) {
   response.headers.set('Cache-Control', 'private, no-store, max-age=0');
   response.headers.set('Pragma', 'no-cache');
   response.headers.set('Expires', '0');
-  if (request.nextUrl.pathname.startsWith('/auth/') || request.nextUrl.pathname.startsWith('/login')) response.headers.set('Referrer-Policy', 'no-referrer');
+  if (request.nextUrl.pathname.startsWith('/auth/')) response.headers.set('Referrer-Policy', 'no-referrer');
+  // Native form POSTs need their same-origin Origin header. no-referrer makes
+  // Chrome serialize it as "null", which our CSRF boundary correctly rejects.
+  if (request.nextUrl.pathname.startsWith('/login')) response.headers.set('Referrer-Policy', 'same-origin');
   return response;
 }
 

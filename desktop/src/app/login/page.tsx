@@ -5,7 +5,7 @@ import { AccessLayout } from '@/components/web/access';
 import { CorporateAuthError } from '@/server/web/sso-policy';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { referrer: 'no-referrer' as const };
+export const metadata = { referrer: 'same-origin' as const };
 const ssoErrors: Record<string, string> = {
   sso: 'Não foi possível concluir o acesso corporativo. Tente novamente.',
   sso_indisponivel: 'O acesso corporativo está temporariamente indisponível. Tente novamente em instantes.',

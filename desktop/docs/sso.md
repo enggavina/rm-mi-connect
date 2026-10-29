@@ -31,6 +31,12 @@ Aplicar 001–016, provisionar os vínculos e conferir o callback autorizado ant
 
 O worker Bubble permanece desativado (`SYNC_OUTBOX_ENABLED=false`). A publicação do EM não exige deploy da Central: registro, capacidades, concessões e callback foram operações administrativas específicas. O material reproduzível dessa integração está no [PR da Central](https://github.com/enggavina/mi-central-acessos/pull/1).
 
+Publicação em 29/10/2026: deploy Railway `669d7c9b-14b5-4358-8dd9-0df2b41c125c`, commit de aplicação `0bd6793`, no serviço existente `em-web`. As sete variáveis SSO foram conferidas sem imprimir seus valores. O endpoint público confirmou login somente Microsoft, bloqueio do portal sem SSO e com cookie malformado, POSTs de outra origem recusados, callback restrito e início real PKCE S256 com redirecionamento ao `login.microsoftonline.com`. O fluxo de QA foi cancelado pelo logout e removido.
+
 ## Verificação
 
 Testes de política exercitam PKCE real do SDK, troca de identidade, emissor/audiência, conta revogada, permissões atuais, falhas de rede, MFA e payloads inválidos. Testes de HTTP cobrem origem, callback, destinos fixos e bloqueio da ação manual. A suíte PostgreSQL aplica 001–016 e verifica o isolamento dos RPCs privados, TTL, consumo, sessão/conteúdo divergentes, replay, MFA e preservação mobile. `npm run test:smoke` e `npm run test:sso-smoke` testam o servidor standalone sem credenciais reais. Um login Microsoft interativo completo exige a autenticação do titular da conta e deve ser registrado separadamente dos testes automatizados.
+
+Na entrega, passaram 97 testes desktop, TypeScript, build, os dois smokes, cinco suítes PostgreSQL e auditoria npm sem vulnerabilidades. O [CI do commit de aplicação](https://github.com/enggavina/rm-mi-connect/actions/runs/40827656339) passou para web e mobile. A auditoria local não encontrou dez segredos conhecidos nos fontes nem chaves privadas nos 48 arquivos estáticos do navegador.
+
+**Pendente de validação pelo titular:** primeiro login Microsoft completo até o painel. A automação de navegador foi interrompida pelo controle de segurança por não conseguir identificar a URL atual; nenhuma senha ou MFA Microsoft foi automatizada. O teste HTTP confirma o início real do fluxo e as negações, sem representar uma autenticação Microsoft concluída.
