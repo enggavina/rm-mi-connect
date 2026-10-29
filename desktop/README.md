@@ -1,10 +1,10 @@
 # EM · MI Electric Brasil — Desktop e ponte Bubble
 
-Scaffold Next.js 15 com App Router e runtime Node. A página inicial apresenta o EM, da MI Electric Brasil, com a jornada célula → projeto → formulários ou galeria. O desktop operacional e as rotas de relatórios/TOTP estão reservados para a Fase 2. A identidade usa o logo original fornecido e as cores vermelho `#e73e42`, grafite `#0e1724` e branco.
+Portal de gestão Next.js 15 com App Router e runtime Node 22. Login, painel, projetos, planejamento, cronograma, revisão de formulários, fotos, documentos e consulta de cadastros usam o mesmo Supabase do aplicativo EM. A identidade preserva a logo original e a paleta MI Electric Brasil. Consulte [o escopo e a operação da plataforma web](docs/web-platform.md). Geração/compilação de novos relatórios e os módulos comercial/laboratório permanecem nas etapas seguintes.
 
 ## Executar localmente
 
-Requer Node 20.19+ (a imagem usa Node 20 conforme a especificação).
+Requer Node 22 ou superior; Docker e CI usam Node 22.
 
 ```sh
 cd desktop
@@ -16,7 +16,7 @@ npm test
 npm run build
 ```
 
-O build não exige credenciais. As APIs e o worker só constroem o cliente Supabase no momento da execução. As chaves de serviço ficam exclusivamente no servidor.
+O build não exige credenciais. O serviço web usa `SUPABASE_URL` e `SUPABASE_ANON_KEY` no servidor com cookies SSR, perfil RM ativo e RLS. A chave de serviço permanece exclusiva à infraestrutura da ponte e não é necessária ao login ou às ações da plataforma. Migrações atuais: **001–015**. A [014–015](../rm-mobile-supabase/WEB_MANAGEMENT.md) acrescenta gestão autenticada, autoria, idempotência, revisão e controle de versão.
 
 ## Preparar a coexistência
 

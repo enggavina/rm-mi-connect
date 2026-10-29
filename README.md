@@ -1,6 +1,6 @@
 # EM · MI Electric Brasil
 
-Fase 1 do **EM**, aplicativo operacional da **MI Electric Brasil**: mobile nativo em Expo SDK 54 e estrutura do backend/desktop em Next.js 15. As aplicações têm instalações, dependências e builds separados. Os nomes técnicos herdados, como tabelas `rm_*`, identificadores de pacote e endereços de infraestrutura, permanecem preservados.
+**EM**, plataforma operacional da **MI Electric Brasil**: aplicativo mobile nativo em Expo SDK 54 e portal web de gestão em Next.js 15, sobre o mesmo Supabase. As aplicações têm instalações, dependências e builds separados. Os nomes técnicos herdados, como tabelas `rm_*`, identificadores de pacote e endereços de infraestrutura, permanecem preservados.
 
 A jornada começa na célula disponível ao operador. Dentro dela, ele escolhe um projeto e acessa seus formulários ou a galeria de fotos. Essa organização mantém respostas e evidências no contexto do trabalho em execução.
 
@@ -14,7 +14,7 @@ Repositório privado: [enggavina/rm-mi-connect](https://github.com/enggavina/rm-
 
 ## Mobile
 
-O mobile e seus testes requerem Node 22.13+; o desktop usa Node 20.19+. O build Android local exige SDK/JDK, ou EAS Build para compilação remota.
+O mobile requer Node 22.13+; o portal web usa Node 22. O build Android local exige SDK/JDK, ou EAS Build para compilação remota.
 
 ```sh
 cd mobile
@@ -48,13 +48,17 @@ Fotos são copiadas para armazenamento persistente e comprimidas. O anexo de NF 
 
 Documentos remotos são baixados ao abrir e ficam disponíveis offline após esse primeiro acesso com conexão. Arquivos ainda não baixados informam essa condição. As novas notas fiscais usam Storage privado: o banco guarda uma referência estável e o aplicativo obtém uma URL temporária apenas para baixar o arquivo. URLs assinadas não são persistidas na fila. A abertura usa um visualizador instalado no dispositivo.
 
+## Plataforma web
+
+O portal de gestão em `desktop/` compartilha a base do mobile: visão geral, projetos, planejamento de células, cronograma, consulta/revisão de formulários, galeria, documentos e consulta de cadastros. O acesso usa Supabase Auth, perfis internos ativos e MFA quando cadastrada; a chave de serviço não participa da sessão web. As alterações de gestão usam as migrações 014–015, com autoria, idempotência e conflito de versão. Consulte [funcionalidades, execução e operação da plataforma](desktop/docs/web-platform.md).
+
 ## Banco e integração
 
-O ambiente inicial está no projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)**, criado na organização Pro, região São Paulo, com compute Micro. As migrações 001–013 já foram aplicadas e as 52 tabelas RM estão protegidas por RLS. Os arquivos `.env` locais apontam para esse ambiente e permanecem fora do repositório.
+O ambiente inicial está no projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)**, criado na organização Pro, região São Paulo, com compute Micro. As migrações 001–015 já foram aplicadas e as 52 tabelas RM estão protegidas por RLS. Os arquivos `.env` locais apontam para esse ambiente e permanecem fora do repositório.
 
-A carga contém 177 projetos operacionais e seus catálogos. A complementação histórica preservou 61.803 respostas dos 778 registros de formulário, incluindo 1.719 snapshots sem vínculo de questão disponíveis somente para consulta. Foram recuperados 11 PDFs existentes para o bucket privado; três documentos continuam sem arquivo na origem. Consulte o [relatório da carga inicial](desktop/docs/initial-load.md), a [reconciliação histórica e os contratos atuais](rm-mobile-supabase/PROJECT_OPERATIONS.md) e a [validação dos PDFs importados](desktop/docs/existing-documents.md). O worker permanece desativado; o desktop está preparado como scaffold para a próxima etapa.
+A carga contém 177 projetos operacionais e seus catálogos. A complementação histórica preservou 61.803 respostas dos 778 registros de formulário, incluindo 1.719 snapshots sem vínculo de questão disponíveis somente para consulta. Foram recuperados 11 PDFs existentes para o bucket privado; três documentos continuam sem arquivo na origem. Consulte o [relatório da carga inicial](desktop/docs/initial-load.md), a [reconciliação histórica e os contratos atuais](rm-mobile-supabase/PROJECT_OPERATIONS.md) e a [validação dos PDFs importados](desktop/docs/existing-documents.md). O worker permanece desativado. A gestão web compartilha os dados e a operação do aplicativo.
 
-Aplicar as migrações **001 a 013**, em ordem, em ambiente previamente conferido. As cinco primeiras preservam o modelo recebido. `005` contém uma correção necessária: o enum é `administrador`, e não `Administrador`. `006` acrescenta autenticação delegada, limitação de tentativas, permissões de mídia e idempotência para todas as mutações. `007` acrescenta leases, checkpoints e recuperação de falhas do worker. `008` publica no Realtime as 17 tabelas de catálogo/execução consumidas pelo mobile, incluindo formulários, questões e títulos de fotos. `009` preserva os índices fracionários usados na ordenação de questões e opções no Bubble, inclusive no envio e na revisão de respostas. `011` acrescenta as operações contextuais de projeto/célula, documentos e recebimento com NF, permitindo número de projeto pendente sem alterar as filas antigas. `012` preserva respostas históricas importadas cuja questão foi removida na origem, sem permitir novos envios ou correções sem uma questão válida.
+Aplicar as migrações **001 a 015**, em ordem, em ambiente previamente conferido. As cinco primeiras preservam o modelo recebido. `005` contém uma correção necessária: o enum é `administrador`, e não `Administrador`. `006` acrescenta autenticação delegada, limitação de tentativas, permissões de mídia e idempotência para todas as mutações. `007` acrescenta leases, checkpoints e recuperação de falhas do worker. `008` publica no Realtime as 17 tabelas de catálogo/execução consumidas pelo mobile, incluindo formulários, questões e títulos de fotos. `009` preserva os índices fracionários usados na ordenação de questões e opções no Bubble, inclusive no envio e na revisão de respostas. `011` acrescenta as operações contextuais de projeto/célula, documentos e recebimento com NF, permitindo número de projeto pendente sem alterar as filas antigas. `012` preserva respostas históricas importadas cuja questão foi removida na origem, sem permitir novos envios ou correções sem uma questão válida.
 
 A `013` otimiza a paginação dos catálogos por data e identificador, preservando as regras de acesso. A leitura autenticada das 61.803 respostas foi validada em 248 páginas, sem timeout ou perda de registros.
 

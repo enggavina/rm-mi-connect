@@ -1,0 +1,14 @@
+import { getCatalogs } from '@/server/web/data';
+import { PageHeading, Empty, Pagination, Status, display } from '@/components/web/ui';
+import { Icon } from '@/components/web/icons';
+const kinds: Record<string, string> = { clients: 'Clientes', cells: 'Células', types: 'Tipos de equipamento', users: 'Equipe', forms: 'Modelos de formulário' };
+export default async function Cadastros({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams; const filters = Object.fromEntries(['kind', 'q', 'page'].map(key => [key, typeof params[key] === 'string' ? params[key] as string : undefined])); const data = await getCatalogs(filters);
+  return <><PageHeading eyebrow="BASE DA OPERAÇÃO" title="Cadastros" description="Consulte os clientes, a equipe e os modelos que organizam o trabalho da oficina." />
+    <nav className="catalog-tabs" aria-label="Categorias de cadastro">{data.kinds.map(kind => <a key={kind} href={`/cadastros?kind=${kind}`} aria-current={data.kind === kind ? 'page' : undefined}>{kinds[kind]}</a>)}</nav>
+    <section className="panel"><div className="panel-header"><h2>{kinds[data.kind]} <span className="inline-count">{data.total}</span></h2><span className="panel-caption">Catálogo compartilhado com o aplicativo</span></div>
+      <form className="filters" action="/cadastros"><input type="hidden" name="kind" value={data.kind} /><div className="search-field"><Icon name="search" size={16} /><input aria-label="Buscar no cadastro" name="q" defaultValue={filters.q} maxLength={100} placeholder={`Buscar em ${kinds[data.kind].toLocaleLowerCase('pt-BR')}…`} /></div><button className="button secondary">Buscar</button></form>
+      {data.rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>{data.kind === 'forms' ? 'Modelo' : 'Nome'}</th><th>{data.kind === 'users' ? 'Matrícula / cargo' : 'Código / descrição'}</th><th>{data.kind === 'users' ? 'Perfil' : data.kind === 'forms' ? 'Tipo' : 'Referência'}</th>{['users', 'forms'].includes(data.kind) && <th>Status</th>}</tr></thead><tbody>{data.rows.map(row => <tr key={row.id}><td className="table-title">{row.nome || row.titulo}</td><td>{data.kind === 'users' ? <>{row.matricula || '—'}<span className="table-subtitle">{row.cargo || 'Cargo não informado'}</span></> : row.codigo || row.descricao || row.sigla || '—'}</td><td>{data.kind === 'users' ? display(row.perfil) : data.kind === 'forms' ? display(row.tipo) : row.sigla || row.codigo || '—'}</td>{['users', 'forms'].includes(data.kind) && <td><Status value={data.kind === 'forms' ? row.ativo ? 'ativo' : 'inativo' : row.status} /></td>}</tr>)}</tbody></table></div> : <Empty title="Nenhum cadastro encontrado" detail="Ajuste a busca para consultar outros itens." icon="settings" />}
+      <Pagination {...data} base="/cadastros" filters={{ ...filters, kind: data.kind }} />
+    </section></>;
+}

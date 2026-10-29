@@ -33,6 +33,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'integration.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'project_operations.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'pull_performance.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_management.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $sqlFile

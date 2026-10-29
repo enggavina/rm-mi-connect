@@ -12,7 +12,7 @@ jobs:
           - project: mobile
             node: '22'
           - project: desktop
-            node: '20'
+            node: '22'
     defaults:
       run:
         working-directory: ${{ matrix.project }}
@@ -28,5 +28,7 @@ jobs:
       - run: npm test
       - if: matrix.project == 'desktop'
         run: npm run build
+      - if: matrix.project == 'desktop'
+        run: npm run test:smoke
       - if: matrix.project == 'mobile'
         run: npx expo install --check

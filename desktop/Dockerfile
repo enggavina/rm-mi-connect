@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS dependencies
+FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -11,7 +11,7 @@ RUN npm run build
 FROM dependencies AS production-dependencies
 RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
 # Phase 2 can add Chromium/LibreOffice in a separate report worker image.
