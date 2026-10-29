@@ -85,7 +85,11 @@ A QA HTTP pública confirmou: login somente Microsoft, portal negado sem SSO, co
 
 Após a ativação, a consulta de conferência registrou `require_sso=true`, exatamente dois vínculos ativos, **zero sessões BFF, zero fluxos pendentes, zero permissões de ação e zero mutações web de negócio**. DIGITAL continuou ativo, administrador e associado ao mesmo Auth UUID; o gateway mobile manteve EXECUTE autenticado. O core privado, a emissão de permissões e as tabelas de sessão permaneceram indisponíveis aos clientes. Prova local: `.tmp/sso-strict-activation-proof.json`.
 
-O login Microsoft interativo completo permanece **pendente do titular**. A automação da interface foi interrompida pela política quando não identificou a URL; não se simulou uma autenticação corporativa. Os testes realizados comprovam o início real do OAuth, a primitiva Auth EM, as barreiras públicas e os contratos locais, sem afirmar conclusão de uma sessão SSO humana. Nenhum usuário permanece conectado pelos testes.
+A correção posterior `36075d1` foi publicada no deploy Railway `87aeb8cb-079c-432f-b2de-07a7075f2708`, com CI `40829078053` aprovado. Ela ajustou a política de referência das páginas de login/MFA para que o formulário nativo envie a origem correta, preservando a validação CSRF estrita. O clique nativo em Chrome sem credenciais passou a receber 303 e seguir até Microsoft.
+
+Em 29/10/2026, após esse deploy, o titular de **mgavina confirmou o login Microsoft completo e a abertura do painel**. A consulta final, somente leitura, confirmou `require_sso=true`, `WEB-MGAVINA` com perfil `administrador`, status ativo, vínculo ativo e **duas sessões BFF vigentes**. Nenhuma dessas sessões legítimas foi removida ou alterada; hashes, tokens e ciphertext não foram exibidos.
+
+O login SSO interativo real de **softdev05 ainda não foi executado**. Para essa conta, permanecem comprovados o provisionamento como auditor, as concessões de consulta e a primitiva Auth EM testada anteriormente; isso não substitui a validação interativa pelo titular.
 
 ## Validação local
 
