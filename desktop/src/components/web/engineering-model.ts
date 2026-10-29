@@ -6,6 +6,8 @@ export interface EngineeringSnapshot { matrix: WebRow; form_ids: string[]; photo
 export interface EngineeringChoices { types: WebRow[]; cells: WebRow[]; forms: WebRow[]; users: WebRow[]; cellUserLinks: WebRow[]; photoTitles: WebRow[]; statuses: WebRow[] }
 export interface EngineeringPayload { submissionId: string; id: string; celula_id: string; tipo_equipamento_id: string; expected_updated_at: string | null; changes: { ativo?: boolean; visibilidade?: boolean; numero_fotos?: number; form_ids?: string[]; photos?: EngineeringPhoto[]; stages?: EngineeringStage[] } }
 export interface PhotoTitlePayload { submissionId: string; id: string; expected_updated_at: string | null; changes: { titulo: string; numero?: number | null; celula_id?: string | null } }
+export interface DeletePhotoTitlePayload { submissionId: string; id: string; expected_updated_at: string }
+export type PhotoTitleAttempt = { action: 'save'; payload: PhotoTitlePayload } | { action: 'delete'; payload: DeletePhotoTitlePayload };
 
 export function canManageEngineering(access: { profile: { perfil: string }; sso?: { capabilities: readonly string[] } }) {
   return access.profile.perfil === 'administrador' && (!access.sso || access.sso.capabilities.includes('em.engineering.manage'));

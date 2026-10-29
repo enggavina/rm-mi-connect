@@ -25,15 +25,16 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   const result = response.data;
   if (!result || typeof result.id !== 'string' || typeof result.operation !== 'string') return { ok: false, ...mutationError() };
   if (operation === 'save_catalog' || operation === 'delete_catalog') revalidatePath('/cadastros');
-  if (operation === 'save_engineering' || operation === 'save_photo_title') {
+  if (operation === 'save_engineering' || operation === 'save_photo_title' || operation === 'delete_photo_title') {
     revalidatePath('/engenharia', 'layout');
+    revalidatePath('/cadastros');
   }
   if (['create_form_template', 'save_form_template', 'publish_form_template'].includes(operation)) {
     revalidatePath('/modelos-formularios', 'layout');
     if (operation === 'publish_form_template') { revalidatePath('/engenharia', 'layout'); revalidatePath('/cadastros'); }
   }
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
-  if (['plan_cell', 'save_project', 'save_cell_queue', 'transition_stage_approval'].includes(operation)) {
+  if (['plan_cell', 'save_project', 'save_cell_queue', 'transition_stage_approval', 'save_project_route'].includes(operation)) {
     revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga'); revalidatePath('/recebimentos'); revalidatePath('/cronograma');
   }
   if (result.projeto_id) revalidatePath(`/projetos/${result.projeto_id}`);

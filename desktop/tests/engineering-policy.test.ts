@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { saveEngineeringSchema, savePhotoTitleSchema } from '../src/server/web/engineering-policy';
+import { deletePhotoTitleSchema, saveEngineeringSchema, savePhotoTitleSchema } from '../src/server/web/engineering-policy';
 const id = '00000000-0000-4000-8000-000000000001';
 const version = '2026-10-29T18:03:24.123456+00:00';
 const base = { submissionId: id, id, celula_id: id, tipo_equipamento_id: id, expected_updated_at: version };
@@ -34,4 +34,13 @@ test('photo-title creation requires explicit scope while existing unknown scope 
   assert.deepEqual(savePhotoTitleSchema.parse({ ...input, expected_updated_at: version, changes: { titulo: 'Editado' } }).changes, { titulo: 'Editado' });
   for (const numero of [-1, 1001, 1.5]) assert.equal(savePhotoTitleSchema.safeParse({ ...input, changes: { ...input.changes, numero } }).success, false);
   assert.equal(savePhotoTitleSchema.safeParse({ ...input, changes: { ...input.changes, celula_nome: 'Untrusted' } }).success, false);
+});
+
+test('title deletion requires the exact revision and excludes scope, actor and change injection', () => {
+  const value = { submissionId: id, id, expected_updated_at: version };
+  assert.deepEqual(deletePhotoTitleSchema.parse(value), value);
+  for (const input of [{ ...value, expected_updated_at: null }, { ...value, expected_updated_at: 'today' },
+    { ...value, changes: {} }, { ...value, actor_id: id }, { ...value, celula_id: id }, { ...value, id: '../id' }]) {
+    assert.equal(deletePhotoTitleSchema.safeParse(input).success, false);
+  }
 });

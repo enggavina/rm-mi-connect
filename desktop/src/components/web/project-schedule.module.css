@@ -1,0 +1,27 @@
+.workspace { display: grid; grid-template-columns: minmax(250px, 0.8fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.allocations { display: grid; }
+.allocation { padding: 20px; display: flex; gap: 12px; align-items: flex-start; border-bottom: 1px solid #edf0f3; color: inherit; text-decoration: none; }
+.allocation:last-child { border-bottom: 0; }
+.allocation:hover, .allocation[aria-current="page"] { background: var(--red-light); }
+.allocation[aria-current="page"] { box-shadow: inset 3px 0 var(--red); }
+.allocation:focus-visible { outline: 2px solid var(--red); outline-offset: -3px; }
+.sequence { background: #edf1f5; border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; flex-shrink: 0; font-size: 12px; font-weight: 700; }
+.allocationCopy { display: grid; gap: 8px; flex: 1; min-width: 0; font-size: 12px; color: #64748b; }
+.allocationCopy strong { color: #183347; font-size: 14px; }
+.allocationCopy > span { overflow-wrap: anywhere; }
+.context { min-width: 0; }
+.slotTitle { color: #183347; font-size: 13px; font-weight: 600; }
+.orderSummary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 25px; color: #183347; font-weight: 600; font-size: 14px; cursor: pointer; list-style: none; }
+.orderSummary::-webkit-details-marker { display: none; }
+.orderSummary > span:not(:first-child) { font-size: 12px; color: var(--red); }
+.orderOpen, details[open] > .orderSummary > .orderClosed { display: none; }
+details[open] > .orderSummary > .orderOpen { display: inline; }
+.orderSummary:focus-visible { outline: 2px solid var(--red); outline-offset: -3px; }
+@media (max-width: 1000px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 550px) {
+  .projectHeader { display: grid; grid-template-columns: minmax(0, 1fr); gap: 15px; align-items: start; }
+  .projectHeader > div { min-width: 0; }
+  .projectHeader :global(.heading-actions) { width: 100%; flex-direction: column; align-items: stretch; }
+  .projectHeader :global(.heading-actions) :global(.status) { align-self: flex-start; }
+  .projectHeader :global(.button) { min-width: 0; justify-content: center; white-space: normal; }
+}

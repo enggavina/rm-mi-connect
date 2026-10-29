@@ -41,8 +41,15 @@ export const savePhotoTitleSchema = z.object({
     if (!Object.hasOwn(value.changes, 'celula_id') || value.changes.celula_id === undefined) context.addIssue({ code: 'custom', path: ['changes', 'celula_id'], message: 'Escolha uma célula ou o escopo global.' });
   }
 });
+export const deletePhotoTitleSchema = z.object({ submissionId: uuid, id: uuid, expected_updated_at: z.string().datetime({ offset: true }) }).strict();
+export const photoTitleDeletionResultSchema = z.object({
+  operation: z.literal('delete_photo_title'), id: uuid, projeto_id: z.null(),
+  updated_at: z.string().datetime({ offset: true }), idempotent_replay: z.boolean(),
+  record: z.object({ id: uuid }),
+});
 export type SaveEngineeringInput = z.input<typeof saveEngineeringSchema>;
 export type SavePhotoTitleInput = z.input<typeof savePhotoTitleSchema>;
+export type DeletePhotoTitleInput = z.input<typeof deletePhotoTitleSchema>;
 export type EngineeringPhotoInput = z.input<typeof engineeringPhotoSchema>;
 export type EngineeringStageInput = z.input<typeof engineeringStageSchema>;
 export function engineeringMutationError(code?: string) {

@@ -32,3 +32,44 @@ test('matrix and title writes use the shared BFF with stable payloads and preser
     const result = await fixture('administrador', code).saveEngineering(body); assert.ok(!result.ok); assert.equal(result.code, code);
   }
 });
+
+test('title deletion uses the existing engineering grant, exact revision and sanitized reference errors', async () => {
+  const value = { submissionId: id, id, expected_updated_at: version };
+  for (const f of [fixture('auditor'), fixture('padr_o'), fixture('administrador', 'CORP_FORBIDDEN')]) {
+    assert.equal((await f.deletePhotoTitle(value)).ok, false);
+    assert.deepEqual(f.auth, ['em.engineering.manage']); assert.equal(f.calls.length, 0);
+  }
+  const f = fixture();
+  await f.deletePhotoTitle(value); await f.deletePhotoTitle(value);
+  assert.deepEqual(f.calls[0], f.calls[1]); assert.equal(f.calls[0][1], 'delete_photo_title');
+  assert.deepEqual(f.calls[0][2], value); assert.equal(f.calls[0][3], 'em.engineering.manage');
+  assert.deepEqual(f.calls[0][4], (f.calls[1][4]));
+  for (const input of [{ ...value, expected_updated_at: null }, { ...value, changes: {} }, { ...value, actor_id: id }]) {
+    assert.equal((await f.deletePhotoTitle(input)).ok, false);
+  }
+  assert.equal(f.calls.length, 2);
+  const referenced = await fixture('administrador', '23503').deletePhotoTitle(value);
+  assert.ok(!referenced.ok); assert.equal(referenced.code, '23503'); assert.match(referenced.error, /vinculado.*preservados/);
+  for (const code of ['PT409', '23505', 'UNAVAILABLE']) {
+    const result = await fixture('administrador', code).deletePhotoTitle(value); assert.ok(!result.ok); assert.equal(result.code, code);
+  }
+});
+
+test('delete success rejects mismatched envelopes as uncertain and strips private records', async () => {
+  const value = { submissionId: id, id, expected_updated_at: version };
+  const valid = { operation: 'delete_photo_title', id, projeto_id: null, updated_at: version, idempotent_replay: true,
+    record: { id, private_snapshot: 'must not reach UI', titulo: 'Internal title' }, private_metadata: 'must not reach UI' };
+  const session = { client: {}, user: { id }, profile: { id, nome: 'Pessoa', perfil: 'administrador' } } as Awaited<ReturnType<typeof actionUser>>;
+  const run = (data: unknown) => createEngineeringActions({ actionUser: async () => session,
+    mutate: async () => ({ ok: true, data }) as WebActionResult }).deletePhotoTitle(value);
+  assert.deepEqual(await run(valid), { ok: true, data: { operation: 'delete_photo_title', id, projeto_id: null,
+    updated_at: version, idempotent_replay: true, record: { id } } });
+  for (const data of [
+    { ...valid, operation: 'save_photo_title' }, { ...valid, id: '00000000-0000-4000-8000-000000000002' },
+    { ...valid, record: { id: '00000000-0000-4000-8000-000000000002' } }, { ...valid, record: null },
+    { ...valid, projeto_id: id }, { ...valid, updated_at: 'today' }, { ...valid, updated_at: null },
+    { ...valid, updated_at: '2026-10-29T18:03:24' }, { ...valid, idempotent_replay: 'true' },
+  ]) {
+    const result = await run(data); assert.ok(!result.ok); assert.equal(result.code, 'UNAVAILABLE');
+  }
+});

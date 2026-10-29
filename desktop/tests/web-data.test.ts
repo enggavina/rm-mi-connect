@@ -72,6 +72,22 @@ test('project detail paginates photos and does not materialize historical answer
   assert.ok(!db.calls.some(call => call.table === 'rm_respostas'));
   assert.equal(await data.getProject('not-a-uuid'), null);
 });
+
+test('selected gallery is scoped to the project, excludes discarded/files absent and carries exact photo versions', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.photos.read']);
+  const version = '2026-10-29T18:03:24.123456+00:00';
+  db.tables.set('rm_projetos', [{ id: id(1) }]);
+  const photo = { projeto_id: id(1), lixeira: false, foto_url: 'https://cdn.example/a.jpg', selecao_relatorio: true, updated_at: version };
+  db.tables.set('rm_fotos', [{ id: id(2), ...photo }, { id: id(3), ...photo, selecao_relatorio: false }, { id: id(4), ...photo, lixeira: true },
+    { id: id(5), ...photo, projeto_id: id(9) }, { id: id(6), ...photo, foto_url: '' }, { id: id(7), ...photo, foto_url: null }]);
+  const result = await data.getProject(id(1), { selection: 'selected', photoOrder: 'selected' });
+  assert.equal(result?.photoTotal, 1); assert.deepEqual(result?.photos.map(row => row.id), [id(2)]);
+  assert.equal(result?.photos[0].updated_at, version);
+  assert.ok(db.calls.find(call => call.table === 'rm_fotos')?.filters.some(filter => filter[1] === 'selecao_relatorio' && filter[2] === true));
+  const noPhotos = setup(['em.portal.read', 'em.projects.read']); noPhotos.db.tables.set('rm_projetos', [{ id: id(1) }]);
+  assert.deepEqual((await noPhotos.data.getProject(id(1), { selection: 'selected' }))?.photos, []);
+  assert.ok(!noPhotos.db.calls.some(call => call.table === 'rm_fotos'));
+});
 test('overview counts are head-only; recent items remain bounded and no response table is loaded', async () => {
   const { db, data } = setup();
   db.tables.set('rm_projetos', Array.from({ length: 40 }, (_, i) => ({ id: id(i + 1), data_real_de_entrega: null, cliente_id: id(2000), cliente_nome_exportacao: 'Exportação antiga' })));

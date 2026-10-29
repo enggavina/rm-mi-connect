@@ -1,58 +1,121 @@
 import Link from 'next/link';
-import { listPlanning } from '@/server/web/data';
+import { notFound } from 'next/navigation';
+import { createWebData, listProjects } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
-import { formatGanttDay, ganttBar, ganttWindow, GANTT_DAYS, isoCalendarDay } from '@/server/web/gantt';
-import { Empty, PageHeading, Pagination, display } from '@/components/web/ui';
+import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
+import { editorChoices } from '@/server/web/choices';
+import { createProjectScheduleData } from '@/server/web/project-schedule-data';
+import { createProjectRouteData } from '@/server/web/project-route-data';
+import { allocationRecords, orderedProjectAllocations, scheduleHref, scheduleId, scheduleTab, scheduleView, selectedAllocation, type ScheduleTab } from '@/server/web/project-schedule-policy';
+import { PageHeading, Status, Details, Empty, Pagination, date, display } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
+import { CellEditor } from '@/components/web/editor';
+import { StageApprovalTable } from '@/components/web/stage-approval-list';
+import { GanttSchedule } from '@/components/web/gantt-schedule';
+import { ProjectAllocationList } from '@/components/web/project-schedule';
+import { ProjectRouteEditor } from '@/components/web/project-route-editor';
+import s from '@/components/web/project-schedule.module.css';
 
 export default async function Cronograma({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const filters = Object.fromEntries(['q', 'cell', 'status', 'page'].map(key => [key, typeof params[key] === 'string' ? params[key] as string : undefined]));
-  const window = ganttWindow(typeof params.start === 'string' ? params.start : undefined);
-  const [data, session] = await Promise.all([listPlanning(filters), requireWebUser('em.planning.read')]);
+  const session = await requireWebUser('em.planning.read');
   const canProjects = hasWebCapability(session, 'em.projects.read');
-  const cells = new Map(data.cells.map(cell => [cell.id, cell.nome]));
-  const periodFilters = { ...filters, start: window.isoStart };
-  const periodHref = (start: number) => {
-    const query = new URLSearchParams(Object.entries({ ...periodFilters, start: isoCalendarDay(start) }).filter((entry): entry is [string, string] => !!entry[1]));
-    return `/cronograma?${query}`;
-  };
-  return <>
-    <PageHeading eyebrow="PCP · PLANEJAMENTO E CONTROLE" title="Cronograma" description="Consulte os prazos planejados das células em uma janela de seis semanas." actions={<Link className="button secondary" href="/planejamento"><Icon name="board" size={16} />Ver planejamento</Link>} />
-    {window.invalidStart && <p className="notice" role="status">A data informada é inválida. O período padrão está sendo exibido.</p>}
-    <section className="panel">
-      <div className="panel-header"><div><h2>{formatGanttDay(window.start)} — {formatGanttDay(window.end)}</h2><p>42 dias · Datas da oficina no horário de São Paulo</p></div><div className="heading-actions">
-        <a className="button small secondary" href={periodHref(window.start - GANTT_DAYS)} aria-label="Ver seis semanas anteriores"><Icon name="back" size={14} />Anterior</a>
-        <a className="button small secondary" href={periodHref(window.today - 14)}>Hoje</a>
-        <a className="button small secondary" href={periodHref(window.start + GANTT_DAYS)} aria-label="Ver próximas seis semanas">Próximo<Icon name="arrow" size={14} /></a>
-      </div></div>
-      <form className="filters" action="/cronograma">
-        <div className="search-field"><Icon name="search" size={16} /><input name="q" aria-label="Buscar OS ou projeto" defaultValue={filters.q} placeholder="Buscar OS ou projeto…" maxLength={100} /></div>
-        <select name="cell" aria-label="Célula" defaultValue={filters.cell || ''}><option value="">Todas as células</option>{data.cells.map(cell => <option key={cell.id} value={cell.id}>{cell.nome}</option>)}</select>
-        <select name="status" aria-label="Status da célula" defaultValue={filters.status || ''}><option value="">Todos os status</option>{data.statuses.map(status => <option key={status.id} value={status.option_key}>{status.bubble_display}</option>)}</select>
-        <div className="field"><label htmlFor="gantt-start">Início do período</label><input id="gantt-start" name="start" type="date" defaultValue={window.isoStart} required /></div>
-        <button type="submit" className="button secondary">Aplicar</button>
+  const view = scheduleView(params, canProjects);
+  const viewNavigation = <nav className="tabs" aria-label="Visões do cronograma">
+    {canProjects && <a href={scheduleHref()} aria-current={view === 'project' ? 'page' : undefined}>Células por projeto</a>}
+    <a href="/cronograma?view=gantt" aria-current={view === 'gantt' ? 'page' : undefined}>Gantt de prazos</a>
+  </nav>;
+  const heading = <PageHeading eyebrow="PCP · PLANEJAMENTO E CONTROLE" title="Cronograma"
+    description={view === 'project' ? 'Escolha um projeto e acompanhe o roteiro e os registros de cada célula.' : 'Consulte os prazos planejados das células em uma janela de seis semanas.'}
+    actions={<Link className="button secondary" href="/planejamento"><Icon name="board" size={16} />Ver planejamento</Link>} />;
+  if (view === 'gantt') return <>{heading}{viewNavigation}<GanttSchedule params={params} canProjects={canProjects} /></>;
+
+  const projectId = scheduleId(params.project);
+  if (!projectId) {
+    const q = typeof params.q === 'string' ? params.q : undefined;
+    const client = scheduleId(params.client);
+    const projects = await listProjects({ q, client, page: typeof params.page === 'string' ? params.page : undefined });
+    return <>{heading}{viewNavigation}<section className="panel"><div className="panel-header"><div><h2>Selecionar projeto</h2><p>Pesquise pela OS ou escolha o cliente.</p></div></div>
+      {params.project && <p className="notice" role="status">O projeto informado é inválido. Selecione um projeto da lista.</p>}
+      <form className="filters" action="/cronograma"><input type="hidden" name="view" value="project" />
+        <div className="search-field"><Icon name="search" size={16} /><input name="q" aria-label="Buscar OS, projeto ou cliente" defaultValue={q} placeholder="OS, projeto ou cliente…" maxLength={100} /></div>
+        <select name="client" aria-label="Cliente" defaultValue={client || ''}><option value="">Todos os clientes</option>{projects.clients.map(customer => <option key={customer.id} value={customer.id}>{customer.nome}</option>)}</select>
+        <button className="button secondary" type="submit">Pesquisar</button><Link className="button secondary" href="/planejamento">Voltar ao planejamento</Link>
       </form>
-      <div className="gantt-legend"><span><i className="legend-dot" />Planejado</span><span><i className="legend-dot red" />Prazo vencido</span><span><i className="legend-dot green" />Finalizado</span></div>
-      {data.rows.length ? <div className="gantt-scroll" role="region" aria-label="Cronograma por célula, com rolagem horizontal" tabIndex={0}><div className="gantt" role="table" aria-label="Prazos das células dos projetos">
-        <div className="gantt-head" role="row"><div role="columnheader">Projeto / célula</div><div className="gantt-axis" role="columnheader" aria-label="Seis semanas">{window.ticks.map(tick => <span key={tick}>{formatGanttDay(tick, true)}</span>)}</div></div>
-        {data.rows.map(row => {
-          const bar = ganttBar({ data_inicio: row.data_inicio, data_limite: row.data_limite, status: row.status }, window);
-          const number = row.project?.numero || row.numero_projeto;
-          const href = `/projetos/${row.projeto_id}?tab=planejamento`;
-          const range = bar.kind === 'bar' ? `${formatGanttDay(bar.start)} a ${formatGanttDay(bar.end)}` : '';
-          const state = bar.kind === 'bar' ? bar.complete ? 'Finalizado' : bar.overdue ? 'Prazo vencido' : display(row.status) : '';
-          return <div className="gantt-row" role="row" key={row.id}>
-            <div className="gantt-row-title" role="rowheader">{canProjects ? <Link href={href}>{number ? `OS ${String(number).trim()}` : 'Projeto sem OS'}</Link> : <span>{number ? `OS ${String(number).trim()}` : 'Projeto sem OS'}</span>}<small>{cells.get(row.celula_id) || 'Célula não informada'}</small><small>{display(row.status)}</small></div>
-            <div className="gantt-track" role="cell">
-              {bar.kind === 'bar' ? canProjects ? <Link href={href} className={`gantt-bar${bar.complete ? ' complete' : bar.overdue ? ' overdue' : ''}`} style={{ left: `${bar.left}%`, width: `${bar.width}%` }} title={`${range} · ${state}`} aria-label={`Planejamento: ${range}. ${state}. Abrir projeto.`}>{formatGanttDay(bar.start, true)} — {formatGanttDay(bar.end, true)}</Link> : <span className={`gantt-bar${bar.complete ? ' complete' : bar.overdue ? ' overdue' : ''}`} style={{ left: `${bar.left}%`, width: `${bar.width}%` }} title={`${range} · ${state}`}>{formatGanttDay(bar.start, true)} — {formatGanttDay(bar.end, true)}</span>
-                : <span className="panel-caption" style={{ padding: '0 16px' }}>{bar.kind === 'missing' ? 'Sem datas planejadas' : bar.kind === 'invalid' ? 'Datas planejadas inválidas' : 'Fora do período'}</span>}
-            </div>
-          </div>;
-        })}
-      </div></div> : <Empty title="Nenhuma alocação encontrada" detail="Ajuste os filtros ou abra um projeto para planejar suas células." icon="calendar" />}
-      <Pagination {...data} base="/cronograma" filters={periodFilters} />
+      {projects.rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Projeto / OS</th><th>Cliente</th><th>Status PCP</th><th className="table-action">Selecionar</th></tr></thead><tbody>{projects.rows.map(project => <tr key={project.id}>
+        <td><a className="table-title" href={scheduleHref(project.id)}>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</a><span className="table-subtitle">{project.descricao_equipamento || project.nome}</span></td>
+        <td>{project.cliente_nome || 'Cliente não informado'}</td><td><Status value={project.status_pcp} /></td>
+        <td className="table-action"><a href={scheduleHref(project.id)} aria-label={`Selecionar ${project.numero || project.nome || 'projeto'}`}><Icon name="arrow" size={16} /></a></td>
+      </tr>)}</tbody></table></div> : <Empty title="Nenhum projeto encontrado" detail="Ajuste a pesquisa ou o cliente selecionado." icon="search" />}
+      <Pagination {...projects} base="/cronograma" filters={{ view: 'project', q, client }} />
+    </section></>;
+  }
+  // Reuse the project reader while excluding unused media/document/history
+  // capabilities from this composition. Slots below have their own bounded DTO.
+  const projectCapabilities = (session.sso?.capabilities ?? CORPORATE_CAPABILITIES).filter(capability => !['em.photos.read', 'em.documents.read', 'em.history.read'].includes(capability));
+  const [data, route] = await Promise.all([
+    createWebData(session.client, projectCapabilities).getProject(projectId),
+    createProjectRouteData(session.client, session.sso?.capabilities).getProjectRoute(projectId),
+  ]);
+  if (!data) notFound();
+  const project = data.project;
+  const allocations = orderedProjectAllocations(data.allocations, projectId);
+  const current = selectedAllocation(allocations, projectId, params.allocation);
+  const tabs: { id: ScheduleTab; label: string }[] = [
+    ...(hasWebCapability(session, 'em.photos.read') ? [{ id: 'fotos' as const, label: 'Fotos previstas' }] : []),
+    ...(hasWebCapability(session, 'em.forms.read') ? [{ id: 'formularios' as const, label: 'Formulários' }] : []),
+    ...(hasWebCapability(session, 'em.approvals.read') ? [{ id: 'etapas' as const, label: 'Aprovações de etapas' }] : []),
+  ];
+  const tab = scheduleTab(params.tab, tabs.map(item => item.id));
+  const manager = ['administrador', 'padr_o'].includes(session.profile.perfil);
+  const canPlan = manager && hasWebCapability(session, 'em.planning.manage');
+  const canEditProject = manager && hasWebCapability(session, 'em.projects.manage');
+  const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
+  const choices = canPlan && !closed ? await editorChoices('planning') : null;
+  const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
+  const photos = current && tab === 'fotos' ? await reader.photos(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
+  const stages = current && tab === 'etapas' ? await reader.stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
+  const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome]));
+  const userNames = new Map(data.users.map(user => [user.id, user.nome]));
+  const formNames = new Map(data.forms.map(form => [form.id, form.titulo]));
+  const records = current ? allocationRecords(data.records, current) : [];
+  const formIds = current ? [...new Set<string>([...(current.forms_ids || []), ...records.map(record => record.form_id)].filter((id): id is string => typeof id === 'string'))] : [];
+
+  return <>{heading}{viewNavigation}<a className="back-link" href={scheduleHref()}><Icon name="back" size={15} />Trocar projeto</a>
+    <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</h2><p>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</p></div><div className="heading-actions"><Status value={project.status_pcp} /><Link className="button small secondary" href={`/projetos/${projectId}`}>Informações do projeto</Link>{canEditProject && <Link className="button small secondary" href={`/projetos/${projectId}/editar`}><Icon name="edit" size={14} />Editar projeto</Link>}</div></div>
+      <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
     </section>
+    {closed && <p className="notice" role="status">Este projeto está encerrado. O planejamento permanece disponível para consulta.</p>}
+    {route && route.total > 0 && canPlan && !closed && <details className="panel"><summary className={s.orderSummary}><span>Organizar sequência de execução</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary><div className="panel-content">
+      <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={scheduleHref(projectId, current?.id, tab)} />
+    </div></details>}
+    {params.allocation && !current && <p className="notice" role="status">A célula selecionada não pertence a este projeto ou não está mais disponível. Selecione uma célula do roteiro.</p>}
+    <div className={s.workspace}><div><ProjectAllocationList projectId={projectId} allocations={allocations} cells={data.cells} selectedId={current?.id} tab={tab} />
+      {choices && data.cells.some(cell => !allocations.some(row => row.celula_id === cell.id)) && <CellEditor key={projectId} projectId={projectId} cells={data.cells.filter(cell => !allocations.some(row => row.celula_id === cell.id))} forms={choices.forms} users={choices.users} />}
+    </div><div className={s.context}>
+      {current ? <><section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{cellNames.get(current.celula_id) || 'Célula selecionada'}</h2><p>{current.visibilidade ? 'Disponível no mobile' : 'Oculta no mobile'} · {current.forms_ids?.length || 0} formulários vinculados</p></div><div className="heading-actions"><Status value={current.status} /><a className="button small secondary" href={scheduleHref(projectId)}><Icon name="close" size={14} />Fechar célula</a></div></div>
+        <div className="panel-content"><Details values={[[ 'Início previsto', date(current.data_inicio)], ['Prazo', date(current.data_limite)], ['Responsável', userNames.get(current.responsavel_id)], ['Prioridade', display(current.prioridade)], ['Execução', current.bloqueada === 'sim' ? `Bloqueada · ${current.motivo_bloqueio || 'Motivo não informado'}` : 'Sem bloqueio'], ['Observação', current.observacao]]} />
+          {choices && !['finalizado', 'n_a'].includes(current.status) && <CellEditor key={current.id} projectId={projectId} allocation={current} cells={data.cells} forms={choices.forms} users={choices.users} />}
+        </div></section>
+        {tabs.length ? <nav className="tabs" aria-label="Registros da célula">{tabs.map(item => <a key={item.id} href={scheduleHref(projectId, current.id, item.id)} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav> : <p className="notice">Seu acesso permite consultar o planejamento. As demais áreas dependem das permissões de fotos, formulários ou aprovações.</p>}
+        {tab === 'fotos' && photos && <section className="panel"><div className="panel-header"><div><h2>Fotos previstas e registradas <span className="inline-count">{photos.total}</span></h2><p>Inclui os títulos previstos que ainda aguardam captura.</p></div><Link className="text-link" href={`/projetos/${projectId}?tab=fotos`}>Abrir galeria<Icon name="arrow" size={14} /></Link></div>
+          {photos.rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Foto</th><th>Tipo</th><th>Registro</th></tr></thead><tbody>{photos.rows.map(photo => <tr key={photo.id}><td><span className="table-title">{photo.titulo || 'Foto sem título'}</span><span className="table-subtitle">{photo.tag ? `Tag: ${photo.tag}` : photo.descricao || photo.legenda}</span></td><td>{display(photo.categoria_foto)}</td><td><Status value={photo.captured ? 'finalizado' : 'pendente'} label={photo.captured ? 'Capturada' : 'Aguardando captura'} /></td></tr>)}</tbody></table></div> : <Empty title="Nenhuma foto vinculada a esta célula" detail="As fotos previstas são copiadas do roteiro do tipo de equipamento nas novas alocações." icon="image" />}
+          <Pagination {...photos} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'fotos' }} />
+        </section>}
+        {tab === 'formularios' && <section className="panel"><div className="panel-header"><div><h2>Formulários da célula <span className="inline-count">{formIds.length}</span></h2><p>Vínculos do projeto e registros preservados da execução.</p></div></div>
+          {formIds.length ? formIds.map(formId => {
+            const submitted = records.filter(record => record.form_id === formId);
+            return <div className="panel-content" key={formId}><h3 className={s.slotTitle}>{formNames.get(formId) || 'Formulário não disponível'}</h3>
+              {!current.forms_ids?.includes(formId) && <p className="form-note">Registro histórico de formulário que não está no vínculo atual.</p>}
+              {submitted.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Registro</th><th>Operador</th><th>Status</th><th>Registro em</th><th className="table-action">Consultar</th></tr></thead><tbody>{submitted.map(record => <tr key={record.id}>
+                <td>{record.codigo_text || record.codigo || 'Sem código'}<span className="table-subtitle">{record.preenchido ? 'Preenchido' : 'Em preenchimento'}{record.revisado ? ' · Revisado' : ''}</span></td><td>{userNames.get(record.identidade_user_id) || userNames.get(record.created_by_user_id) || 'Não informado'}{record.avaliador_user_id && <span className="table-subtitle">Avaliador: {userNames.get(record.avaliador_user_id) || 'Não disponível'}</span>}</td><td><Status value={record.status} /></td><td>{date(record.created_at, true)}</td><td className="table-action"><Link href={`/formularios/${record.id}`} aria-label={`Consultar respostas de ${formNames.get(formId) || 'formulário'}`}><Icon name="arrow" size={15} /></Link></td>
+              </tr>)}</tbody></table></div> : <p className="form-note">Aguardando preenchimento pela equipe.</p>}
+            </div>;
+          }) : <Empty title="Nenhum formulário vinculado" detail="O planejamento pode vincular os formulários publicados para esta célula." icon="clipboard" />}
+        </section>}
+        {tab === 'etapas' && stages && <section className="panel"><div className="panel-header"><h2>Aprovações da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
+      </> : <section className="panel"><Empty title="Selecione uma célula" detail="Escolha uma célula do roteiro para consultar datas, planejamento, fotos, formulários e aprovações." icon="board" /></section>}
+    </div></div>
   </>;
 }

@@ -3,6 +3,7 @@ import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { editableCatalogKindSchema, type EditableCatalogKind } from './catalog-policy';
 import { withFormVersionLabels } from './form-version-labels';
+import { projectPhotoFilters, type ProjectPhotoFilters } from './project-photo-policy';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -24,7 +25,7 @@ const RECORD = 'id,projeto_id,numero_projeto_rm,celula_id,form_id,codigo,codigo_
 const ANSWER = 'id,registro_formulario_id,questao_id,titulo_form,indice,enunciado,tag,tipo,dimensoes,resposta,itens,itens_questoes_ids,fotos_urls,assinatura_url,date_inicio,data_fim,hora,revisar,updated_at';
 const QUESTION = 'id,form_id,indice,enunciado,subtitulo,tag,tipo,subtipo,dimensoes,obrigatorio';
 const ITEM = 'id,form_id,questao_id,indice,descricao';
-const PHOTO = 'id,projeto_id,celula_id,celula_projeto_id,categoria_foto,tipo_recebimento,identificador_foto_key,titulo,descricao,legenda,foto_url,numero,selecao_relatorio,created_at';
+const PHOTO = 'id,projeto_id,celula_id,celula_projeto_id,categoria_foto,tipo_recebimento,identificador_foto_key,titulo,descricao,legenda,foto_url,numero,selecao_relatorio,created_at,updated_at';
 const DOCUMENT = 'id,projeto_id,registro_formulario_id,nome,tipo_documento,arquivo_url,ordem_compilacao,incluir_no_compilado,created_at,updated_at';
 const ATTACHMENT = 'id,projeto_id,nome,descricao,arquivo_url,tipo_arquivo,created_at,updated_at';
 const ACTIVE = 'status_pcp.not.in.(cancelado,finalizando_para_faturar),status_pcp.is.null';
@@ -134,10 +135,17 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     result.rows = result.rows.map(row => ({ ...row, cliente_nome: names.get(row.cliente_id) || row.cliente_nome_exportacao || null }));
     return { ...result, clients, cells, statuses };
   }
-  async function getProject(id: string, filters: { photoPage?: number | string } = {}) {
+  async function getProject(id: string, filters: ProjectPhotoFilters = {}) {
     requireCapability('em.projects.read');
     const project = await one('rm_projetos', projectColumns, id);
     if (!project) return null;
+    const photoFilters = projectPhotoFilters(filters);
+    const projectPictures = () => {
+      let query = client.from('rm_fotos').select(PHOTO, { count: 'exact' }).eq('projeto_id', id).eq('lixeira', false).not('foto_url', 'is', null).neq('foto_url', '');
+      if (photoFilters.selectedOnly) query = query.eq('selecao_relatorio', true);
+      if (photoFilters.selectedFirst) query = query.order('selecao_relatorio', { ascending: false });
+      return page(query.order('numero').order('id'), filters.photoPage, 24);
+    };
     const [customers, equipmentRows, allocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
       byIds('rm_clientes', CLIENT, [project.cliente_id]),
       all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)),
@@ -146,7 +154,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.history.read') ? all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)) : [],
       allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
-      allowed('em.photos.read') ? page(client.from('rm_fotos').select(PHOTO, { count: 'exact' }).eq('projeto_id', id).eq('lixeira', false).not('foto_url', 'is', null).order('numero').order('id'), filters.photoPage, 24) : { rows: [], total: 0, page: 1, pageSize: 24 },
+      allowed('em.photos.read') ? projectPictures() : { rows: [], total: 0, page: 1, pageSize: 24 },
       allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
     ]);
     const [forms, users] = await Promise.all([
@@ -232,7 +240,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
 async function data(capability: CorporateCapability) { const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability); return createWebData(session.client, session.sso?.capabilities); }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
 export async function listProjects(filters: ProjectFilters = {}) { return (await data('em.projects.read')).listProjects(filters); }
-export async function getProject(id: string, filters: { photoPage?: number | string } = {}) { return (await data('em.projects.read')).getProject(id, filters); }
+export async function getProject(id: string, filters: ProjectPhotoFilters = {}) { return (await data('em.projects.read')).getProject(id, filters); }
 export async function getRecord(id: string) { return (await data('em.forms.read')).getRecord(id); }
 export async function listPlanning(filters: PlanningFilters = {}) { return (await data('em.planning.read')).listPlanning(filters); }
 export async function listForms(filters: FormFilters = {}) { return (await data('em.forms.read')).listForms(filters); }

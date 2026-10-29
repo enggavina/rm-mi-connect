@@ -4,7 +4,7 @@ import type { WebActionResult } from '@/server/web/actions';
 import { catalogFailureState } from './catalog-model';
 import { freezeEngineeringRequest } from './engineering-model';
 
-export function useEngineeringSave<T>(action: (input: T) => Promise<WebActionResult>, destination: string) {
+export function useEngineeringSave<T>(action: (input: T) => Promise<WebActionResult>, destination: string | ((input: T) => string)) {
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [stale, setStale] = useState(false), [unauthorized, setUnauthorized] = useState(false), [error, setError] = useState('');
   const attempt = useRef<T | null>(null), inFlight = useRef(false);
   useEffect(() => {
@@ -17,7 +17,7 @@ export function useEngineeringSave<T>(action: (input: T) => Promise<WebActionRes
     inFlight.current = true; setBusy(true); setError(''); attempt.current ??= freezeEngineeringRequest(payload);
     try {
       const result = await action(attempt.current);
-      if (result.ok) { attempt.current = null; setUncertain(false); setBusy(false); setTimeout(() => window.location.assign(destination), 0); }
+      if (result.ok) { const target = typeof destination === 'function' ? destination(attempt.current ?? payload) : destination; attempt.current = null; setUncertain(false); setBusy(false); setTimeout(() => window.location.assign(target), 0); }
       else { const state = catalogFailureState(result); setError(result.error); setUncertain(state.uncertain); setStale(state.stale); setUnauthorized(state.unauthorized); if (!state.uncertain) attempt.current = null; }
     } catch { setUncertain(true); setError('A conexão foi interrompida. Tente confirmar o envio novamente; os mesmos dados serão usados para evitar duplicação.'); }
     finally { inFlight.current = false; setBusy(false); }

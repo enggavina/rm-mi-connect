@@ -40,6 +40,9 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_templates.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_stage_approvals.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_pcp_queues.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_photo_selection.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_photo_title_deletion.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_route.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -51,6 +54,15 @@ try {
     }
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '021_rm_web_pcp_queues.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_pcp_queues_upgrade.sql'
+    }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '022_rm_web_project_photo_selection.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_photo_selection_upgrade.sql'
+    }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '023_rm_web_photo_title_deletion.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_photo_title_deletion_upgrade.sql'
+    }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '024_rm_web_project_route.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_route_upgrade.sql'
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
