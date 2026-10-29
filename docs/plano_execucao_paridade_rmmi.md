@@ -46,11 +46,11 @@ Infraestrutura reutilizada: App Router/SSR e shell EM, componentes de formulári
 
 ## Validação e publicação
 
-### Incremento seguinte autorizado: ajustes e fotos operacionais
+### Incremento 025 publicado: ajustes e fotos operacionais
 
 Pedido posterior à publicação 024: remover a funcionalidade “Quantidade prevista de fotos”, a aba de Aprovações de etapas do dossiê do projeto e o checkbox de definição manual de formulários na nova alocação. A coluna histórica de quantidade não será apagada; novas escritas serão recusadas e os recibos anteriores preservarão seu replay. A nova alocação sempre usará os modelos, enquanto a edição das alocações existentes conservará os vínculos e proteções de registros enviados. Aprovações continuam no módulo próprio e no Cronograma; o mobile não muda.
 
-A próxima prioridade será completar fotos obrigatórias da alocação no Cronograma: adicionar títulos aplicáveis em lote, editar tag, retirar slot vazio e restaurar explicitamente o mesmo ID quando necessário. Reutilizar `rm_fotos`, `rm_cadastro_fotos`, `lixeira`, o gateway web, SSO e o hook de envio; nenhuma tabela paralela ou contador previsto será criado. Migração nova 025, leitores/ações `operational-photo-*` e editor reutilizável na aba de fotos.
+O contrato definido antes da implementação previu completar fotos obrigatórias da alocação no Cronograma: adicionar títulos aplicáveis em lote, editar tag, retirar slot vazio e restaurar explicitamente o mesmo ID quando necessário. Reutilizar `rm_fotos`, `rm_cadastro_fotos`, `lixeira`, o gateway web, SSO e o hook de envio; nenhuma tabela paralela ou contador previsto será criado. Migração nova 025, leitores/ações `operational-photo-*` e editor reutilizável na aba de fotos.
 
 Risco identificado antes da implementação: a RPC mobile anterior atualiza a captura com `lixeira=false`, podendo restaurar silenciosamente uma foto retirada. A nova versão precisa serializar projeto/foto e recusar esse caso com mensagem clara. A fila mobile conserva arquivo, parâmetros e protocolo; o gestor poderá restaurar o slot original para que o operador repita o mesmo envio. Não haverá exclusão física, descarte automático da fila ou recriação de ID para resolver a disputa.
 
@@ -59,3 +59,9 @@ Adicionar exige escolhas limitadas à célula/global e planejamento autorizado; 
 Cada incremento precisa de persistência real, acesso atual, estados de espera/erro, replay após resultado ambíguo e conflito explícito. Usar testes de domínio/BFF e PostgreSQL isolado, incluindo disputa quando necessária; tipos, build e smokes; navegador com fixtures exclusivamente locais e negações públicas após deploy. Não existe comando lint configurado atualmente: declarar essa limitação, sem fingir execução. Não criar dados artificiais em produção.
 
 Aplicar somente novas migrações ao Supabase `oficina-em-mi-off`, com verificação de alvo e preservação das tabelas anteriores. Publicar no Railway EM após validações, conforme autorização permanente. Registrar commit, migração, deploy, provas, limites e pendências no relatório final. Entregas parciais não significam conclusão da paridade global.
+
+## Resultado do incremento 025
+
+Consumidor **`801bb589d083cd270e45e3318dfad9912b44bf96`**, Railway **`8debd02e-4f6e-44e9-8e6a-22fc43a44216`** com `SUCCESS`, migração **025 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40946936615). As três remoções e a gestão operacional de fotos foram concluídas. **227 testes desktop, 14 suítes PostgreSQL, 32 verificações de navegador, tipos, build e dois smokes aprovados**. Os 19 cenários novos e 13 da galeria usaram o build `xdXK03Qwidz_57ktbm0MH`, HTTP/autenticação simulados e DOM real; zero erros de página ou origens externas. As capturas desktop/390 px foram inspecionadas. Não houve CRUD artificial em produção nem login Microsoft humano automatizado. A aplicação definitiva preservou 67 snapshots completos; histórico 001–025 confirmado, todas essas migrações agora são imutáveis. Health 200, 20 negações e PKCE até Microsoft conferidos. [Relatório atualizado](relatorio_entrega_paridade_rmmi.md).
+
+Próxima prioridade objetiva: atribuição de avaliador antes do primeiro registro de formulário; depois, editor das regras operacionais de etapas. Continuam pendentes exclusão protegida de alocação, visibilidade com manutenção de fila, cadastros complementares, Word/relatórios, autorização por elementos e comercial, conforme dependências da matriz.

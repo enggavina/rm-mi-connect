@@ -4,7 +4,20 @@ Data: 29/10/2026. Complemento ao [plano de execução](plano_execucao_paridade_r
 
 ## Situação
 
-**Incremento publicado em [EM web](https://em-web-production.up.railway.app).** Consumidor **`675649e6caf5c664f9888e3b5f2bcd8d42d50904`**, deployment Railway **`65221686-f149-4917-aa1e-f5e1c3b234f8`** com `SUCCESS`; migrações **022–024 aplicadas**, após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40939109207). A paridade global solicitada não está concluída.
+**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): ajustes e fotos operacionais.** Consumidor **`801bb589d083cd270e45e3318dfad9912b44bf96`**, Railway **`8debd02e-4f6e-44e9-8e6a-22fc43a44216`** com `SUCCESS`, migração **025 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40946936615). A paridade global solicitada não está concluída. O incremento anterior 022–024 permanece registrado nas seções históricas abaixo.
+
+## Incremento 025: ajustes e próxima prioridade entregue
+
+- Retirada da funcionalidade “Quantidade prevista de fotos” da interface, DTO e novas escritas. Coluna/116 valores históricos e replay de recibos anteriores preservados.
+- Retirada da aba “Aprovações de etapas” no detalhe do projeto; módulo próprio e aba da célula no Cronograma preservados. Nova alocação utiliza formulários dos modelos sem checkbox/payload manual; edição das alocações existentes conserva vínculos/proteções.
+- Fotos obrigatórias da alocação: incluir títulos aplicáveis em lote, editar tag, retirar previsão vazia/não selecionada e restaurar o mesmo ID. Arquivo principal ou qualquer arquivo de lista bloqueia retirada. SQL/JWT/RLS, SSO/MFA, versões, recibos e replay; nenhuma nova capacidade/concessão na Central. [Contrato](../rm-mobile-supabase/WEB_OPERATIONAL_PHOTOS.md).
+- **227 testes desktop, 14 suítes PostgreSQL, 32 verificações de navegador, tipos, build e dois smokes aprovados**. Os 19 cenários novos e 13 da galeria usaram o build `xdXK03Qwidz_57ktbm0MH`, HTTP/autenticação simulados e DOM real; zero erros de página ou origens externas. As capturas desktop/390 px foram inspecionadas. Não houve CRUD artificial em produção nem login Microsoft humano automatizado. PostgreSQL inclui 12 disputas reais novas, retentativa offline do mesmo UUID, upgrade com 67 snapshots e callers web/mobile aquecidos. Nenhum APK novo necessário.
+- Ensaio com rollback e aplicação definitiva conservaram integralmente 67 snapshots. Pós-aplicação: 102 usuários, 14.595 fotos, 945 etapas, outbox 4, quatro recibos e 486 seleções. `require_sso=true`, 56 tabelas RM com RLS, dispatcher privado e leitura anônima recusados. SHA256 aplicado/versionado: `acdb4c09275801d456af88c0895eb5f9b744b761ba86b046e78a03adaa6fcfe7`.
+- Railway `SUCCESS`, health 200, 20 negações em dez URLs, Microsoft-only/CSRF/PKCE até Microsoft confirmados; só o fluxo próprio de QA foi cancelado. Ponte de saída desativada, Bubble somente leitura e nenhum serviço de outro sistema alterado.
+
+Próxima prioridade: atribuição de avaliador antes do primeiro registro, depois regras de etapas operacionais. Essa atribuição exige contrato próprio; o histórico `rm_aprovacoes_registro` não será usado para fabricar um registro de formulário.
+
+Provas locais ignoradas: `operational-025-{rehearse,apply}-proof.json`, `operational-postflight.json`, `operational-ci-proof.json`, `operational-deployment.json`, `operational-public-qa.json`, `operational-photos-qa-summary.json`, `project-photo-qa-summary.json` e `operational-final.log`. Auditoria final dos fontes e dos 70 JavaScripts sem os dez segredos locais conhecidos.
 
 ## Cobertura da análise
 
@@ -33,13 +46,13 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 - Leitores de projeto, `CellEditor`, editor de projeto, componentes de foto/ampliação, formulários e decisões de etapas. O Gantt de 42 dias permanece na visão própria, com filtros, período, paginação e reconhecimento das URLs legadas com período/célula/status. O endereço base passa à visão de projeto solicitada.
 - BFF/mutação transacional, permits SSO, recibos, códigos de conflito, controle por versão e hook de envio congelado. A pequena extensão do destino do hook preserva o uso anterior por string.
 - Capacidades atuais; nenhuma nova concessão na Central. As identidades legadas de tablet/operadores e os administradores EM permanecem separados da administração global.
-- Migrações anteriores 001–021 preservadas; novas 022–024 aditivas, sem reescrever projetos/respostas ou alterar o aplicativo mobile. A ponte de saída não foi ativada.
+- No incremento 022–024, migrações anteriores 001–021 foram preservadas; novas 022–024 aditivas, sem reescrever projetos/respostas ou alterar o aplicativo mobile. A ponte de saída não foi ativada.
 
 ## O que permanece pendente
 
 | Área | Lacuna real / dependência |
 | --- | --- |
-| Group comJg completo | CRUD de fotos previstas/exceções e tags; atribuição de avaliador antes do primeiro registro; editor das regras operacionais de etapas; exclusão protegida de alocação; reconciliação da visibilidade com a fila. A nova composição não torna esses comandos existentes por si só. |
+| Group comJg completo | Atribuição de avaliador antes do primeiro registro; editor das regras operacionais de etapas; exclusão protegida de alocação; reconciliação da visibilidade com a fila. A nova composição não torna esses comandos existentes por si só. |
 | Formulários e aprovações | Consulta/revisão/decisão existentes foram reutilizadas. Atribuição prévia Bubble `AprovacaoForm` não equivale a `rm_aprovacoes_registro`, que é histórico e exige um registro. Não criar preenchimento fictício para suprir essa diferença. |
 | Títulos/tipos/células | Escopo do título continua imutável no editor, ao contrário do legado; transferência precisa reconciliar vínculos textuais/IDs. Complementos de imagens/contatos/equipes e gestão operacional de usuários ainda incompletos. |
 | Templates Word | Contrato distinto de Form, com criação/exclusão externa e Google ID. `rm_templates_word` existe, mas faltam reconciliação/importação, armazenamento, jobs e fluxo completo de falha/retentativa. |
@@ -65,7 +78,7 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 - Migrações novas `022_rm_web_project_photo_selection.sql`, `023_rm_web_photo_title_deletion.sql`, `024_rm_web_project_route.sql`; seis arquivos de teste SQL e runner existente; testes TS de domínio/BFF/leitores/navegação/hook.
 - Contratos [fotos](../rm-mobile-supabase/WEB_PROJECT_PHOTOS.md), [roteiro](../rm-mobile-supabase/WEB_PROJECT_ROUTE.md), [Engenharia](../rm-mobile-supabase/WEB_ENGINEERING.md); quatro discoveries e plano desta revisão.
 
-## Verificação realizada até aqui
+## Verificação histórica do incremento 022–024
 
 - **214 testes desktop aprovados**, typecheck e build Next aprovados. Não há comando/configuração lint próprio no projeto; não foi declarada uma execução separada de ESLint. O build executou sua etapa de validação configurada e a verificação de tipos.
 - **13 suítes PostgreSQL isoladas**, migrações 001–024 e upgrades 017/020/021/022/023/024 aprovados; comparação de 67 snapshots e wrapper aquecido. Sete disputas novas de fotos e 14 de roteiro, além da disputa de exclusão/vínculo de título e das suítes anteriores. Ajustes nas fixtures de testes foram feitos antes de aceitar o resultado.
@@ -76,7 +89,7 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 
 A navegação SPA de contexto foi reproduzida sem mudança de URL/DOM apesar de resposta RSC correta. Controles com os mesmos hrefs e navegação nativa funcionaram; retirar a interceptação de localhost do teste não mudou o diagnóstico. Os links de contexto agora usam o padrão nativo já empregado nas abas do projeto; Shell/Suspense e links para outros caminhos foram preservados. A causa interna do framework não foi determinada e nenhum erro de hidratação foi suprimido. O novo build passou os 33 cenários após a alteração.
 
-## Publicação e verificação pública
+## Publicação e verificação pública do incremento 022–024
 
 - Railway EM, mesmo projeto/serviço/ambiente: `SUCCESS`, health 200. Sete URLs alteradas foram verificadas em **14 negações** de anônimo/cookie forjado, mantendo `no-store` e redirecionamento para login.
 - Entrada Microsoft-only, cookie opaco seguro, CSRF/callback e início PKCE real até Microsoft aprovados; apenas o fluxo próprio de QA foi cancelado. Não foi automatizado login de pessoa nem CRUD em produção.
