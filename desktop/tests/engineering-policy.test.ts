@@ -10,10 +10,16 @@ const stage = { id, celula_destino_id: null, status_cel_proj: null, bloquear_ava
 test('engineering preserves exact versions and legacy rows for SQL grandfather checks', () => {
   const input = { ...base, changes: { photos: [photo], stages: [stage], form_ids: [], ativo: false } };
   assert.deepEqual(saveEngineeringSchema.parse(input), input);
-  assert.equal(saveEngineeringSchema.parse({ ...base, changes: { numero_fotos: 1000 } }).expected_updated_at, version);
+  assert.equal(saveEngineeringSchema.parse({ ...base, changes: { ativo: true } }).expected_updated_at, version);
   assert.equal(saveEngineeringSchema.safeParse({ ...base, changes: { photos: [{ ...photo, numero: null }] } }).success, true);
   assert.equal(saveEngineeringSchema.parse({ ...base, changes: { photos: [{ ...photo, descricao: 'x'.repeat(5000) }] } }).changes.photos?.[0].descricao?.length, 5000);
   assert.deepEqual(saveEngineeringSchema.parse({ ...base, changes: { stages: [{ ...stage, aprovadores_ids: [id, id] }] } }).changes.stages?.[0].aprovadores_ids, [id, id]);
+});
+
+test('the retired planned photo count is rejected rather than silently accepted or normalized', () => {
+  for (const numero_fotos of [0, 37, 1000, null]) {
+    assert.equal(saveEngineeringSchema.safeParse({ ...base, changes: { ativo: false, numero_fotos } }).success, false);
+  }
 });
 test('engineering rejects actor/project/media injection, duplicate IDs and invalid payload bounds', () => {
   for (const changes of [{}, { ativo: undefined }, { numero_fotos: -1 }, { numero_fotos: 1001 }, { numero_fotos: 1.5 },

@@ -72,14 +72,14 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
 }
 
 export function CellEditor({ projectId, allocation, cells, forms, users }: { projectId: string; allocation?: WebRow; cells: WebRow[]; forms: WebRow[]; users: WebRow[] }) {
-  const [open, setOpen] = useState(false); const [customForms, setCustomForms] = useState(!!allocation);
+  const [open, setOpen] = useState(false);
   const save = useSave(planCell, () => { window.location.assign(`/projetos/${projectId}?tab=planejamento`); });
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form); const changes: Record<string, unknown> = { bloqueada: data.get('bloqueada'), visibilidade: data.get('visibilidade') === 'on', motivo_bloqueio: nullable(data, 'motivo_bloqueio'), observacao: nullable(data, 'observacao'), responsavel_id: nullable(data, 'responsavel_id') };
     for (const key of ['data_inicio', 'data_limite']) if (!allocation || String(data.get(key) || '') !== inputDay(allocation[key])) changes[key] = day(data.get(key));
     const hours = data.get('horas_previstas'); changes.horas_previstas = hours ? Number(hours) : null;
     if (!allocation || String(data.get('prioridade') || '') !== (allocation.prioridade || '')) changes.prioridade = nullable(data, 'prioridade');
-    if (allocation || data.get('custom_forms') === 'on') changes.forms_ids = data.getAll('forms_ids').map(String);
+    if (allocation) changes.forms_ids = data.getAll('forms_ids').map(String);
     void save.submit({ projeto_id: projectId, celula_id: allocation?.celula_id || String(data.get('celula_id')), expected_updated_at: allocation?.updated_at ?? null, changes });
   };
   if (!open) return <button className={`button small ${allocation ? 'secondary' : ''}`} onClick={() => setOpen(true)}><Icon name={allocation ? 'edit' : 'plus'} size={14} />{allocation ? 'Planejar' : 'Alocar célula'}</button>;
@@ -95,7 +95,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users }: { pro
       <div className="field"><label>Motivo do bloqueio<input aria-label="Motivo do bloqueio" name="motivo_bloqueio" maxLength={5000} defaultValue={allocation?.motivo_bloqueio || ''} /></label></div>
       <label className="check-label span-all"><input type="checkbox" name="visibilidade" defaultChecked={allocation ? allocation.visibilidade : true} />Disponibilizar esta célula no aplicativo dos operadores autorizados</label>
       <div className="field span-all"><label>Observação<textarea aria-label="Observação do planejamento" name="observacao" maxLength={10000} defaultValue={allocation?.observacao || ''} /></label></div>
-      <div className="span-all"><p className="field-label">Formulários da célula</p>{!allocation && <label className="check-label" style={{ marginBottom: 15 }}><input type="checkbox" name="custom_forms" checked={customForms} onChange={event => setCustomForms(event.target.checked)} />Definir formulários manualmente</label>}{customForms ? <div style={{ display: 'grid', gap: 10, maxHeight: 240, overflow: 'auto' }}>{forms.map(form => <label className="check-label" key={form.id}><input type="checkbox" name="forms_ids" value={form.id} defaultChecked={allocation?.forms_ids?.includes(form.id)} />{form.titulo}</label>)}</div> : <p className="form-note">Os formulários, fotos obrigatórias e aprovações serão copiados do roteiro cadastrado para o tipo de equipamento.</p>}</div>
+      <div className="span-all"><p className="field-label">Formulários da célula</p>{allocation ? <div style={{ display: 'grid', gap: 10, maxHeight: 240, overflow: 'auto' }}>{forms.map(form => <label className="check-label" key={form.id}><input type="checkbox" name="forms_ids" value={form.id} defaultChecked={allocation.forms_ids?.includes(form.id)} />{form.titulo}</label>)}</div> : <p className="form-note">Os formulários, fotos obrigatórias e aprovações serão copiados do roteiro cadastrado para o tipo de equipamento.</p>}</div>
     </div></fieldset><div className="form-actions"><button className="button secondary" type="button" disabled={save.busy} onClick={() => setOpen(false)}>Cancelar</button><button className="button" disabled={save.busy}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : 'Salvar planejamento'}</button></div>
   </form></div>;
 }

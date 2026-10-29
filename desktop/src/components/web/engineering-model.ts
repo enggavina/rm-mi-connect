@@ -4,7 +4,7 @@ export interface EngineeringPhoto { id: string; cadastro_foto_id: string | null;
 export interface EngineeringStage { id: string; celula_destino_id: string | null; status_cel_proj: string | null; bloquear_avanco_sem_aprov: boolean; aprovadores_ids: string[]; aprovadores_retorno_ids: string[] }
 export interface EngineeringSnapshot { matrix: WebRow; form_ids: string[]; photos: WebRow[]; stages: WebRow[] }
 export interface EngineeringChoices { types: WebRow[]; cells: WebRow[]; forms: WebRow[]; users: WebRow[]; cellUserLinks: WebRow[]; photoTitles: WebRow[]; statuses: WebRow[] }
-export interface EngineeringPayload { submissionId: string; id: string; celula_id: string; tipo_equipamento_id: string; expected_updated_at: string | null; changes: { ativo?: boolean; visibilidade?: boolean; numero_fotos?: number; form_ids?: string[]; photos?: EngineeringPhoto[]; stages?: EngineeringStage[] } }
+export interface EngineeringPayload { submissionId: string; id: string; celula_id: string; tipo_equipamento_id: string; expected_updated_at: string | null; changes: { ativo?: boolean; visibilidade?: boolean; form_ids?: string[]; photos?: EngineeringPhoto[]; stages?: EngineeringStage[] } }
 export interface PhotoTitlePayload { submissionId: string; id: string; expected_updated_at: string | null; changes: { titulo: string; numero?: number | null; celula_id?: string | null } }
 export interface DeletePhotoTitlePayload { submissionId: string; id: string; expected_updated_at: string }
 export type PhotoTitleAttempt = { action: 'save'; payload: PhotoTitlePayload } | { action: 'delete'; payload: DeletePhotoTitlePayload };
@@ -57,10 +57,9 @@ export function legacyStage(row: EngineeringStage, choices: EngineeringChoices, 
     || new Set(row.aprovadores_ids).size !== row.aprovadores_ids.length || new Set(row.aprovadores_retorno_ids).size !== row.aprovadores_retorno_ids.length
     || row.aprovadores_ids.some(id => !origin.has(id)) || row.aprovadores_retorno_ids.some(id => !destination.has(id));
 }
-export function engineeringChanges(snapshot: EngineeringSnapshot | undefined, values: { ativo: boolean; visibilidade: boolean; numero_fotos: string; form_ids: string[]; photos: EngineeringPhoto[]; stages: EngineeringStage[] }): EngineeringPayload['changes'] {
+export function engineeringChanges(snapshot: EngineeringSnapshot | undefined, values: { ativo: boolean; visibilidade: boolean; form_ids: string[]; photos: EngineeringPhoto[]; stages: EngineeringStage[] }): EngineeringPayload['changes'] {
   const changes: EngineeringPayload['changes'] = {};
   for (const key of ['ativo', 'visibilidade'] as const) if (!snapshot || values[key] !== (snapshot.matrix[key] === true)) changes[key] = values[key];
-  if (!snapshot || values.numero_fotos !== String(snapshot.matrix.numero_fotos ?? '')) changes.numero_fotos = Number(values.numero_fotos);
   if (!snapshot || !sameEngineeringValue(values.form_ids, snapshot.form_ids)) changes.form_ids = [...values.form_ids];
   if (!snapshot || !sameEngineeringValue(values.photos, snapshot.photos.map(photoDraft))) changes.photos = values.photos.map(photo => ({ ...photo }));
   if (!snapshot || !sameEngineeringValue(values.stages, snapshot.stages.map(stageDraft))) changes.stages = values.stages.map(stage => ({ ...stage, aprovadores_ids: [...stage.aprovadores_ids], aprovadores_retorno_ids: [...stage.aprovadores_retorno_ids] }));
@@ -68,7 +67,6 @@ export function engineeringChanges(snapshot: EngineeringSnapshot | undefined, va
 }
 export function validateEngineering(changes: EngineeringPayload['changes'], choices: EngineeringChoices, cellId: string, snapshot?: EngineeringSnapshot): string | null {
   if (!choices.cells.some(cell => cell.id === cellId)) return 'Escolha a célula do roteiro.';
-  if ('numero_fotos' in changes && (!Number.isInteger(changes.numero_fotos) || changes.numero_fotos! < 0 || changes.numero_fotos! > 1000)) return 'Informe uma quantidade prevista inteira entre 0 e 1.000.';
   if (changes.form_ids && changes.form_ids.length > 200) return 'Selecione até 200 formulários para este roteiro.';
   if (changes.photos && changes.photos.length > 1000) return 'Defina até 1.000 itens de foto neste roteiro.';
   if (changes.stages && changes.stages.length > 100) return 'Defina até 100 etapas de aprovação neste roteiro.';

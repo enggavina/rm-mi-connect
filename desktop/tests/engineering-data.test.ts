@@ -57,13 +57,14 @@ test('matrix counts only active template relationships, excluding operational ph
 });
 test('snapshot uses one atomic RPC and strips operational and media columns while preserving legacy configuration exactly', async () => {
   const { db, data } = setup(); const version = '2026-10-29T12:00:01.123456+00:00';
-  db.snapshot = { matrix: { id: id(1), updated_at: version, bubble_id: 'private' }, form_ids: [id(2)],
+  db.snapshot = { matrix: { id: id(1), updated_at: version, bubble_id: 'private', numero_fotos: 37 }, form_ids: [id(2)],
     photos: [{ id: id(3), cadastro_foto_id: null, numero: -1, descricao: ' legacy ', foto_url: 'https://private.invalid/p' }],
     stages: [{ id: id(4), celula_destino_id: null, status_cel_proj: null, aprovador_id: id(5), aprovadores_ids: [], aprovadores_retorno_ids: [], aprovado_por_id: id(99) }] };
   const result = await data.getEngineeringEntry(id(1)); assert.ok(result);
   assert.equal(result.matrix.updated_at, version); assert.equal(result.photos[0].numero, -1); assert.equal(result.photos[0].descricao, ' legacy ');
   assert.equal(result.stages[0].aprovador_id, id(5)); assert.equal(result.stages[0].aprovado_por_id, undefined);
   assert.equal(result.photos[0].foto_url, undefined); assert.equal(result.matrix.bubble_id, undefined);
+  assert.equal(result.matrix.numero_fotos, undefined, 'Retired quantity remains in SQL history, outside the active web DTO.');
   assert.deepEqual(db.calls, []); assert.deepEqual(db.rpcCalls, [{ name: 'rm_web_engineering_snapshot_v1', args: { p_id: id(1) } }]);
   assert.equal(await data.getEngineeringEntry('invalid'), null); assert.equal(db.rpcCalls.length, 1);
 });

@@ -4,7 +4,7 @@ import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { withFormVersionLabels } from './form-version-labels';
 
-const MATRIX = 'id,celula_id,tipo_equipamento_id,ativo,visibilidade,numero_fotos,updated_at';
+const MATRIX = 'id,celula_id,tipo_equipamento_id,ativo,visibilidade,updated_at';
 const CELL = 'id,nome,codigo,indice,ordem';
 const TYPE = 'id,nome,sigla';
 const TITLE = 'id,titulo,numero,celula_nome,updated_at';

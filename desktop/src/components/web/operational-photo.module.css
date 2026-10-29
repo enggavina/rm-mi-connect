@@ -1,0 +1,27 @@
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:20px 24px;border-bottom:1px solid var(--line)}
+.summary{font-size:12px;line-height:1.7;color:var(--muted);margin:0}
+.notice{padding:0 24px}
+.form{padding:24px;border-bottom:1px solid var(--line);background:var(--soft)}
+.form h3{margin:0 0 10px;font-size:15px}
+.form p{font-size:12px;line-height:1.8;color:var(--muted)}
+.fieldSet{border:0;padding:0;margin:0;min-width:0}
+.choices{display:grid;gap:12px;max-height:300px;overflow:auto;background:#fff;padding:16px;border:1px solid var(--line);border-radius:7px;margin-top:14px}
+.choices label{display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.7}
+.choices input{width:17px;height:17px;accent-color:var(--red);margin-top:3px;flex-shrink:0}
+.choices small{display:block;color:var(--muted);font-size:11px}
+.choices label:has(input:disabled){color:var(--muted)}
+.actions{display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:20px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;padding:18px 24px 0}
+.tabs button{padding:9px 13px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px;color:var(--muted)}
+.tabs button[aria-pressed=true]{color:var(--red);background:var(--red-light);border-color:var(--red)}
+.list{display:grid;padding:18px 24px;gap:12px}
+.item{border:1px solid var(--line);border-radius:8px;padding:18px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start;background:#fff}
+.item h3{font-size:13px;margin:0 0 9px;overflow-wrap:anywhere;line-height:1.6}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{font-size:12px;color:var(--muted);margin:10px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.reason{font-size:11px;color:var(--muted);margin:10px 0 0;line-height:1.7}
+.controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:0 24px 24px;font-size:11px;color:var(--muted)}
+.pagination>div{display:flex;align-items:center;gap:10px}
+.tagInput{width:100%;min-height:90px}
+@media(max-width:650px){.toolbar,.form{padding:18px}.list{padding:18px}.notice{padding:0 18px}.tabs{padding:16px 18px 0}.item{grid-template-columns:minmax(0,1fr);padding:15px}.controls{justify-content:flex-start}.actions>*{flex:1;justify-content:center}.toolbar>button{width:100%}.pagination{padding:0 18px 18px}.pagination>div{width:100%;justify-content:space-between}}

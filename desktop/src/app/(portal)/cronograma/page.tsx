@@ -6,6 +6,7 @@ import { hasWebCapability } from '@/server/web/auth-policy';
 import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
 import { editorChoices } from '@/server/web/choices';
 import { createProjectScheduleData } from '@/server/web/project-schedule-data';
+import { getOperationalPhotos } from '@/server/web/operational-photo-data';
 import { createProjectRouteData } from '@/server/web/project-route-data';
 import { allocationRecords, orderedProjectAllocations, scheduleHref, scheduleId, scheduleTab, scheduleView, selectedAllocation, type ScheduleTab } from '@/server/web/project-schedule-policy';
 import { PageHeading, Status, Details, Empty, Pagination, date, display } from '@/components/web/ui';
@@ -14,6 +15,7 @@ import { CellEditor } from '@/components/web/editor';
 import { StageApprovalTable } from '@/components/web/stage-approval-list';
 import { GanttSchedule } from '@/components/web/gantt-schedule';
 import { ProjectAllocationList } from '@/components/web/project-schedule';
+import { OperationalPhotoEditor } from '@/components/web/operational-photo-editor';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
 import s from '@/components/web/project-schedule.module.css';
 
@@ -74,7 +76,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
   const choices = canPlan && !closed ? await editorChoices('planning') : null;
   const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
-  const photos = current && tab === 'fotos' ? await reader.photos(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
+  const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const stages = current && tab === 'etapas' ? await reader.stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
   const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome]));
   const userNames = new Map(data.users.map(user => [user.id, user.nome]));
@@ -99,9 +101,9 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
           {choices && !['finalizado', 'n_a'].includes(current.status) && <CellEditor key={current.id} projectId={projectId} allocation={current} cells={data.cells} forms={choices.forms} users={choices.users} />}
         </div></section>
         {tabs.length ? <nav className="tabs" aria-label="Registros da célula">{tabs.map(item => <a key={item.id} href={scheduleHref(projectId, current.id, item.id)} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav> : <p className="notice">Seu acesso permite consultar o planejamento. As demais áreas dependem das permissões de fotos, formulários ou aprovações.</p>}
-        {tab === 'fotos' && photos && <section className="panel"><div className="panel-header"><div><h2>Fotos previstas e registradas <span className="inline-count">{photos.total}</span></h2><p>Inclui os títulos previstos que ainda aguardam captura.</p></div><Link className="text-link" href={`/projetos/${projectId}?tab=fotos`}>Abrir galeria<Icon name="arrow" size={14} /></Link></div>
-          {photos.rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Foto</th><th>Tipo</th><th>Registro</th></tr></thead><tbody>{photos.rows.map(photo => <tr key={photo.id}><td><span className="table-title">{photo.titulo || 'Foto sem título'}</span><span className="table-subtitle">{photo.tag ? `Tag: ${photo.tag}` : photo.descricao || photo.legenda}</span></td><td>{display(photo.categoria_foto)}</td><td><Status value={photo.captured ? 'finalizado' : 'pendente'} label={photo.captured ? 'Capturada' : 'Aguardando captura'} /></td></tr>)}</tbody></table></div> : <Empty title="Nenhuma foto vinculada a esta célula" detail="As fotos previstas são copiadas do roteiro do tipo de equipamento nas novas alocações." icon="image" />}
-          <Pagination {...photos} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'fotos' }} />
+        {tab === 'fotos' && photos && <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>Fotos previstas e registradas <span className="inline-count">{photos.total}</span></h2><p>Defina os títulos obrigatórios desta célula e acompanhe as capturas.</p></div><a className="text-link" href={`/projetos/${projectId}?tab=fotos`}>Abrir galeria<Icon name="arrow" size={14} /></a></div>
+          <OperationalPhotoEditor key={`${current.id}:${photos.photos_version}`} snapshot={photos} canManage={canPlan}
+            destination={scheduleHref(projectId, current.id, 'fotos')} />
         </section>}
         {tab === 'formularios' && <section className="panel"><div className="panel-header"><div><h2>Formulários da célula <span className="inline-count">{formIds.length}</span></h2><p>Vínculos do projeto e registros preservados da execução.</p></div></div>
           {formIds.length ? formIds.map(formId => {

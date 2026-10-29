@@ -22,7 +22,6 @@ export function EngineeringEditor({ snapshot, choices, initialTypeId = '' }: { s
   const [id] = useState(() => snapshot?.matrix.id || crypto.randomUUID());
   const [cellId, setCellId] = useState(snapshot?.matrix.celula_id || ''), [typeId, setTypeId] = useState(snapshot?.matrix.tipo_equipamento_id || initialTypeId);
   const [active, setActive] = useState(snapshot ? snapshot.matrix.ativo === true : true), [visible, setVisible] = useState(snapshot ? snapshot.matrix.visibilidade === true : true);
-  const [quantity, setQuantity] = useState(String(snapshot?.matrix.numero_fotos ?? (snapshot ? '' : 0)));
   const [forms, setForms] = useState<string[]>(snapshot?.form_ids ? [...snapshot.form_ids] : []);
   const [photos, setPhotos] = useState(snapshot?.photos.map(photoDraft) ?? []), [stages, setStages] = useState(snapshot?.stages.map(stageDraft) ?? []);
   const [reconfigurePhotos, setReconfigurePhotos] = useState<string[]>([]), [reconfigureStages, setReconfigureStages] = useState<string[]>([]);
@@ -33,7 +32,7 @@ export function EngineeringEditor({ snapshot, choices, initialTypeId = '' }: { s
   function submit() {
     if (save.uncertain) { save.retry(); return; }
     if (!choices.types.some(type => type.id === typeId)) { save.setError('Escolha o tipo de equipamento.'); return; }
-    const changes = engineeringChanges(snapshot, { ativo: active, visibilidade: visible, numero_fotos: quantity, form_ids: forms, photos, stages });
+    const changes = engineeringChanges(snapshot, { ativo: active, visibilidade: visible, form_ids: forms, photos, stages });
     const error = validateEngineering(changes, choices, cellId, snapshot);
     if (error) { save.setError(error); return; }
     void save.send({ submissionId: crypto.randomUUID(), id, celula_id: cellId, tipo_equipamento_id: typeId, expected_updated_at: snapshot?.matrix.updated_at ?? null, changes });
@@ -45,7 +44,6 @@ export function EngineeringEditor({ snapshot, choices, initialTypeId = '' }: { s
         <div className="field"><label htmlFor="matrix-cell">Célula *</label><select id="matrix-cell" value={cellId} onChange={event => setCellId(event.target.value)} disabled={!!snapshot} required><option value="">Selecione a célula</option>{choices.cells.map(cell => <option value={cell.id} key={cell.id}>{cell.nome}</option>)}</select></div>
         <label className="check-label span-all"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />Modelo ativo para novas alocações</label>
         <label className="check-label span-all"><input type="checkbox" checked={visible} onChange={event => setVisible(event.target.checked)} />Visível para a operação ao alocar</label>
-        <div className="field"><label htmlFor="matrix-quantity">Quantidade prevista de fotos</label><input id="matrix-quantity" type="number" min={0} max={1000} step={1} value={quantity} onChange={event => setQuantity(event.target.value)} /><span className="form-note">Número de referência do roteiro. Este número não cria fotos; adicione os títulos abaixo.</span></div>
       </div></section>
       <section className={s.section} aria-labelledby="matrix-forms"><h2 id="matrix-forms">Formulários <span className={s.tag}>{forms.length} vinculados</span></h2><p>Selecione os modelos existentes que serão copiados para a célula na nova alocação.</p><Checks label="Formulários do roteiro" options={choices.forms.filter(form => form.ativo && !form.missing)} all={choices.forms} selected={forms} onChange={setForms} field="titulo" /></section>
       <section className={s.section} aria-labelledby="matrix-photos"><h2 id="matrix-photos">Fotos do modelo <span className={s.tag}>{photos.length} itens</span></h2><p>Cada item cria um espaço para a foto na próxima alocação. Fotos novas são obrigatórias; os itens legados mantêm sua categoria enquanto não forem alterados.</p>

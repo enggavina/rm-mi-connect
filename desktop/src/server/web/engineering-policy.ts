@@ -24,7 +24,7 @@ export const saveEngineeringSchema = z.object({
   ...base, celula_id: uuid, tipo_equipamento_id: uuid,
   changes: z.object({
     ativo: z.boolean().optional(), visibilidade: z.boolean().optional(),
-    numero_fotos: z.number().int().min(0).max(1000).optional(), form_ids: idList.optional(),
+    form_ids: idList.optional(),
     photos: z.array(engineeringPhotoSchema).max(1000).refine(childIdsUnique, 'Fotos repetidas.').optional(),
     stages: z.array(engineeringStageSchema).max(100).refine(childIdsUnique, 'Etapas repetidas.').optional(),
   }).strict().refine(nonempty, 'Informe uma alteração.'),

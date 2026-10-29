@@ -16,7 +16,7 @@ const snapshot: EngineeringSnapshot = {
   photos: [{ id: 'legacy-photo', cadastro_foto_id: null, numero: null, descricao: '  Preserve espaços  ', titulo: 'Título antigo', identificador_foto_key: 'legacy-code' }],
   stages: [{ id: 'legacy-stage', celula_destino_id: null, status_cel_proj: 'retornado', bloquear_avanco_sem_aprov: true, aprovador_id: 'old-singular', aprovadores_ids: ['inactive-user'], aprovadores_retorno_ids: [] }],
 };
-const values = () => ({ ativo: true, visibilidade: false, numero_fotos: '37', form_ids: [...snapshot.form_ids], photos: snapshot.photos.map(photoDraft), stages: snapshot.stages.map(stageDraft) });
+const values = () => ({ ativo: true, visibilidade: false, form_ids: [...snapshot.form_ids], photos: snapshot.photos.map(photoDraft), stages: snapshot.stages.map(stageDraft) });
 
 test('engineering edit needs administrator and its own capability, never the catalog grant alone', () => {
   assert.equal(canManageEngineering({ profile: { perfil: 'administrador' }, sso: { capabilities: ['em.catalogs.manage', 'em.engineering.read'] } }), false);
@@ -31,6 +31,8 @@ test('changing a matrix flag does not rewrite legacy children, counts, identifie
   const nullable = { ...snapshot, matrix: { ...snapshot.matrix, visibilidade: null } };
   assert.deepEqual(engineeringChanges(nullable, values()), {}, 'An unchanged legacy null flag is not silently normalized.');
   assert.equal(validateEngineering({ ativo: false }, choices, 'origin', snapshot), null);
+  assert.equal('numero_fotos' in engineeringChanges(undefined, values()), false, 'New matrices do not create the retired reference count.');
+  assert.equal(snapshot.matrix.numero_fotos, 37, 'Existing reference values remain untouched in legacy snapshots.');
 });
 
 test('an edited child array preserves unedited historical rows exactly and retires only deliberate removals', () => {

@@ -41,6 +41,9 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);
   if (operation === 'transition_stage_approval') { revalidatePath('/aprovacoes'); revalidatePath(`/aprovacoes/${result.id}`); }
   if (operation === 'save_cell_queue') revalidatePath('/projetos', 'layout');
+  if (operation === 'manage_operational_photos') {
+    revalidatePath('/cronograma'); revalidatePath('/projetos', 'layout');
+  }
   return { ok: true, data: result };
 }
 

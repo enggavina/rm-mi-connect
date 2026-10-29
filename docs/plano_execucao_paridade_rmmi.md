@@ -46,6 +46,16 @@ Infraestrutura reutilizada: App Router/SSR e shell EM, componentes de formulári
 
 ## Validação e publicação
 
+### Incremento seguinte autorizado: ajustes e fotos operacionais
+
+Pedido posterior à publicação 024: remover a funcionalidade “Quantidade prevista de fotos”, a aba de Aprovações de etapas do dossiê do projeto e o checkbox de definição manual de formulários na nova alocação. A coluna histórica de quantidade não será apagada; novas escritas serão recusadas e os recibos anteriores preservarão seu replay. A nova alocação sempre usará os modelos, enquanto a edição das alocações existentes conservará os vínculos e proteções de registros enviados. Aprovações continuam no módulo próprio e no Cronograma; o mobile não muda.
+
+A próxima prioridade será completar fotos obrigatórias da alocação no Cronograma: adicionar títulos aplicáveis em lote, editar tag, retirar slot vazio e restaurar explicitamente o mesmo ID quando necessário. Reutilizar `rm_fotos`, `rm_cadastro_fotos`, `lixeira`, o gateway web, SSO e o hook de envio; nenhuma tabela paralela ou contador previsto será criado. Migração nova 025, leitores/ações `operational-photo-*` e editor reutilizável na aba de fotos.
+
+Risco identificado antes da implementação: a RPC mobile anterior atualiza a captura com `lixeira=false`, podendo restaurar silenciosamente uma foto retirada. A nova versão precisa serializar projeto/foto e recusar esse caso com mensagem clara. A fila mobile conserva arquivo, parâmetros e protocolo; o gestor poderá restaurar o slot original para que o operador repita o mesmo envio. Não haverá exclusão física, descarte automático da fila ou recriação de ID para resolver a disputa.
+
+Adicionar exige escolhas limitadas à célula/global e planejamento autorizado; isso não concede acesso ao catálogo completo de Engenharia. Capturas em URL principal ou lista, seleção para relatório e vínculos de outro contexto impedem retirada. Versões exatas e hash do conjunto protegem alterações concorrentes com web/mobile; repetição exata exige autorização atual e não duplica fotos. Validar também retirada seguida de envio offline, restauração e retry do mesmo UUID, incluindo efeitos em snapshots, fila e dados existentes, antes de aplicar no Supabase e publicar no Railway EM.
+
 Cada incremento precisa de persistência real, acesso atual, estados de espera/erro, replay após resultado ambíguo e conflito explícito. Usar testes de domínio/BFF e PostgreSQL isolado, incluindo disputa quando necessária; tipos, build e smokes; navegador com fixtures exclusivamente locais e negações públicas após deploy. Não existe comando lint configurado atualmente: declarar essa limitação, sem fingir execução. Não criar dados artificiais em produção.
 
 Aplicar somente novas migrações ao Supabase `oficina-em-mi-off`, com verificação de alvo e preservação das tabelas anteriores. Publicar no Railway EM após validações, conforme autorização permanente. Registrar commit, migração, deploy, provas, limites e pendências no relatório final. Entregas parciais não significam conclusão da paridade global.

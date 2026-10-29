@@ -62,11 +62,6 @@ function setup(caps: CorporateCapability[] = capabilities) {
   db.tables.set('rm_celulas_projeto', [{ id: allocation, projeto_id: project, celula_id: cell }]);
   return { db, reader: createProjectScheduleData(db as unknown as SupabaseClient, caps) };
 }
-function photo(n: number, extra: Row = {}) {
-  return { id: id(n), projeto_id: project, celula_id: cell, celula_projeto_id: allocation, categoria_foto: 'obrigat_ria',
-    titulo: `Foto ${n}`, descricao: null, legenda: null, tag: null, numero: n, updated_at: timestamp,
-    lixeira: false, foto_url: n % 2 ? null : 'https://private.example/photo.jpg', ...extra };
-}
 function stage(n: number, link: string | null = allocation): StageApprovalListItem {
   return {
     stage: { id: id(n), projeto_id: project, celula_projeto_id: link, celula_origem_id: cell, celula_destino_id: null,
@@ -113,45 +108,22 @@ test('project route ordering is independent from queue position and rejects allo
   assert.equal(allocationStage(stage(3, id(8)), current), false);
 });
 
-test('photo slots include missing captures and paginate without media URLs or another allocation', async () => {
+test('changing project cannot reuse a stale allocation or query its stages', async () => {
   const { db, reader } = setup();
-  db.tables.set('rm_fotos', [
-    ...Array.from({ length: 60 }, (_, i) => photo(i + 100)),
-    photo(10, { celula_projeto_id: id(9) }), photo(11, { projeto_id: id(9) }),
-    photo(12, { celula_id: id(9) }), photo(13, { lixeira: true }), photo(14, { celula_projeto_id: null }),
-  ]);
-  const first = await reader.photos(project, allocation);
-  assert.equal(first?.total, 61);
-  assert.equal(first?.rows[0].id, id(14));
-  assert.ok(first?.rows.some(row => row.captured));
-  assert.ok(first?.rows.some(row => !row.captured));
-  const second = await reader.photos(project, allocation, 2);
-  assert.equal(second?.rows.length, 25);
-  assert.equal(second?.page, 2);
-  assert.equal(second?.rows[0].id, id(124));
-  assert.ok(!JSON.stringify([first, second]).includes('private.example'));
-  assert.ok(db.calls.filter(call => call.table === 'rm_fotos').every(call => !call.columns.includes('foto_url')));
-  assert.deepEqual(db.calls.find(call => call.table === 'rm_fotos')?.range, [0, 24]);
-  assert.ok(db.calls.filter(call => call.table === 'rm_fotos').every(call => call.filters.some(filter => filter[1] === 'projeto_id' && filter[2] === project)));
-});
-
-test('changing project cannot reuse a stale allocation or query its photos', async () => {
-  const { db, reader } = setup();
-  assert.equal(await reader.photos(id(8), allocation), null);
-  assert.ok(!db.calls.some(call => call.table === 'rm_fotos'));
+  assert.equal(await reader.stages(id(8), allocation), null);
+  assert.equal(db.rpcCalls.length, 0);
   const before = db.calls.length;
-  assert.equal(await reader.photos('invalid', allocation), null);
+  assert.equal(await reader.stages('invalid', allocation), null);
   assert.equal(db.calls.length, before);
 });
 
 test('reader refuses missing capabilities before operational queries', async () => {
   const { db, reader } = setup(['em.portal.read', 'em.projects.read', 'em.planning.read']);
-  await assert.rejects(reader.photos(project, allocation), /Acesso/);
   await assert.rejects(reader.stages(project, allocation), /Acesso/);
   assert.equal(db.calls.length, 0);
   assert.equal(db.rpcCalls.length, 0);
-  const missingProject = setup(['em.portal.read', 'em.planning.read', 'em.photos.read']);
-  await assert.rejects(missingProject.reader.photos(project, allocation), /Acesso/);
+  const missingProject = setup(['em.portal.read', 'em.planning.read', 'em.approvals.read']);
+  await assert.rejects(missingProject.reader.stages(project, allocation), /Acesso/);
   assert.equal(missingProject.db.calls.length, 0);
 });
 

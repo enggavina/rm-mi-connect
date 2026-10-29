@@ -93,10 +93,13 @@ select set_config('rm.test.engineering.stage',jsonb_build_object('id','c8000000-
   'aprovadores_retorno_ids',jsonb_build_array('28000000-0000-4000-8000-000000000003'))::text,true);
 
 do $$ declare p jsonb; r jsonb; snapshot jsonb; rid uuid:=gen_random_uuid(); old_version timestamptz; begin
-  p:=pg_temp.matrix_payload(jsonb_build_object('ativo',true,'visibilidade',false,'numero_fotos',99,'form_ids',jsonb_build_array('78000000-0000-4000-8000-000000000001'),
+  -- A historical counter is preserved, but the retired field is no longer a web command.
+  insert into public.rm_celula_tipos_equipamento(id,celula_id,tipo_equipamento_id,numero_fotos)
+    values('68000000-0000-4000-8000-000000000001','48000000-0000-4000-8000-000000000001','58000000-0000-4000-8000-000000000001',99);
+  p:=pg_temp.matrix_payload(jsonb_build_object('ativo',true,'visibilidade',false,'form_ids',jsonb_build_array('78000000-0000-4000-8000-000000000001'),
     'photos',jsonb_build_array(current_setting('rm.test.engineering.photo')::jsonb),'stages',jsonb_build_array(current_setting('rm.test.engineering.stage')::jsonb)));
   r:=pg_temp.call_engineering(rid,'save_engineering',p); snapshot:=r->'snapshot';
-  perform pg_temp.check(snapshot->'matrix'->>'numero_fotos'='99' and jsonb_array_length(snapshot->'photos')=1,'counter independent from actual photo slots');
+  perform pg_temp.check(snapshot->'matrix'->>'numero_fotos'='99' and jsonb_array_length(snapshot->'photos')=1,'historical counter preserved independently from mandatory titles');
   perform pg_temp.check(snapshot->'photos'->0->>'titulo'='Registered title' and jsonb_array_length(snapshot->'stages')=1,'atomic child models saved');
   perform pg_temp.check((pg_temp.call_engineering(rid,'save_engineering',p)->>'idempotent_replay')::bool,'matrix replay');
   perform pg_temp.reject_engineering('save_engineering',p,'PT409');
@@ -175,7 +178,7 @@ do $$ declare photo jsonb; stage jsonb; snap jsonb; r jsonb; begin
   perform pg_temp.check(jsonb_array_length(r->'snapshot'->'photos')=2,'whitespace-only legacy catalog scope is global for photo selection');
 end $$;
 
-do $$ declare p jsonb:=pg_temp.matrix_payload('{"numero_fotos":2}'); rid uuid:=gen_random_uuid(); begin
+do $$ declare p jsonb:=pg_temp.matrix_payload('{"visibilidade":true}'); rid uuid:=gen_random_uuid(); begin
   perform pg_temp.reject_engineering('save_engineering',p,'22023','em.catalogs.manage');
   update public.rm_users set perfil='auditor' where auth_user_id=auth.uid(); perform pg_temp.reject_engineering('save_engineering',p,'42501');
   update public.rm_users set perfil='administrador' where auth_user_id=auth.uid();
