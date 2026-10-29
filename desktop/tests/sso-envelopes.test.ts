@@ -37,3 +37,13 @@ test('catalog capability is accepted in encrypted sessions and MFA without inval
   assert.equal(ssoFlowSchema.safeParse({ kind: 'corporate-mfa', corporate: expanded.corporate, factors: [{ id: subject, name: 'MFA' }], expiresAt: 10_000, attempts: 0 }).success, true);
   assert.equal(ssoSessionSchema.safeParse({ ...expanded, corporate: { ...expanded.corporate, decision: { ...expanded.corporate.decision, capabilities: [...CORPORATE_CAPABILITIES, 'em.unknown.manage'] } } }).success, false);
 });
+
+test('fourteen-capability engineering consumer accepts old twelve-capability sessions but never unknown scopes', () => {
+  assert.equal(CORPORATE_CAPABILITIES.length, 14);
+  const decision = { ...corporate.decision, capabilities: [...CORPORATE_CAPABILITIES] };
+  const full = { ...contents, corporate: { ...corporate, decision } };
+  assert.equal(ssoSessionSchema.safeParse(full).success, true);
+  const previous = { ...full, corporate: { ...full.corporate, decision: { ...decision, capabilities: CORPORATE_CAPABILITIES.filter(cap => !cap.startsWith('em.engineering.')) } } };
+  assert.equal(ssoSessionSchema.safeParse(previous).success, true);
+  assert.equal(ssoFlowSchema.safeParse({ kind: 'corporate-mfa', corporate: full.corporate, factors: [{ id: subject, name: 'MFA' }], expiresAt: 10_000, attempts: 0 }).success, true);
+});

@@ -1,0 +1,75 @@
+# Matriz de engenharia — contrato 018
+
+Estado: **018 aplicada em 29/10/2026, às 12:50:01 UTC**, ao projeto autorizado `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`), com histórico 001–018 e SSO obrigatório preservado. Carga dos modelos reais, concessões centrais e deploy da interface ainda são etapas separadas. A 018 configura modelos para futuras alocações, sem reescrever células/projetos em andamento, respostas, fotos capturadas ou aprovações realizadas. Não gera outbox, emails ou chamadas Bubble. O editor de perguntas/formulários e a execução das aprovações web pertencem a outras entregas.
+
+Evidência Live somente leitura: `rm_gestao/coaXw` cria o vínculo célula × tipo; `cofwG` grava `numero_fotos`; `copON/copOq` chama `copOY/copOa` e copia o título do Cadastro Fotos para um modelo; `conKI/conKO` cria as regras de aprovação; `coqsi/coqss` alteram o bloqueio de avanço. A seleção de aprovadores usa `Tablet_Celula_User.identidade_id` da origem e do destino. O contador de fotos não gera slots: a materialização copia as linhas de modelo reais.
+
+As duas operações usam `rm_web_mutate_v1`, UUID de envio fixo, versão exata, recibo idempotente, conta RM ativa **administrador** e MFA quando configurado. Com `require_sso=true` em produção, exigem permit curto/sessão SSO e capability **`em.engineering.manage`**. A exceção de staging da 016 continua intacta: `require_sso=false` admite contas legadas sem binding, ainda sujeitas a perfil/MFA/validações; binding desativado nunca ganha fallback. A consulta no BFF exige `em.engineering.read`; o banco preserva o RLS de leitura RM ativa compartilhado com o mobile.
+
+`save_engineering`:
+
+```ts
+{
+  id: UUID,
+  celula_id: UUID,
+  tipo_equipamento_id: UUID,
+  expected_updated_at: string | null,
+  changes: {
+    ativo?: boolean,
+    visibilidade?: boolean,
+    numero_fotos?: number,
+    form_ids?: UUID[],
+    photos?: [{id: UUID, cadastro_foto_id: UUID | null, numero: number | null, descricao: string | null}],
+    stages?: [{
+      id: UUID, celula_destino_id: UUID | null, status_cel_proj: string | null,
+      bloquear_avanco_sem_aprov: boolean, aprovadores_ids: UUID[], aprovadores_retorno_ids: UUID[]
+    }]
+  }
+}
+```
+
+- O par célula/tipo é único e imutável depois de criado. `ativo=false` aposenta o vínculo: novas alocações que encontrem esse vínculo são recusadas, com orientação para habilitá-lo. `visibilidade` continua sendo a visibilidade inicial da nova alocação, independente de `ativo`.
+- `numero_fotos` aceita inteiro 0–1000 e permanece um metadado separado da quantidade de slots. Campos/arrays omitidos são preservados; `changes` precisa ter ao menos um campo. Arrays enviados representam o conjunto ativo desejado: ausentes são aposentados, nunca excluídos fisicamente.
+- `form_ids`: no máximo 200 IDs distintos. Novos vínculos exigem formulário existente/ativo. Formulários legados inativos já vinculados podem permanecer sem alteração. A remoção marca o vínculo CFTE inativo e não muda `forms_ids` de nenhuma alocação existente.
+- `photos`: no máximo 1000 linhas com UUIDs distintos. Item novo/modificado exige título cadastrado para a célula ou global, número inteiro 1–1000 e descrição de até 4000 caracteres. O servidor copia o título e grava categoria obrigatória; não recebe URLs, projeto, autoria, `identificador_foto_key` ou categoria pelo cliente. Multiplicidade é representada por linhas distintas, inclusive títulos repetidos. Item legado exatamente inalterado pode manter número nulo/negativo, título sem cadastro e identificador antigo. Remoção marca `lixeira=true` somente no modelo.
+- `stages`: no máximo 100 linhas. Novo/modificado exige célula destino existente e diferente da origem, status canônico diferente de `retornado`, booleano de bloqueio e 1–100 aprovadores distintos em cada lista. Aprovadores precisam estar ativos e vinculados por `identidade_id` à origem; aprovadores de retorno, ao destino. A origem é derivada da matriz. Item legado exatamente inalterado preserva valores incompletos e aprovador singular. Reconfiguração explícita limpa `aprovador_id`, mantendo somente as listas escolhidas, e reinicia apenas o modelo como `nulo`. Remoção marca o modelo inativo. A geração operacional da etapa de retorno permanece com a lógica anterior.
+
+IDs de fotos/etapas existentes precisam pertencer à mesma matriz e ter **ambos** `projeto_id` e `celula_projeto_id` nulos. Não é possível fornecer ID operacional, de outra matriz ou campos de decisão. A comparação de legado usa os campos mutáveis do DTO contra a linha real; nenhum fingerprint fornecido pelo navegador participa da autorização.
+
+`save_photo_title`:
+
+```ts
+{id: UUID, expected_updated_at: string | null,
+ changes: {titulo?: string, numero?: number | null, celula_id?: UUID | null}}
+```
+
+Criação exige `titulo` e `celula_id` explícito, com null significando global. Título recebe trim e aceita 1–200 caracteres; número é inteiro 0–1000 ou null. O escopo continua armazenado em `celula_nome`, sem migração especulativa do legado. Nome de célula ambíguo não permite criar/atribuir escopo. Na edição, omitir escopo preserva inclusive um texto legado sem correspondência; enviá-lo exige a mesma célula inequívoca/global já cadastrada. Alterar o título não reescreve o texto das fotos de modelo ou de projeto. Não há operação de exclusão de título nesta fase. `rm_fotos.cadastro_foto_id` tem FK `RESTRICT`; os clones podem conservar esse ID, mantendo `titulo` como snapshot.
+
+Retorno: `{operation,id,projeto_id:null,updated_at,record,idempotent_replay}`. Para matriz, `record` é o DTO do pai e o retorno também inclui `snapshot`. `updated_at` é lido **depois** de todos os filhos e triggers. Replay exato retorna a primeira resposta; em produção exige nova autorização SSO. Outro ator, operação ou corpo não pode reutilizar o envio.
+
+Leitura atômica: `rm_web_engineering_snapshot_v1(p_id uuid)` é uma única expressão SQL `STABLE SECURITY INVOKER`, executável somente por `authenticated`, retornando null se a linha não estiver visível no RLS. Retorna:
+
+- `matrix`: `id, celula_id, tipo_equipamento_id, ativo, visibilidade, numero_fotos, updated_at`;
+- `form_ids`: relacionamentos ativos;
+- `photos`: modelos ativos com `id, cadastro_foto_id, numero, descricao, titulo, identificador_foto_key, categoria_foto`;
+- `stages`: modelos ativos com os campos do DTO de edição mais `celula_origem_id` e `aprovador_id`, para diagnosticar origem/singular legados sem corrigi-los automaticamente.
+
+Os DTOs não expõem mídia, autoria de decisão ou metadados de autenticação. A query lê pai/filhos da mesma versão MVCC, evitando combinar um timestamp antigo com filhos novos.
+
+Concorrência e importação técnica:
+
+- `rm_private.engineering_pair_lock(p_cell uuid,p_type uuid,p_exclusive bool)` usa advisory transacional com `hashtextextended(cell::text||':'||type::text,18)`; a escrita toma exclusivo, a cópia toma compartilhado antes de procurar o vínculo. Assim também protege uma matriz ainda inexistente. `plan_cell` com tipo nulo conserva a exceção manual, sem chamar esse lock.
+- Triggers `rm_engineering_parent_lock`, `rm_engineering_forms_version`, `rm_engineering_photos_version`, `rm_engineering_stages_version` integram alterações técnicas ao protocolo. Apenas filhos de modelo atualizam a versão agregada do pai; mudanças operacionais não a alteram.
+- Importadores devem adquirir o lock exclusivo do par **antes dos upserts de filhos**, em uma única transação por matriz. Isso evita inversão entre locks de linhas e locks de engenharia. Triggers são defesa adicional, não autorização para ignorar essa ordem. Para mais de um par, ordenar por célula/tipo.
+- Edição de título usa o advisory exclusivo de catálogo da 017; edição de fotos toma o mesmo lock compartilhado antes do par. Assim, renomear célula não cria impasse com o vínculo textual dos títulos.
+- O timeout de lock é 10 segundos; erros de contenção/deadlock desfazem a transação e não são engolidos. Stale version retorna `PT409`; payload inválido `22023`; referência/ID de outro escopo `42501`; identidade/capability/MFA sem autorização `42501`; UUID/conflito natural `23505`.
+
+Os dois materializadores consomem somente vínculos/filhos ativos. O materializador geral legado agora usa `ON CONFLICT DO NOTHING`: somente cria/copía alocações novas, preservando integralmente prazos/forms/fotos/aprovações existentes. Não reaplica modelos a um projeto em andamento. O gateway mobile e a transição operacional Liberar/Retornar/Aprovar não são modificados.
+
+A cópia de foto também preserva `tag`, utilizado por relatórios legados, separadamente de `identificador_foto_key`. Importação e cópia não inferem um identificador a partir de tags ou títulos.
+
+Validação local: 001–018 e sete suítes PostgreSQL passaram. Engenharia cobre snapshots, versão agregada de import, distinção modelo/instância, aposentadoria sem exclusão, preservação de legado, escopo imutável de título, título de projeto imutável, cópia de tag sem inferir identificador, regras de aprovadores, materialização futura e geral sem sobrescrita, RLS/SSO/MFA, replay e locks reais entre duas conexões. Inclui alocação manual quando o projeto ainda não tem tipo e escopo global legado formado somente por espaços/tabs. Nenhum modelo artificial foi criado em produção pela migration ou pelos testes.
+
+A aplicação remota comparou 53 snapshots: as 52 tabelas públicas RM e os recibos web privados. A comparação excluiu apenas as quatro colunas adicionadas (`ativo` em CTE/CFTE/etapas e `cadastro_foto_id` em fotos), mantendo todas as colunas anteriores e contagens idênticas. Foram preservados 102 usuários RM, quatro registros preexistentes da outbox e zero recibos de mutação web. A fonte completa da migration foi registrada em `supabase_migrations.schema_migrations.statements[1]`; seu SHA-256 confere com o arquivo local congelado. O pós-teste confirmou os quatro triggers, RLS, helpers privados, snapshot `STABLE SECURITY INVOKER` restrito a authenticated, sete operações no permit, capability exata das duas novas operações, FK de título `RESTRICT`, credenciais privadas, gateway mobile e `require_sso=true`. Prova local sem segredos: `.tmp/engineering-018-application-proof.json`.
+
+O primeiro grupo do importador técnico foi ensaiado remotamente com `ROLLBACK` às 12:52:22 UTC para validar a sintaxe PL/pgSQL contra a 018. As contagens de modelos, o snapshot dos pais, a outbox e os recibos permaneceram iguais; zero modelos foram aplicados nesse ensaio. Prova: `.tmp/engineering-bootstrap/001-rehearsal-proof.json`. A carga completa e as concessões da Central não integram essa comprovação.

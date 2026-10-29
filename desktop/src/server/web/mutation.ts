@@ -25,6 +25,9 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   const result = response.data;
   if (!result || typeof result.id !== 'string' || typeof result.operation !== 'string') return { ok: false, ...mutationError() };
   if (operation === 'save_catalog' || operation === 'delete_catalog') revalidatePath('/cadastros');
+  if (operation === 'save_engineering' || operation === 'save_photo_title') {
+    revalidatePath('/engenharia', 'layout');
+  }
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
   if (result.projeto_id) revalidatePath(`/projetos/${result.projeto_id}`);
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);

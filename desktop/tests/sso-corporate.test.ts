@@ -73,6 +73,15 @@ test('new catalog management requires its explicit current grant; legacy read pe
   assert.ok(result.decision.capabilities.includes('em.catalogs.manage'));
 });
 
+test('engineering read and manage are explicit independent grants, never implied by catalog management', async () => {
+  const old = fixture({ decision: { ...decision(), capabilities: CORPORATE_CAPABILITIES.filter(cap => !cap.startsWith('em.engineering.')) } });
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.catalogs.manage');
+  for (const capability of ['em.engineering.read', 'em.engineering.manage'] as const) await assert.rejects(old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, capability), code('CORP_FORBIDDEN'));
+  const readonly = fixture({ decision: { ...decision(), capabilities: ['em.portal.read', 'em.engineering.read'] } });
+  await readonly.auth.validateCorporateSession(readonly.token, { subject: SUBJECT }, 'em.engineering.read');
+  await assert.rejects(readonly.auth.validateCorporateSession(readonly.token, { subject: SUBJECT }, 'em.engineering.manage'), code('CORP_FORBIDDEN'));
+});
+
 test('corporate configuration is opt-in and pins the issuer, app and exact HTTPS callback', () => {
   assert.equal(corporateSettings({}), null);
   assert.equal(settings.callbackUrl, 'https://em.example.test/auth/sso/callback');
