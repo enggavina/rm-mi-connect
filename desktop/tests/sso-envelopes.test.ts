@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ssoFlowSchema, ssoSessionSchema } from '../src/server/web/sso-envelopes';
-import { CORPORATE_ISSUER } from '../src/server/web/sso-policy';
+import { CORPORATE_CAPABILITIES, CORPORATE_ISSUER } from '../src/server/web/sso-policy';
 
 const subject = '00000000-0000-4000-8000-000000000001';
 const corporate = { accessToken: 'synthetic-test-token-'.repeat(4), user: { id: subject, email: 'person@mielectric.com.br' }, expiresAt: 20_000,
@@ -27,4 +27,13 @@ test('pending MFA requires bounded attempts, UUID factors and a complete encrypt
     { ...flow, factors: [] }, { ...flow, factors: [{ id: '../factor', name: 'Invalid' }] }, { ...flow, contents: {} }]) {
     assert.equal(ssoFlowSchema.safeParse(invalid).success, false);
   }
+});
+
+test('catalog capability is accepted in encrypted sessions and MFA without invalidating previous grants', () => {
+  const expanded = { ...contents, corporate: { ...corporate, decision: { ...corporate.decision, capabilities: [...CORPORATE_CAPABILITIES] } } };
+  assert.ok(CORPORATE_CAPABILITIES.includes('em.catalogs.manage'));
+  assert.equal(ssoSessionSchema.safeParse(expanded).success, true);
+  assert.equal(ssoSessionSchema.safeParse({ ...expanded, corporate: { ...expanded.corporate, decision: { ...expanded.corporate.decision, capabilities: CORPORATE_CAPABILITIES.filter(cap => cap !== 'em.catalogs.manage') } } }).success, true);
+  assert.equal(ssoFlowSchema.safeParse({ kind: 'corporate-mfa', corporate: expanded.corporate, factors: [{ id: subject, name: 'MFA' }], expiresAt: 10_000, attempts: 0 }).success, true);
+  assert.equal(ssoSessionSchema.safeParse({ ...expanded, corporate: { ...expanded.corporate, decision: { ...expanded.corporate.decision, capabilities: [...CORPORATE_CAPABILITIES, 'em.unknown.manage'] } } }).success, false);
 });

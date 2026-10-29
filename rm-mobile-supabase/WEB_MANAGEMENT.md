@@ -4,6 +4,8 @@ Estado: **014 e 015 aplicadas em 29/10/2026** ao projeto autorizado `oficina-em-
 
 A instalação atual também inclui a **016**, que coloca uma guarda SSO diante deste core sem modificar seus payloads. Depois da implantação e QA pública do BFF, a exigência global foi ativada: toda escrita web exige autorização curta do BFF. Consulte [SSO_BRIDGE.md](SSO_BRIDGE.md) para implantação, identidades dedicadas e provas da ativação. As cinco suítes atuais validam 001–016.
 
+A **017 foi aplicada em 29/10/2026**, preservando o SSO obrigatório e os dados operacionais, para gestão administrativa de clientes, células e tipos. A concessão central e o deploy web compatível ainda estão pendentes. O [contrato de cadastros](WEB_CATALOGS.md) define `save_catalog`/`delete_catalog`, a capability `em.catalogs.manage`, exclusão somente sem referências e renomeação segura de células. O harness ampliado valida 001–017 com seis suítes, concorrência e upgrade na mesma sessão; as operações descritas abaixo preservam seus contratos.
+
 ## Identidade e sessão
 
 O portal usa a conta Supabase Auth existente. A função obtém `auth.uid()`, encontra o `rm_users.auth_user_id` correspondente e exige `status='ativo'`. Não existe tabela separada `rm_operadores`. Não recebe `actor_id`, matrícula, palavra-chave do operador ou token mobile. O usuário DIGITAL já está vinculado ao Auth e possui perfil administrador; os demais usuários legados não adquirem uma conta Auth automaticamente.

@@ -68,7 +68,7 @@ globalThis.fetch = (input, init) => {
     assert.doesNotMatch(html, /name="(?:email|password)"/);
 
     for (const headers of [{}, { Cookie: 'em-sso-session=forged' }] as Record<string, string>[]) {
-      for (const path of ['/', '/painel', '/projetos', '/planejamento', '/cronograma', '/formularios', '/cadastros', '/login/sso-mfa']) {
+      for (const path of ['/', '/painel', '/projetos', '/planejamento', '/cronograma', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/types/00000000-0000-4000-8000-000000000001/editar', '/login/sso-mfa']) {
         let current = path, arrived = false;
         for (let hop = 0; hop < 4; hop++) {
           const response = await request(current, { headers }); noStore(response);

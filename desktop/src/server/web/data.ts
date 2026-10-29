@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import { editableCatalogKindSchema, type EditableCatalogKind } from './catalog-policy';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -28,9 +29,9 @@ const ATTACHMENT = 'id,projeto_id,nome,descricao,arquivo_url,tipo_arquivo,create
 const ACTIVE = 'status_pcp.not.in.(cancelado,finalizando_para_faturar),status_pcp.is.null';
 const catalogs = {
   users: { table: 'rm_users', columns: USER, order: 'nome', search: 'nome,matricula' },
-  cells: { table: 'rm_celulas', columns: CELL, order: 'nome', search: 'nome,codigo' },
-  types: { table: 'rm_tipos_equipamento', columns: 'id,nome,sigla', order: 'nome', search: 'nome,sigla' },
-  clients: { table: 'rm_clientes', columns: CLIENT, order: 'nome', search: 'nome,codigo' },
+  cells: { table: 'rm_celulas', columns: CELL + ',updated_at', order: 'nome', search: 'nome,codigo' },
+  types: { table: 'rm_tipos_equipamento', columns: 'id,nome,sigla,updated_at', order: 'nome', search: 'nome,sigla' },
+  clients: { table: 'rm_clientes', columns: CLIENT + ',updated_at', order: 'nome', search: 'nome,codigo' },
   forms: { table: 'rm_forms', columns: FORM, order: 'titulo', search: 'titulo,descricao' },
 } as const;
 
@@ -217,7 +218,13 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     ]);
     return { clients, types, users, forms, statuses };
   }
-  return { getOverview, listProjects, getProject, getRecord, listPlanning, listForms, getCatalogs, editorChoices };
+  async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
+    requireCapability('em.catalogs.manage');
+    if (!editableCatalogKindSchema.safeParse(kind).success) return null;
+    const catalog = catalogs[kind];
+    return one(catalog.table, catalog.columns, id);
+  }
+  return { getOverview, listProjects, getProject, getRecord, listPlanning, listForms, getCatalogs, getCatalogEntry, editorChoices };
 }
 
 async function data(capability: CorporateCapability) { const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability); return createWebData(session.client, session.sso?.capabilities); }
@@ -228,3 +235,9 @@ export async function getRecord(id: string) { return (await data('em.forms.read'
 export async function listPlanning(filters: PlanningFilters = {}) { return (await data('em.planning.read')).listPlanning(filters); }
 export async function listForms(filters: FormFilters = {}) { return (await data('em.forms.read')).listForms(filters); }
 export async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) { return (await data('em.catalogs.read')).getCatalogs(filters); }
+export async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
+  const { requireWebUser } = await import('./auth');
+  const session = await requireWebUser('em.catalogs.manage');
+  if (session.profile.perfil !== 'administrador') { const { redirect } = await import('next/navigation'); redirect('/acesso?motivo=permissao'); }
+  return createWebData(session.client, session.sso?.capabilities).getCatalogEntry(kind, id);
+}

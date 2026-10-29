@@ -181,3 +181,17 @@ test('catalog permission alone excludes user images, and every domain still requ
   await assert.rejects(missingPortal.data.getProject(id(1)), /Acesso/);
   assert.equal(missingPortal.db.calls.length, 0);
 });
+
+test('catalog edit lookup uses an explicit supported table and returns exact concurrency version', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.catalogs.manage']);
+  const version = '2026-10-29T18:03:24.123456+00:00';
+  db.tables.set('rm_celulas', [{ id: id(1), nome: 'Célula', indice: 5, ordem: 7, updated_at: version, private_metadata: 'excluded' }]);
+  const row = await data.getCatalogEntry('cells', id(1));
+  assert.equal(row?.updated_at, version); assert.equal(row?.ordem, 7); assert.equal(row?.private_metadata, undefined);
+  const calls = db.calls.length;
+  assert.equal(await data.getCatalogEntry('users' as any, id(1)), null);
+  assert.equal(await data.getCatalogEntry('clients', 'bad-id'), null);
+  assert.equal(db.calls.length, calls);
+  const readonly = setup(['em.portal.read', 'em.catalogs.read']);
+  await assert.rejects(readonly.data.getCatalogEntry('clients', id(1)), /Acesso/); assert.equal(readonly.db.calls.length, 0);
+});

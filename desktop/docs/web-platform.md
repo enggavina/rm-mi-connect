@@ -9,7 +9,7 @@ Primeira entrega de gestão web, em 29/10/2026. O portal Next.js usa o mesmo pro
 - **Planejamento:** consulta das alocações e edição de prazos, responsável, horas, visibilidade, bloqueio e formulários. Nova alocação materializa apenas os modelos daquela célula e tipo de equipamento. O tipo não pode ser alterado depois da alocação; formulários já enviados não são removidos.
 - **Cronograma:** janela de 42 dias, filtros e paginação, intervalos reais e identificação de prazos vencidos. Datas ausentes, inválidas ou fora do período são indicadas sem inventar barras.
 - **Formulários:** consulta das respostas com seções recolhidas, imagens, assinaturas e histórico; aprovação ou devolução de questões específicas para correção pelo fluxo mobile existente. Respostas históricas sem questão continuam somente para consulta.
-- **Cadastros:** consulta paginada de clientes, células, tipos de equipamento, equipe e modelos de formulário. A administração completa de cadastros, o construtor de formulários e o comercial são módulos posteriores.
+- **Cadastros:** consulta paginada de clientes, células, tipos de equipamento, equipe e modelos de formulário. O primeiro pacote de paridade acrescenta criação/edição e exclusão protegida dos dados básicos de clientes, células e tipos, restrita ao administrador com `em.catalogs.manage`. Imagens, contatos, engenharia e construtor de formulários são os próximos pacotes do [plano de paridade](../../plano_paridade_rmmi_web.md).
 
 A consulta e abertura dos documentos existentes estão nesta entrega. Geração/compilação de novos relatórios, orçamento comercial, laboratório e administração de contas não são apresentados como funcionalidades prontas. As rotas internas anteriores de relatórios/TOTP continuam reservadas e protegidas por Bearer; o login web usa a MFA nativa do Supabase quando há TOTP verificado.
 
@@ -21,7 +21,7 @@ Sessões SSO usam um cookie opaco HttpOnly, SameSite Lax e Secure em produção,
 
 As leituras e downloads usam o JWT do usuário e as policies do banco. Dados sensíveis de `rm_private` nunca são consultados para montar a interface. As ações passam por `rm_web_mutate_v1` com autorização, recibo idempotente e `expected_updated_at` exato. Conflitos exigem uma nova leitura, sem sobrescrever silenciosamente as alterações de outro usuário ou operador. Retentativa após resposta de rede ambígua conserva o mesmo UUID e conteúdo.
 
-Migrações necessárias: **001–016**. O contrato de gestão está em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md) e a ponte privada em [SSO_BRIDGE.md](../../rm-mobile-supabase/SSO_BRIDGE.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
+Migrações necessárias: **001–017**. O contrato de gestão está em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md) e a ponte privada em [SSO_BRIDGE.md](../../rm-mobile-supabase/SSO_BRIDGE.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
 
 ## Executar e verificar
 

@@ -35,9 +35,14 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'pull_performance.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_management.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'sso_bridge.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_catalogs.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $sqlFile
+    $executionFile = $sqlFile
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '017_rm_web_catalog_management.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_catalogs_upgrade.sql'
+    }
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit

@@ -8,7 +8,7 @@ export const CORPORATE_STORAGE_KEY = 'em-corporate-pkce';
 export const CORPORATE_CAPABILITIES = [
   'em.portal.read', 'em.projects.read', 'em.projects.manage', 'em.planning.read',
   'em.planning.manage', 'em.forms.read', 'em.forms.review', 'em.photos.read',
-  'em.documents.read', 'em.catalogs.read', 'em.history.read',
+  'em.documents.read', 'em.catalogs.read', 'em.history.read', 'em.catalogs.manage',
 ] as const;
 export type CorporateCapability = typeof CORPORATE_CAPABILITIES[number];
 export interface CorporateSettings {

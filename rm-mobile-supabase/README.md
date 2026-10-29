@@ -22,7 +22,7 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 - [`migrations/004_rm_rls_and_sync_bridge.sql`](./migrations/004_rm_rls_and_sync_bridge.sql)
   Configura Row Level Security (RLS) em todas as tabelas, cria os buckets do Supabase Storage (`rm-fotos`, `rm-assinaturas`, `rm-documentos`), ativa a publicação `supabase_realtime` e cria o RPC `public.rm_apply_bubble_webhook_v1` para receber atualizações vindas do Desktop Bubble (`rm_planejamento`, `proposta`, `rm_gestao`, `settings_rm`).
 - [`migrations/005_rm_commercial_proposals_and_legacy_forms.sql`](./migrations/005_rm_commercial_proposals_and_legacy_forms.sql)
-  Completa o schema PostgreSQL para **100% do software `rmmi` além do `rm_mobile`**: RBAC granular por elemento (`rm_elementos_permissao` — códigos `PN*`, `CM*`, `PL*`, `GT*`, `CF*`, `DJ*`), Módulo Comercial e Precificação (`rm_propostas_controle`, `rm_propostas_budgetarias`, `rm_precificacao_orcamentaria`, `rm_escopo_rm`, `rm_materiais`, `rm_pecas_rm`, `rm_templates_proposta`), Documentos/Templates e Compilador PDF (`rm_templates_word`, `rm_documentos`, `rm_docs`), Fichas Laboratoriais Estruturadas (`rm_ordens_servico`, `rm_fichas_desmontagem`, `rm_ensaios_eletricos_laboratorio`) e Suporte (`rm_solicitacoes_suporte`).
+  Acrescenta tabelas preparatórias de autorização legada, comercial/precificação, documentos/templates, laboratório e suporte. **Não representa paridade funcional completa:** geração/compilação de PDF, cálculos comerciais, policies e fluxos de laboratório ainda exigem implementação. A revisão Live encontrou divergências entre a precificação do Bubble e o modelo aproximado desta migração. Consulte o [plano de paridade](../plano_paridade_rmmi_web.md).
 - [`migrations/006_rm_mobile_delegation_and_idempotency.sql`](./migrations/006_rm_mobile_delegation_and_idempotency.sql)
   Adiciona delegação de operador, idempotência transacional, validação de respostas e policies de upload por dispositivo.
 - [`migrations/007_rm_bridge_leases_and_checkpoints.sql`](./migrations/007_rm_bridge_leases_and_checkpoints.sql)
@@ -39,6 +39,12 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
   Preserva respostas históricas importadas cujo vínculo de questão foi removido na origem, sem permitir novos envios ou correções sem questão válida.
 - [`migrations/013_rm_mobile_pull_performance.sql`](./migrations/013_rm_mobile_pull_performance.sql)
   Indexa a paginação mobile por `updated_at,id` e avalia a mesma autorização RLS uma vez por consulta, eliminando o timeout do histórico de respostas.
+- [`migrations/014_rm_web_management.sql`](./migrations/014_rm_web_management.sql) e [`015_rm_web_conflict_http_status.sql`](./migrations/015_rm_web_conflict_http_status.sql)
+  Gestão web de projetos, planejamento e revisão, com autoria, idempotência, controle de versão e conflito HTTP 409.
+- [`migrations/016_rm_web_sso_bridge.sql`](./migrations/016_rm_web_sso_bridge.sql)
+  Ponte SSO privada, vínculos explícitos e permissões de ação de uso único. A ativação segue [SSO_BRIDGE.md](SSO_BRIDGE.md).
+- [`migrations/017_rm_web_catalog_management.sql`](./migrations/017_rm_web_catalog_management.sql)
+  Dados cadastrais básicos de clientes, células e tipos, com permissão administrativa própria e proteção de referências. Não inclui construtor de formulários nem toda a engenharia.
 - [`blueprint/01_integracoes_render_n8n_s3_contratos.md`](./blueprint/01_integracoes_render_n8n_s3_contratos.md)
   Mapeamento completo e contratos JSON dos 3 serviços no Render (`Auth`, `PDF_Proposta`, `Insp`), 13 webhooks do n8n, AWS S3/CloudFront, Google Docs, `rm-gantt-tableau` e `RM Report Builder`.
 - [`blueprint/02_especificacao_paginas_e_prompts_ia.md`](./blueprint/02_especificacao_paginas_e_prompts_ia.md)
@@ -56,7 +62,7 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 
 ### 1. Aplicar as Migrações SQL no Supabase
 
-Aplicar todas as treze migrações em ordem. `006` adiciona o gateway mobile com delegação de operador e idempotência; `007` adiciona leases e checkpoints duráveis da ponte; `008` completa a publicação Realtime dos catálogos; `009` preserva a ordenação fracionária encontrada nos formulários Bubble; `010` aplica as permissões de célula do operador, sem herdar as da conta do tablet; `011` suporta as operações de projeto/célula e o recebimento simplificado com NF; `012` preserva snapshots de respostas históricas sem questão; `013` elimina o timeout da sincronização paginada. Não expor as RPCs legadas diretamente ao aplicativo.
+Aplicar as migrações 001–017 em ordem, conferindo o ambiente de destino. As 014–015 acrescentam a gestão web, a 016 prepara o SSO sem ativá-lo automaticamente e a 017 acrescenta os cadastros básicos. O cadastro da capacidade na Central e sua concessão são operações separadas da migração SQL. Não expor as RPCs legadas diretamente ao aplicativo.
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/001_rm_enums_and_option_sets.sql
@@ -72,6 +78,10 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/010_
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/011_rm_project_operations.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/012_rm_historical_answer_snapshots.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/013_rm_mobile_pull_performance.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/014_rm_web_management.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/015_rm_web_conflict_http_status.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/016_rm_web_sso_bridge.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f rm-mobile-supabase/migrations/017_rm_web_catalog_management.sql
 ```
 
 ### 2. Executar o ETL Inicial (Bubble -> Supabase)

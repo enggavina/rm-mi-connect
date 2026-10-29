@@ -12,7 +12,7 @@ const corporateSchema = z.object({
   user: z.object({ id: uuid, email: z.email().max(254), nome: z.string().max(200).optional() }),
   expiresAt: z.number().finite(),
   decision: z.object({ application: z.literal('em'), issuer: z.literal(CORPORATE_ISSUER), subject: uuid,
-    app_access: z.literal(true), capabilities: z.array(z.enum(CORPORATE_CAPABILITIES)).max(11),
+    app_access: z.literal(true), capabilities: z.array(z.enum(CORPORATE_CAPABILITIES)).max(CORPORATE_CAPABILITIES.length),
     all_employees: z.literal(false), fields: z.tuple([]), export_allowed: z.literal(false) }),
 }).refine(value => value.user.id === value.decision.subject);
 export const ssoSessionSchema = z.object({

@@ -64,6 +64,15 @@ function fixture(options: FixtureOptions = {}) {
 }
 function code(expected: string) { return (error: unknown) => error instanceof CorporateAuthError && error.code === expected; }
 
+test('new catalog management requires its explicit current grant; legacy read permissions remain valid', async () => {
+  const old = fixture({ decision: { ...decision(), capabilities: CORPORATE_CAPABILITIES.filter(cap => cap !== 'em.catalogs.manage') } });
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.catalogs.read');
+  await assert.rejects(old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.catalogs.manage'), code('CORP_FORBIDDEN'));
+  const authorized = fixture();
+  const result = await authorized.auth.validateCorporateSession(authorized.token, { subject: SUBJECT }, 'em.catalogs.manage');
+  assert.ok(result.decision.capabilities.includes('em.catalogs.manage'));
+});
+
 test('corporate configuration is opt-in and pins the issuer, app and exact HTTPS callback', () => {
   assert.equal(corporateSettings({}), null);
   assert.equal(settings.callbackUrl, 'https://em.example.test/auth/sso/callback');
