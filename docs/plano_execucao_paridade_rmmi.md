@@ -1,0 +1,51 @@
+# Execução da revisão de paridade RMMI
+
+Pedido de 29/10/2026. Complementa [o plano de paridade](../plano_paridade_rmmi_web.md), sem substituir o histórico das entregas. O sistema existente é a base; a implementação ocorre no EM e o Bubble permanece somente para leitura.
+
+Primeiro incremento desta revisão **publicado**: seleção de fotos (A), composição do Cronograma e ordem do roteiro (parte de B/C), exclusão protegida de títulos e organização de menus (D/E/F). Migrações 022–024, consumidor `675649e`, Railway `65221686-f149-4917-aa1e-f5e1c3b234f8` com `SUCCESS`. [Relatório com validações, diferenças e pendências](relatorio_entrega_paridade_rmmi.md). A tabela abaixo registra o baseline e a ordem definida **antes** das alterações; não declara todos os itens concluídos.
+
+## Discovery e classificação
+
+Fontes detalhadas: [fotos/Report Building](discovery_rmmi_fotos_report_builder.md), [Planejamento](discovery_rmmi_planejamento.md), [Cadastros e Autorizações](discovery_rmmi_cadastros_autorizacao.md), [Comercial](discovery_rmmi_comercial.md). Cada relatório explicita cobertura, IDs e lacunas; inventariar eventos não significa ter lido suas ações, nem executar uma query prova um workflow completo. A revisão das páginas críticas continua até cobrir seus fluxos ativos relevantes.
+
+Infraestrutura reutilizada: App Router/SSR e shell EM, componentes de formulário/galeria/tabela/paginação, JWT/RLS, SSO Central, `rm_web_mutate_v1`, permits de uso único, recibos idempotentes, controle por versão, leitores e editores existentes. Não remover o limite Suspense que protege a hidratação do shell. Migrações 001–021 são aplicadas e imutáveis.
+
+## Ordem objetiva antes das alterações
+
+| Ordem / funcionalidade | Origem | Estado e destino EM | Dependências / arquivos principais | Risco e critério |
+| --- | --- | --- | --- | --- |
+| A. Seleção individual de fotos | `projeto/coiiy`, `coiln/coimF/cojAc/cojAh` | Parcial: bool já persistido/importado; falta comando/UI em `/projetos/[id]`. | `data.ts`, nova policy/action de fotos, galeria existente, migração 022 e testes. | Médio: preservar arquivos/ordem, autorização atual, replay, conflito; seleção sobrevive à recarga. Report Building continua fornecedor legado até integração posterior. |
+| B. Cronograma orientado a projeto e células | `rm_planejamento/cnsnM`, `Group Gestao_projeto_redesign/comJg` | Divergente: Gantt existente não representa o grupo. Reutilizar detalhe/editores em jornada por projeto e célula; manter Gantt como outra visualização. | Leitores compartilhados, `/cronograma`, CellEditor, rotas projeto/PCP, operações transacionais. | Alto: `indice` do roteiro ≠ `posicao` da fila; troca de projeto deve limpar alocação. Exibição mobile também depende da visibilidade. |
+| C. Gestão de alocações existentes | `comCr/copGz/comNF/comAy` e abas do `comJg` | Parcial: criar/editar existe; visibilidade não recompõe fila; ordenação/retirada e atribuições de execução incompletas. | Gateway/locks de projeto+célula, snapshots e versões, modelos de Engenharia e dados operacionais. | Alto: não copiar delete sem proteção. Não apagar registros enviados/fotos capturadas/trabalho offline. Contratos e concorrência antes da UI. |
+| D. CRUD de Títulos de Fotos | `Group Gestão de Titulos de fotos`; condições GT001/005/006/007 (rótulos antigos divergem) | Parcial: criar/editar na Engenharia; adicionar acesso Cadastros e exclusão protegida reutilizando entidade/editor. | `engineering-*`, `rm_cadastro_fotos`, Cadastros, migração 023 e testes. | Médio: referências de modelos e fotos operacionais impedem exclusão; permissões não podem depender só do botão. |
+| E. Tipos de equipamentos e gestão de tipos | `Group Tipos equipamentos`, matriz em `rm_gestao` | Básico implementado; matriz tipo×célula/formulários/fotos/aprovadores implementada na Engenharia. Preservar menus distintos apontando consumidores existentes. | Cadastros, Engenharia, form builder; complementar campos/ações após contrato dos grupos. | Médio: não criar segundo catálogo nem confundir editar tipo com reescrever alocações. |
+| F. Modelos de formulários | `rm_gestao`, Form/Subtitle/Question/Item | Já implementado em `/modelos-formularios`; complementar somente diferenças comprovadas. | Construtor e versões publicadas existentes; relatórios. | Alto se alterar IDs usados pelo offline. Manter publicação imutável. |
+| G. Templates Word | `Group Templates`, GT004, `custom.templates` | Não implementado: `rm_templates_word` existe na 005, sem fluxo web/importador demonstrado. | Reconciliação/importação do catálogo real, DOCX/Google Docs, permissões, armazenamento e contratos de geração. | Alto: não substituir por Form. Não afirmar integração pronta com APIs 501. |
+| H. Células, equipe e usuários | `Group Botão nova celula`, `Group Gestão dos usuários`, `settings_rm` | Célula básica pronta; imagens/equipe/acesso operador-célula e usuários parciais. | Identidades legadas, `rm_tablet_celula_users.identidade_id`, delegação e MFA, SSO; leitores/CRUD existentes. | Alto: admin web não promove operador/global; não criar vínculo por nome ou email automaticamente. |
+| I. Autorização: elementos e individual | `autorizacao/cnCcs`, Elemento/usuarios permitidos | Produção com 0 elementos; catálogo e membership explícita compreendidos, sem herança demonstrada. [Contrato proposto](contrato_autorizacao_elementos_em.md) e [classificação dos 237 eventos](classificacao_eventos_pendentes_rmmi.md) documentam reuso/bloqueios. | Reconciliar schema005, importar dados reais, resolver identidades por ID/binding aprovado e mapear consumidores; propor `em.authorization.read/manage` após consumidor compatível, sem alterar Central nesta etapa. | Crítico: tabela vazia não ativa enforcement; helper005 não é autoridade web. Sem autoelevação, vínculo por email, promoção global ou alteração das identidades mobile. |
+| J. Precificação e materiais | `settings_rm`, proposta, Pricing/Material | Não implementado; 005 aproxima contrato e não basta. | Migração aditiva dos campos reais, carga própria, novas capacidades comerciais após consumidor, cálculo CV/KW/polos/motor/serviço/área. | Alto: fallback é menor potência superior; divergência textual KW deve ser documentada e resolvida explicitamente. |
+| K. Propostas estimadas/firme e revisões | `proposta/coczM`, Proposta_controle/Proposta_motor_Budgetaria | Não implementado; depende de J. | Cliente/contato/vendedor/responsável, componentes, numeração/revisão, PT/EN, PDF e armazenamento. | Alto: não inventar espanhol, estados/valores ou substituir vendedor User por texto. Resultado externo com falha explícita. |
+| L. Complementos e relatórios | Dossiê, comentários/anexos, geração/compilação | Consulta existente; criação/edição, jobs e geração pendentes. | A/G, autorização/armazenamento privado, contratos existentes, idempotência externa e auditoria. | Alto: sem sucesso fictício, mocks permanentes ou ativação da ponte de saída. |
+
+## Organização de menus
+
+- **Planejamento:** Projetos a liberar para Oficina (reutilizar Recebimentos e preservar critério real), Projetos, Células por projeto (jornada comJg), Planejamento, Aprovações de formulários. Fila/carga, Gantt e aprovações de etapas continuam acessíveis, distinguindo decisões de etapas da revisão de formulários.
+- **Cadastros:** Título de Fotos; Tipos de Equipamentos (catálogo); Gestão de Tipo de Equipamentos (matriz de Engenharia); Gestão de Formulários (construtor); Gestão de Templates (Word, entrega própria). Não anunciar um item como funcional enquanto não houver seu fluxo.
+- **Autorização:** Gestão de elementos e Gestão individual; implementação dependente do contrato/identidades, com autorização de execução no servidor.
+- **Orçamentação:** Gerador de propostas estimadas, Precificação orçamentária, Materiais; implementar infraestrutura/dados/cálculo antes da jornada de proposta.
+
+## Inconsistências a tratar explicitamente
+
+- O grupo comJg não é Gantt. Ordem do roteiro e fila da célula são conceitos independentes.
+- Bubble permite apagar alocação sem proteger histórico; APIs de ordenação expostas/sem autenticação e autobinding amplo não serão copiados. Preservar o efeito legítimo com escopo/autorização/versões.
+- Troca de projeto não limpa célula atual em um fluxo legado; o EM deve limpar para impedir ações sobre outra alocação.
+- `AprovacaoForm` atribui avaliador antes do registro existir; `rm_aprovacoes_registro` é histórico de decisão e não serve como substituto.
+- Templates Word são entidade distinta de Form. Tipo de equipamento é catálogo distinto da matriz.
+- Elemento usa aplicação textual (PAINEL/COMERCIAL/GESTÃO etc.), divergindo do comentário aproximado005. Gestão individual pode buscar perfil pelo primeiro nome coincidente; adotar identidade exata, sem replicar colisão de nomes.
+- Pricing/propostas precisam contrato aditivo real; não construir regras financeiras sobre colunas aproximadas005.
+
+## Validação e publicação
+
+Cada incremento precisa de persistência real, acesso atual, estados de espera/erro, replay após resultado ambíguo e conflito explícito. Usar testes de domínio/BFF e PostgreSQL isolado, incluindo disputa quando necessária; tipos, build e smokes; navegador com fixtures exclusivamente locais e negações públicas após deploy. Não existe comando lint configurado atualmente: declarar essa limitação, sem fingir execução. Não criar dados artificiais em produção.
+
+Aplicar somente novas migrações ao Supabase `oficina-em-mi-off`, com verificação de alvo e preservação das tabelas anteriores. Publicar no Railway EM após validações, conforme autorização permanente. Registrar commit, migração, deploy, provas, limites e pendências no relatório final. Entregas parciais não significam conclusão da paridade global.

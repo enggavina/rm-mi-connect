@@ -58,6 +58,16 @@ Aprovações publicadas: deploy **`77018942-bc21-496a-8a0b-f1bd24b6b64d`**, cons
 
 PCP 3B.1 publicado: consumidor **`37b54866762022da6b0d5fe44dd663ee3dba2fa0`**, deploy **`9d06331d-6764-4cc8-ab0c-f1197fe3cb88`** com `SUCCESS`, [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/40926891591) aprovado. Health 200, seis negações para as três novas rotas e início SSO/PKCE até Microsoft conferidos. Sem nova capacidade ou alteração na Central: permanecem 18 capacidades e 36 concessões, com os dois administradores EM existentes.
 
+## Revisão ampliada: fotos, roteiro e títulos
+
+Publicado em 29/10/2026: consumidor **`675649e6caf5c664f9888e3b5f2bcd8d42d50904`**, deployment **`65221686-f149-4917-aa1e-f5e1c3b234f8`** com `SUCCESS`, [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40939109207), migrações **022–024** aplicadas. Galeria com seleção persistente; Cronograma com contexto do projeto/célula e ordem do roteiro independente da fila; exclusão protegida de títulos e menus reaproveitados. [Relatório da revisão](../../docs/relatorio_entrega_paridade_rmmi.md) e [plano objetivo](../../docs/plano_execucao_paridade_rmmi.md).
+
+- **214 testes desktop**, typecheck, build e dois smokes aprovados. Não há lint próprio configurado. CI também aprovou mobile, sem alterar o APK.
+- **13 suítes PostgreSQL**, upgrades e concorrência; 67 snapshots públicos/privados preservados na aplicação, 102 usuários, 945 etapas, outbox 4, quatro recibos existentes e 486 seleções de fotos mantidos. As 56 tabelas RM seguem com RLS; fontes aplicadas são iguais às versionadas.
+- **33 cenários de navegador** no build `r4geICbtcHtt4lIgZQzTz`, 15 navegações entre módulos e 20 ciclos nas abas dos projetos, sem erros ou rede externa. DOM/build reais e HTTP/dados simulados; inspeção desktop/390 px e correção de cabeçalhos comprimidos. Não equivale a login Microsoft humano ou CRUD positivo em produção.
+- Query links de contexto do Cronograma usam navegação nativa, como as abas do projeto. O caminho SPA/RSC foi comparado com os mesmos hrefs nativos e resposta RSC correta; não houve supressão de erro ou alteração do Shell/Suspense. O build final passou todos os cenários.
+- Em produção: health 200, 14 negações em sete URLs alteradas e início PKCE real até Microsoft; cancelamento apenas do fluxo próprio de QA. Nenhuma concessão na Central nem ativação da ponte. Geração Report Building, Word, Comercial, Autorizações e complementos operacionais permanecem com limites explícitos no relatório.
+
 ## Validação das filas PCP
 
 - **188 testes desktop**, tipos, build, dois smokes e auditoria npm sem vulnerabilidades. 70 arquivos JavaScript do navegador sem as seis chaves privadas locais; fontes sem dez segredos conhecidos.
