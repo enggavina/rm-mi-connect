@@ -6,12 +6,14 @@ O portal usa Microsoft Azure pelo Supabase corporativo da Central de Acessos (`k
 
 | Conta Microsoft | Perfil EM dedicado | Permissões na Central |
 | --- | --- | --- |
-| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 12 capacidades EM, incluindo `em.catalogs.manage` |
-| softdev05@mielectric.com.br | WEB-SOFTDEV05 · auditor | Entrada e consultas; sem editar projetos, planejar ou revisar formulários |
+| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 14 capacidades EM, incluindo gestão de cadastros e Engenharia |
+| softdev05@mielectric.com.br | WEB-SOFTDEV05 · auditor | Nove capacidades de consulta, incluindo Engenharia; nenhuma de escrita |
 
 Esses vínculos foram aprovados explicitamente pelo solicitante. O login não cria usuários, não associa contas por email e não converte um papel corporativo em administrador RM. Os cadastros mobile anteriores, inclusive DIGITAL e o cadastro legado de Igor Nascimento, permanecem preservados.
 
-O [primeiro pacote de paridade](../../plano_paridade_rmmi_web.md) acrescentou `em.catalogs.manage`. O consumidor compatível com 12 capacidades foi publicado antes do cadastro/concessão central; somente o administrador recebeu essa permissão. O perfil local de administrador também é obrigatório para criar, editar ou excluir os cadastros básicos. A conta de consulta conserva oito capacidades de leitura. Sessões anteriores continuam válidas e as concessões são consultadas novamente em cada requisição.
+O [primeiro pacote de paridade](../../plano_paridade_rmmi_web.md) acrescentou `em.catalogs.manage`; a Engenharia acrescenta `em.engineering.read` e `em.engineering.manage`. O consumidor compatível com **14 capacidades** foi publicado antes do cadastro/concessão central. Somente o administrador recebeu gestão; a conta de consulta recebeu somente a nova leitura. O perfil RM de administrador também é obrigatório para gerir os cadastros básicos e a Engenharia. Sessões anteriores continuam válidas e as concessões são consultadas novamente em cada requisição.
+
+A concessão de Engenharia foi feita após confirmar o deploy `603e3698-8698-4f8c-a7fb-1dc2495881ca`, commit `36f2fc5125f5ee708fb6a83223458a0f2a58746f`, e as sete novas rotas protegidas. Resultado central: **14 funções ativas e 23 concessões EM**, sem alteração das demais aplicações, contas ou concessões. Replay não criou auditorias adicionais; tentativa de tratar o usuário de consulta como gestor foi recusada. A auditoria registra operação técnica e o SHA do consumidor; não declara login humano ou MFA realizado pelo operador técnico.
 
 ## Fluxo e autorização
 

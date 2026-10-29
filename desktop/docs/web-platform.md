@@ -9,7 +9,8 @@ Primeira entrega de gestão web, em 29/10/2026. O portal Next.js usa o mesmo pro
 - **Planejamento:** consulta das alocações e edição de prazos, responsável, horas, visibilidade, bloqueio e formulários. Nova alocação materializa apenas os modelos daquela célula e tipo de equipamento. O tipo não pode ser alterado depois da alocação; formulários já enviados não são removidos.
 - **Cronograma:** janela de 42 dias, filtros e paginação, intervalos reais e identificação de prazos vencidos. Datas ausentes, inválidas ou fora do período são indicadas sem inventar barras.
 - **Formulários:** consulta das respostas com seções recolhidas, imagens, assinaturas e histórico; aprovação ou devolução de questões específicas para correção pelo fluxo mobile existente. Respostas históricas sem questão continuam somente para consulta.
-- **Cadastros:** consulta paginada de clientes, células, tipos de equipamento, equipe e modelos de formulário. O primeiro pacote de paridade acrescenta criação/edição e exclusão protegida dos dados básicos de clientes, células e tipos, restrita ao administrador com `em.catalogs.manage`. Imagens, contatos, engenharia e construtor de formulários são os próximos pacotes do [plano de paridade](../../plano_paridade_rmmi_web.md).
+- **Cadastros:** consulta paginada de clientes, células, tipos de equipamento, equipe e modelos de formulário. Criação/edição e exclusão protegida dos dados básicos de clientes, células e tipos, restrita ao administrador com `em.catalogs.manage`. Imagens, contatos e gestão própria de acessos operacionais permanecem no [plano de paridade](../../plano_paridade_rmmi_web.md).
+- **Engenharia:** roteiros de células por tipo de equipamento, formulários existentes vinculados, modelos de fotos obrigatórias, etapas/destinos/aprovadores e catálogo de títulos de fotos. Consulta exige `em.engineering.read`; criação/edição exige `em.engineering.manage` e administrador RM. As alterações configuram futuras alocações e preservam os projetos já alocados. O construtor de perguntas e a decisão de etapas pelo web são entregas separadas. Consulte o [contrato e a recuperação dos modelos](../../rm-mobile-supabase/WEB_ENGINEERING.md).
 
 A consulta e abertura dos documentos existentes estão nesta entrega. Geração/compilação de novos relatórios, orçamento comercial, laboratório e administração de contas não são apresentados como funcionalidades prontas. As rotas internas anteriores de relatórios/TOTP continuam reservadas e protegidas por Bearer; o login web usa a MFA nativa do Supabase quando há TOTP verificado.
 
@@ -21,7 +22,7 @@ Sessões SSO usam um cookie opaco HttpOnly, SameSite Lax e Secure em produção,
 
 As leituras e downloads usam o JWT do usuário e as policies do banco. Dados sensíveis de `rm_private` nunca são consultados para montar a interface. As ações passam por `rm_web_mutate_v1` com autorização, recibo idempotente e `expected_updated_at` exato. Conflitos exigem uma nova leitura, sem sobrescrever silenciosamente as alterações de outro usuário ou operador. Retentativa após resposta de rede ambígua conserva o mesmo UUID e conteúdo.
 
-Migrações necessárias: **001–017**. O contrato de gestão está em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md) e a ponte privada em [SSO_BRIDGE.md](../../rm-mobile-supabase/SSO_BRIDGE.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
+Migrações necessárias: **001–018**. O contrato de gestão está em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md), a Engenharia em [WEB_ENGINEERING.md](../../rm-mobile-supabase/WEB_ENGINEERING.md) e a ponte privada em [SSO_BRIDGE.md](../../rm-mobile-supabase/SSO_BRIDGE.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
 
 ## Executar e verificar
 
@@ -44,7 +45,17 @@ Publicação concluída em 29/10/2026: **[EM web](https://em-web-production.up.r
 
 Publicação inicial anterior ao SSO: deploy `97c7230c-be56-4aeb-a93c-0eb34bcd36f7`, origem CLI a partir de `desktop/`, commit `cd2e520`, com URL/chave pública Supabase, porta e `SYNC_OUTBOX_ENABLED=false`. A integração SSO requer as novas variáveis privadas documentadas acima. O serviço não está conectado a autodeploy do GitHub; uma conexão futura deve usar Root Directory `/desktop`.
 
-## Validação da entrega
+Engenharia publicada: deploy **`603e3698-8698-4f8c-a7fb-1dc2495881ca`**, commit **`36f2fc5125f5ee708fb6a83223458a0f2a58746f`**. Railway confirmou `SUCCESS`; `/api/health` respondeu 200 e as sete novas rotas recusaram acesso anônimo e cookie forjado. A entrada PKCE real continuou chegando à Microsoft; o fluxo de QA foi cancelado sem autenticar uma pessoa ou gravar dados de teste.
+
+## Validação da Engenharia
+
+- **133 testes desktop**, tipos, build, dois smokes e auditoria npm sem vulnerabilidades; [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40877488375).
+- Migrações **001–018 e sete suítes PostgreSQL isoladas**, incluindo concorrência entre duas conexões, autorizações, modelos legados, materialização futura e preservação das alocações existentes.
+- **Dez cenários Chrome**, desktop e 390 px: roteiros, títulos, vínculos, aprovadores, edição explícita de legado, retirada de item, conflito, retry exato e perfis sem gestão. DOM/build reais; dados e HTTP simulados em memória, sem rede externa ou erros de página. Não equivalem a login Microsoft humano ou CRUD no banco de produção.
+- Migração remota com **53 snapshots das colunas anteriores preservados**. Bootstrap real de 963 modelos de fotos/70 de aprovação em 100 matrizes com 53 snapshots protegidos iguais; replay completo sem duplicatas nem mudança de timestamps. [Contrato e comprovação](../../rm-mobile-supabase/WEB_ENGINEERING.md).
+- 59 arquivos JavaScript do navegador verificados sem as chaves privadas locais. O worker permanece desativado.
+
+## Validação inicial do portal
 
 - 61 testes desktop, TypeScript, build de produção e auditoria npm sem vulnerabilidades conhecidas.
 - CI do commit de aplicação aprovado, incluindo os 84 testes mobile e o smoke de runtime web sem credenciais reais.
