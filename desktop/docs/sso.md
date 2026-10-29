@@ -6,14 +6,14 @@ O portal usa Microsoft Azure pelo Supabase corporativo da Central de Acessos (`k
 
 | Conta Microsoft | Perfil EM dedicado | Permissões na Central |
 | --- | --- | --- |
-| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 16 capacidades EM, incluindo gestão de cadastros, Engenharia e modelos de formulário |
-| softdev05@mielectric.com.br | WEB-SOFTDEV05 · administrador | As mesmas 16 capacidades EM; papel global da Central permanece `user` |
+| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 18 capacidades EM, incluindo cadastros, Engenharia, modelos de formulário e aprovações de etapas |
+| softdev05@mielectric.com.br | WEB-SOFTDEV05 · administrador | As mesmas 18 capacidades EM; papel global da Central permanece `user` |
 
 Esses vínculos foram aprovados explicitamente pelo solicitante. O login não cria usuários, não associa contas por email e não converte um papel corporativo em administrador RM. Os cadastros mobile anteriores, inclusive DIGITAL e o cadastro legado de Igor Nascimento, permanecem preservados.
 
-O [plano de paridade](../../plano_paridade_rmmi_web.md) acrescentou gestão de cadastros, Engenharia e modelos de formulário. O consumidor atual aceita **16 capacidades**, incluindo `em.form_templates.read` e `em.form_templates.manage`, e foi publicado antes do cadastro/concessão dessas novas permissões. O perfil RM de administrador também é obrigatório para as ações de gestão. Sessões anteriores continuam válidas e as concessões são consultadas novamente em cada requisição.
+O [plano de paridade](../../plano_paridade_rmmi_web.md) acrescentou cadastros, Engenharia, modelos de formulário e aprovações de etapas. O consumidor atual aceita **18 capacidades**, incluindo `em.approvals.read` e `em.approvals.decide`, e foi publicado antes do registro/concessão dessas novas permissões. Gestão de cadastros/modelos continua exigindo administrador RM; decisões de etapas seguem a autorização operacional existente do mobile, além da capacidade específica. Sessões anteriores com 12/14/16 capacidades continuam aceitas sem inferir permissões novas; as concessões são consultadas novamente em cada requisição.
 
-A concessão atual foi aplicada após o deploy `21c95a5e-2f82-4f64-9f92-4fe676324e16`, consumidor `934f8bc1fd45ba9287666c7371a79c7b00ba1c83`, as quatro novas rotas protegidas e CI aprovado. Resultado central: **16 funções ativas e 32 concessões EM**, 16 para cada administrador. `softdev05` foi promovido por nova autorização explícita do usuário, mediante script separado com identidades exatas e auditoria; não houve promoção global da Central. As demais aplicações, contas, identidades Auth, permissões e cadastros mobile foram preservados. Replay não criou auditorias adicionais; identidade trocada foi recusada. A auditoria registra operação técnica e o SHA do consumidor, sem declarar login humano ou MFA pelo operador técnico.
+A concessão atual foi aplicada após a migração 020, deploy `77018942-bc21-496a-8a0b-f1bd24b6b64d`, consumidor `ac4b3b4d9facb1e2242064390bd5adf0dd6ba679`, quatro negações públicas das duas rotas novas e [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40918576982). Resultado central: **18 funções ativas e 36 concessões EM**, 18 para cada administrador. A promoção anterior de `softdev05` teve autorização explícita e script separado com identidades exatas; não houve promoção global da Central. As demais aplicações, contas, identidades Auth, permissões e cadastros mobile foram preservados. Replay não criou auditorias adicionais; identidade trocada foi recusada. A auditoria registra operação técnica e o SHA real do consumidor, sem declarar login humano ou MFA pelo operador técnico.
 
 ## Fluxo e autorização
 
