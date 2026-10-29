@@ -8,6 +8,7 @@ import type { CorporateCapability } from '@/server/web/sso-policy';
 const navigation: { href: string; label: string; icon: IconName; capability: CorporateCapability }[] = [
   { href: '/painel', label: 'Visão geral', icon: 'dashboard', capability: 'em.portal.read' }, { href: '/projetos', label: 'Projetos', icon: 'folder', capability: 'em.projects.read' },
   { href: '/planejamento', label: 'Planejamento', icon: 'board', capability: 'em.planning.read' }, { href: '/cronograma', label: 'Cronograma', icon: 'calendar', capability: 'em.planning.read' },
+  { href: '/recebimentos', label: 'Recebimentos', icon: 'download', capability: 'em.projects.read' },
   { href: '/aprovacoes', label: 'Aprovações de etapas', icon: 'check', capability: 'em.approvals.read' },
   { href: '/formularios', label: 'Formulários', icon: 'clipboard', capability: 'em.forms.read' }, { href: '/cadastros', label: 'Cadastros', icon: 'settings', capability: 'em.catalogs.read' },
   { href: '/engenharia', label: 'Engenharia', icon: 'board', capability: 'em.engineering.read' },
@@ -28,7 +29,7 @@ export function PortalShell({ profile, capabilities, children }: { profile: { no
       <div className="sidebar-bottom"><span className="avatar">{initials || 'EM'}</span><span className="user-copy"><strong>{profile.nome}</strong><small>{profile.cargo || (profile.perfil === 'administrador' ? 'Administrador' : 'Equipe MI Electric')}</small></span><form action="/auth/logout" method="post"><button className="icon-button" aria-label="Sair da plataforma" title="Sair da plataforma"><Icon name="logout" size={18} /></button></form></div>
     </aside>
     <div className="portal-body"><header className="topbar"><div className="topbar-path"><button className="icon-button mobile-nav-button" onClick={() => setOpen(true)} aria-label="Abrir navegação"><Icon name="menu" /></button><span>Oficina</span><Icon name="chevron" size={14} /><strong>{current?.label || 'Projeto'}</strong></div><div className="topbar-meta"><span className="workspace-label"><span className="connection-dot" />Ambiente operacional</span><span className="topbar-divider" /><span className="topbar-date">{new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date())}</span></div></header>
-      <main id="conteudo" className="workspace">{children}</main><footer className="portal-footer"><span>EM <span>·</span> MI Electric Brasil</span><span>Gestão da operação</span></footer>
+      {children}
     </div>
   </div>;
 }

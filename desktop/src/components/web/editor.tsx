@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { saveProject, planCell, type WebActionResult } from '@/server/web/actions';
 import type { WebRow } from '@/server/web/data';
 import { Icon } from './icons';
+import { planningPriorities, planningPriorityLabels } from './pcp-model';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -77,6 +78,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users }: { pro
     const data = new FormData(form); const changes: Record<string, unknown> = { bloqueada: data.get('bloqueada'), visibilidade: data.get('visibilidade') === 'on', motivo_bloqueio: nullable(data, 'motivo_bloqueio'), observacao: nullable(data, 'observacao'), responsavel_id: nullable(data, 'responsavel_id') };
     for (const key of ['data_inicio', 'data_limite']) if (!allocation || String(data.get(key) || '') !== inputDay(allocation[key])) changes[key] = day(data.get(key));
     const hours = data.get('horas_previstas'); changes.horas_previstas = hours ? Number(hours) : null;
+    if (!allocation || String(data.get('prioridade') || '') !== (allocation.prioridade || '')) changes.prioridade = nullable(data, 'prioridade');
     if (allocation || data.get('custom_forms') === 'on') changes.forms_ids = data.getAll('forms_ids').map(String);
     void save.submit({ projeto_id: projectId, celula_id: allocation?.celula_id || String(data.get('celula_id')), expected_updated_at: allocation?.updated_at ?? null, changes });
   };
@@ -88,6 +90,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users }: { pro
       <div className="field"><label>Prazo da célula<input aria-label="Prazo da célula" type="date" name="data_limite" defaultValue={inputDay(allocation?.data_limite)} /></label></div>
       <div className="field"><label>Responsável<select aria-label="Responsável da célula" name="responsavel_id" defaultValue={allocation?.responsavel_id || ''}><option value="">Não definido</option>{users.filter(user => user.status === 'ativo' || user.id === allocation?.responsavel_id).map(user => <option key={user.id} value={user.id}>{user.nome}</option>)}</select></label></div>
       <div className="field"><label>Horas previstas<input aria-label="Horas previstas" type="number" name="horas_previstas" min="0" max="1000000" step="0.01" defaultValue={allocation?.horas_previstas ?? ''} /></label></div>
+      <div className="field"><label>Prioridade<select aria-label="Prioridade da célula" name="prioridade" defaultValue={allocation?.prioridade || ''}><option value="">Sem prioridade</option>{planningPriorities.map(priority => <option key={priority} value={priority}>{planningPriorityLabels[priority]}</option>)}</select></label></div>
       <div className="field"><label>Bloqueio de execução<select aria-label="Bloqueio de execução" name="bloqueada" defaultValue={allocation?.bloqueada || 'n_o'}><option value="n_o">Sem bloqueio</option><option value="sim">Bloqueada</option></select></label></div>
       <div className="field"><label>Motivo do bloqueio<input aria-label="Motivo do bloqueio" name="motivo_bloqueio" maxLength={5000} defaultValue={allocation?.motivo_bloqueio || ''} /></label></div>
       <label className="check-label span-all"><input type="checkbox" name="visibilidade" defaultChecked={allocation ? allocation.visibilidade : true} />Disponibilizar esta célula no aplicativo dos operadores autorizados</label>

@@ -33,9 +33,13 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
     if (operation === 'publish_form_template') { revalidatePath('/engenharia', 'layout'); revalidatePath('/cadastros'); }
   }
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
+  if (['plan_cell', 'save_project', 'save_cell_queue', 'transition_stage_approval'].includes(operation)) {
+    revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga'); revalidatePath('/recebimentos'); revalidatePath('/cronograma');
+  }
   if (result.projeto_id) revalidatePath(`/projetos/${result.projeto_id}`);
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);
   if (operation === 'transition_stage_approval') { revalidatePath('/aprovacoes'); revalidatePath(`/aprovacoes/${result.id}`); }
+  if (operation === 'save_cell_queue') revalidatePath('/projetos', 'layout');
   return { ok: true, data: result };
 }
 
