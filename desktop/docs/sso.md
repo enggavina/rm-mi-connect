@@ -6,14 +6,14 @@ O portal usa Microsoft Azure pelo Supabase corporativo da Central de Acessos (`k
 
 | Conta Microsoft | Perfil EM dedicado | Permissões na Central |
 | --- | --- | --- |
-| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 14 capacidades EM, incluindo gestão de cadastros e Engenharia |
-| softdev05@mielectric.com.br | WEB-SOFTDEV05 · auditor | Nove capacidades de consulta, incluindo Engenharia; nenhuma de escrita |
+| mgavina@mielectric.com.br | WEB-MGAVINA · administrador | 16 capacidades EM, incluindo gestão de cadastros, Engenharia e modelos de formulário |
+| softdev05@mielectric.com.br | WEB-SOFTDEV05 · administrador | As mesmas 16 capacidades EM; papel global da Central permanece `user` |
 
 Esses vínculos foram aprovados explicitamente pelo solicitante. O login não cria usuários, não associa contas por email e não converte um papel corporativo em administrador RM. Os cadastros mobile anteriores, inclusive DIGITAL e o cadastro legado de Igor Nascimento, permanecem preservados.
 
-O [primeiro pacote de paridade](../../plano_paridade_rmmi_web.md) acrescentou `em.catalogs.manage`; a Engenharia acrescenta `em.engineering.read` e `em.engineering.manage`. O consumidor compatível com **14 capacidades** foi publicado antes do cadastro/concessão central. Somente o administrador recebeu gestão; a conta de consulta recebeu somente a nova leitura. O perfil RM de administrador também é obrigatório para gerir os cadastros básicos e a Engenharia. Sessões anteriores continuam válidas e as concessões são consultadas novamente em cada requisição.
+O [plano de paridade](../../plano_paridade_rmmi_web.md) acrescentou gestão de cadastros, Engenharia e modelos de formulário. O consumidor atual aceita **16 capacidades**, incluindo `em.form_templates.read` e `em.form_templates.manage`, e foi publicado antes do cadastro/concessão dessas novas permissões. O perfil RM de administrador também é obrigatório para as ações de gestão. Sessões anteriores continuam válidas e as concessões são consultadas novamente em cada requisição.
 
-A concessão de Engenharia foi feita após confirmar o deploy `603e3698-8698-4f8c-a7fb-1dc2495881ca`, commit `36f2fc5125f5ee708fb6a83223458a0f2a58746f`, e as sete novas rotas protegidas. Resultado central: **14 funções ativas e 23 concessões EM**, sem alteração das demais aplicações, contas ou concessões. Replay não criou auditorias adicionais; tentativa de tratar o usuário de consulta como gestor foi recusada. A auditoria registra operação técnica e o SHA do consumidor; não declara login humano ou MFA realizado pelo operador técnico.
+A concessão atual foi aplicada após o deploy `21c95a5e-2f82-4f64-9f92-4fe676324e16`, consumidor `934f8bc1fd45ba9287666c7371a79c7b00ba1c83`, as quatro novas rotas protegidas e CI aprovado. Resultado central: **16 funções ativas e 32 concessões EM**, 16 para cada administrador. `softdev05` foi promovido por nova autorização explícita do usuário, mediante script separado com identidades exatas e auditoria; não houve promoção global da Central. As demais aplicações, contas, identidades Auth, permissões e cadastros mobile foram preservados. Replay não criou auditorias adicionais; identidade trocada foi recusada. A auditoria registra operação técnica e o SHA do consumidor, sem declarar login humano ou MFA pelo operador técnico.
 
 ## Fluxo e autorização
 
@@ -45,4 +45,4 @@ Testes de política exercitam PKCE real do SDK, troca de identidade, emissor/aud
 
 Na entrega, passaram 97 testes desktop, TypeScript, build, os dois smokes, cinco suítes PostgreSQL e auditoria npm sem vulnerabilidades. O [CI do commit de aplicação](https://github.com/enggavina/rm-mi-connect/actions/runs/40827656339) passou para web e mobile. A auditoria local não encontrou dez segredos conhecidos nos fontes nem chaves privadas nos 48 arquivos estáticos do navegador.
 
-**Login completo confirmado pelo titular:** após a correção `36075d1`, o usuário entrou com `mgavina@mielectric.com.br` e confirmou que o painel abriu. A autenticação Microsoft foi realizada pelo próprio titular; nenhuma senha ou MFA foi automatizada. O teste SSO interativo de `softdev05` ainda não foi executado; suas concessões, vínculo local, perfil somente consulta e negações de escrita foram conferidos administrativamente e nos testes.
+**Login completo confirmado pelo titular:** após a correção `36075d1`, o usuário entrou com `mgavina@mielectric.com.br` e confirmou que o painel abriu. A autenticação Microsoft foi realizada pelo próprio titular; nenhuma senha ou MFA foi automatizada. O teste SSO interativo de `softdev05` ainda não foi executado. Seu vínculo dedicado e a promoção posterior a administrador foram conferidos administrativamente com replay, teste de identidade divergente e hashes dos demais dados; isso não substitui login interativo. Papéis somente leitura continuam exercitados por fixtures sintéticas nos testes.

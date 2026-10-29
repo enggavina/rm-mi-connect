@@ -1,6 +1,6 @@
 # Construtor de formulários — contrato 019
 
-Estado: migração 019 aplicada em `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`) em 29/10/2026 às 13:46:39 UTC. As permissões na Central e o deploy do consumidor de 16 capacidades são etapas separadas. A migração não criou rascunhos, versões nem dados operacionais e não ativou integração.
+Estado: migração 019 aplicada em `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`) em 29/10/2026 às 13:46:39 UTC. Consumidor de 16 capacidades publicado em [Modelos de formulário](https://em-web-production.up.railway.app/modelos-formularios): commit `934f8bc1fd45ba9287666c7371a79c7b00ba1c83`, deploy Railway `21c95a5e-2f82-4f64-9f92-4fe676324e16` com `SUCCESS`. As novas permissões foram concedidas depois de confirmar essa disponibilidade: `mgavina` e `softdev05` têm gestão do EM, com 16 capacidades cada. O papel global de `softdev05` na Central permanece `user`. A migração não criou rascunhos, versões nem dados operacionais e não ativou integração.
 
 A publicação cria um novo `rm_forms`, novas `rm_questoes` e novos `rm_itens_questoes`. A versão anterior permanece ativa e conserva todos os IDs, vínculos, respostas e rascunhos offline. Para usar a nova versão, o administrador precisa selecioná-la explicitamente na matriz de engenharia; o contrato 018 aplica essa seleção somente às alocações futuras.
 
