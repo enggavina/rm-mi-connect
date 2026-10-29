@@ -12,8 +12,9 @@ function AnswerValue({ answer, mediaOrigin }: { answer: ReviewAnswer; mediaOrigi
   const validPhotos = photos.map(url => safeAnswerMedia(url, mediaOrigin)).filter((url): url is string => !!url);
   const signature = safeAnswerMedia(answer.assinatura_url, mediaOrigin);
   const hasText = answer.resposta != null && answer.resposta !== '';
-  const hasValue = hasText || answer.itemLabels.length || photos.length || answer.assinatura_url || answer.date_inicio || answer.data_fim || answer.hora;
+  const hasValue = hasText || answer.itemLabels.length || photos.length || answer.assinatura_url || answer.date_inicio || answer.data_fim || answer.hora || answer.media_restricted;
   return <div className="answer-value">
+    {answer.media_restricted && <p className="form-note">Esta resposta contém mídia. Sua visualização exige acesso às fotos.</p>}
     {hasText && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{String(answer.resposta)}</p>}
     {!!answer.itemLabels.length && <ul>{answer.itemLabels.map((label, index) => <li key={index}>{label}</li>)}</ul>}
     {answer.date_inicio && <p>Início: {date(answer.date_inicio, true)}</p>}

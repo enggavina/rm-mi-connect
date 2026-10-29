@@ -2,22 +2,29 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getProject } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
+import { hasWebCapability } from '@/server/web/auth-policy';
+import type { CorporateCapability } from '@/server/web/sso-policy';
 import { editorChoices } from '@/server/web/choices';
 import { PageHeading, Status, Details, Empty, Pagination, date, display } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
 import { Photo } from '@/components/web/photo';
 import { CellEditor } from '@/components/web/editor';
 
-const tabs = [{ id: 'informacoes', label: 'Informações' }, { id: 'planejamento', label: 'Células e planejamento' }, { id: 'formularios', label: 'Formulários' }, { id: 'fotos', label: 'Galeria de fotos' }, { id: 'documentos', label: 'Documentos' }, { id: 'historico', label: 'Histórico' }];
+const allTabs: { id: string; label: string; capability: CorporateCapability }[] = [{ id: 'informacoes', label: 'Informações', capability: 'em.projects.read' }, { id: 'planejamento', label: 'Células e planejamento', capability: 'em.planning.read' }, { id: 'formularios', label: 'Formulários', capability: 'em.forms.read' }, { id: 'fotos', label: 'Galeria de fotos', capability: 'em.photos.read' }, { id: 'documentos', label: 'Documentos', capability: 'em.documents.read' }, { id: 'historico', label: 'Histórico', capability: 'em.history.read' }];
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { id } = await params; const query = await searchParams; const tab = tabs.some(item => item.id === query.tab) ? String(query.tab) : 'informacoes';
-  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined }), requireWebUser()]); if (!data) notFound();
+  const { id } = await params; const query = await searchParams;
+  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined }), requireWebUser('em.projects.read')]); if (!data) notFound();
+  const tabs = allTabs.filter(item => hasWebCapability(session, item.capability));
+  const tab = tabs.some(item => item.id === query.tab) ? String(query.tab) : 'informacoes';
   const project = data.project; const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome])); const userNames = new Map(data.users.map(user => [user.id, user.nome])); const formNames = new Map(data.forms.map(form => [form.id, form.titulo]));
-  const canPlan = ['administrador', 'padr_o'].includes(session.profile.perfil); const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
-  const choices = tab === 'planejamento' && canPlan && !closed ? await editorChoices() : null;
+  const manager = ['administrador', 'padr_o'].includes(session.profile.perfil);
+  const canPlan = manager && hasWebCapability(session, 'em.planning.manage');
+  const canEdit = manager && hasWebCapability(session, 'em.projects.manage');
+  const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
+  const choices = tab === 'planejamento' && canPlan && !closed ? await editorChoices('planning') : null;
   const title = project.numero ? `OS ${project.numero.trim()}` : 'Projeto em recebimento';
-  return <><Link className="back-link" href="/projetos"><Icon name="back" size={15} />Todos os projetos</Link><PageHeading eyebrow="ACOMPANHAMENTO DO PROJETO" title={title} description={project.descricao_equipamento || project.nome || 'Informações e registros do equipamento em uma mesma jornada.'} actions={canPlan && <Link className="button secondary" href={`/projetos/${id}/editar`}><Icon name="edit" size={15} />Editar projeto</Link>} />
-    <section className="panel"><div className="panel-content project-summary"><div><h2>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</h2><div className="summary-meta"><span>Chegada: {date(project.chegada_do_equipamento)}</span><span>Entrega prevista: {date(project.data_prevista_final)}</span><span>{data.allocations.length} células alocadas</span></div></div><Status value={project.status_pcp} /></div></section>
+  return <><Link className="back-link" href="/projetos"><Icon name="back" size={15} />Todos os projetos</Link><PageHeading eyebrow="ACOMPANHAMENTO DO PROJETO" title={title} description={project.descricao_equipamento || project.nome || 'Informações e registros do equipamento em uma mesma jornada.'} actions={canEdit && <Link className="button secondary" href={`/projetos/${id}/editar`}><Icon name="edit" size={15} />Editar projeto</Link>} />
+    <section className="panel"><div className="panel-content project-summary"><div><h2>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</h2><div className="summary-meta"><span>Chegada: {date(project.chegada_do_equipamento)}</span><span>Entrega prevista: {date(project.data_prevista_final)}</span>{hasWebCapability(session, 'em.planning.read') && <span>{data.allocations.length} células alocadas</span>}</div></div><Status value={project.status_pcp} /></div></section>
     <nav className="tabs" aria-label="Áreas do projeto">{tabs.map(item => <a key={item.id} href={`/projetos/${id}?tab=${item.id}`} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav>
     {tab === 'informacoes' && <>
       <section className="panel"><div className="panel-header"><h2>Informações do projeto</h2></div><div className="panel-content"><Details values={[

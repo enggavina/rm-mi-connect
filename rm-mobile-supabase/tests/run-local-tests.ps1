@@ -34,10 +34,23 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'project_operations.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'pull_performance.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_management.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'sso_bridge.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $sqlFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
+  }
+  # The production switch must refuse accidental execution without the explicit
+  # readiness setting. This also compiles the complete activation DO block.
+  $activationErrorPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $activationOutput = & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 `
+      -f (Join-Path $PSScriptRoot '..\scripts\activate_web_sso.sql') 2>&1
+    $activationExitCode = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $activationErrorPreference }
+  if ($activationExitCode -eq 0 -or ($activationOutput -join "`n") -notmatch 'Verify production BFF') {
+    throw 'Activation script did not reject the missing production-readiness setting.'
   }
   Write-Output 'PASS: migrations e testes transacionais executados em PostgreSQL isolado.'
 }

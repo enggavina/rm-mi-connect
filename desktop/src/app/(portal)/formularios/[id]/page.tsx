@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createWebData } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
+import { hasWebCapability } from '@/server/web/auth-policy';
 import { PageHeading, Status, Details, Empty, date } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
 import { RecordReview } from '@/components/web/review';
@@ -9,12 +10,12 @@ import { mayReview, recordSections } from '@/components/web/review-model';
 
 export default async function RegistroFormulario({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await requireWebUser();
-  const data = await createWebData(session.client).getRecord(id);
+  const session = await requireWebUser('em.forms.read');
+  const data = await createWebData(session.client, session.sso?.capabilities).getRecord(id);
   if (!data) notFound();
   const { record, project, form, answers, questions, items, users } = data;
   const names = new Map(users.map(user => [user.id, user.nome]));
-  const eligible = mayReview(record, session.profile);
+  const eligible = hasWebCapability(session, 'em.forms.review') && mayReview(record, session.profile);
   const sections = recordSections(answers, questions, items);
   const historicalCount = sections.flatMap(section => section.answers).filter(answer => answer.historical).length;
   const title = form?.titulo || form?.title || record.descricao || 'Registro de formulário';

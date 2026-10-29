@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createWebData, type WebRow } from '../src/server/web/data';
+import type { CorporateCapability } from '../src/server/web/sso-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 class Fixture {
@@ -37,7 +38,7 @@ class Query {
     } catch (error) { if (reject) return reject(error); throw error; }
   }
 }
-function setup() { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient) }; }
+function setup(capabilities?: readonly CorporateCapability[]) { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient, capabilities) }; }
 
 test('project listing uses a real page/count and paginates reference catalogs beyond 1000 rows', async () => {
   const { db, data } = setup();
@@ -82,4 +83,101 @@ test('overview counts are head-only; recent items remain bounded and no response
   assert.equal(result.recentProjects[0].cliente_nome, 'Cliente vinculado atual');
   assert.ok(db.calls.filter(call => call.count).every(call => call.head));
   assert.ok(!db.calls.some(call => call.table === 'rm_respostas'));
+});
+
+test('portal-only access performs no operational queries and does not invent zero counts', async () => {
+  const { db, data } = setup(['em.portal.read']);
+  const overview = await data.getOverview();
+  assert.deepEqual(overview.access, { projects: false, forms: false, planning: false, documents: false });
+  assert.ok(Object.values(overview.counts).every(value => value === null));
+  assert.deepEqual(overview.tasks, []); assert.deepEqual(overview.recentProjects, []);
+  assert.equal(db.calls.length, 0);
+  await assert.rejects(data.listProjects(), /Acesso/);
+  await assert.rejects(data.getRecord(id(1)), /Acesso/);
+  await assert.rejects(data.listForms(), /Acesso/);
+  await assert.rejects(data.listPlanning(), /Acesso/);
+  await assert.rejects(data.getCatalogs(), /Acesso/);
+  await assert.rejects(data.editorChoices(), /Acesso/);
+  assert.equal(db.calls.length, 0);
+});
+
+test('project-only scope omits child queries and document URLs from the returned project', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), cliente_id: id(2), numero: 'OS', arquivo_nota_fiscal_url: 'https://private.test/invoice', documento_proposta_url: 'https://private.test/proposal' }]);
+  db.tables.set('rm_clientes', [{ id: id(2), nome: 'Cliente' }]);
+  const project = await data.getProject(id(1));
+  assert.ok(project); assert.equal(project.project.numero, 'OS');
+  assert.equal(project.project.arquivo_nota_fiscal_url, undefined); assert.equal(project.project.documento_proposta_url, undefined);
+  for (const field of ['allocations', 'cells', 'forms', 'records', 'stages', 'comments', 'users', 'photos', 'documents', 'attachments'] as const) assert.deepEqual(project[field], []);
+  assert.ok(db.calls.every(call => ['rm_projetos', 'rm_clientes', 'rm_equipamentos'].includes(call.table)));
+  const calls = db.calls.length;
+  await assert.rejects(data.listProjects({ cell: id(3) }), /Acesso/);
+  assert.equal(db.calls.length, calls);
+});
+
+test('form scope redacts media in columns, typed answers and legacy JSON while preserving ordinary answers', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.forms.read']);
+  db.tables.set('rm_registros_formulario', [{ id: id(1), projeto_id: id(2), form_id: id(3), identidade_user_id: id(4) }]);
+  db.tables.set('rm_users', [{ id: id(4), nome: 'Operador', foto_url: 'https://private.test/avatar' }]);
+  const answer = (n: number, extra: Record<string, unknown>) => ({ id: id(n), registro_formulario_id: id(1), ...extra });
+  db.tables.set('rm_respostas', [
+    answer(10, { tipo: 'texto', resposta: 'Conforme', fotos_urls: ['https://private.test/photo'] }),
+    answer(11, { tipo: 'foto', resposta: 'opaque-file-key', itens: ['legacy'], itens_questoes_ids: [id(30)] }),
+    answer(12, { tipo: 'texto', resposta: { imagens: ['https://private.test/legacy'] } }),
+    answer(13, { tipo: 'assinatura', assinatura_url: 'https://private.test/signature' }),
+    answer(14, { tipo: 'texto', itens: [{ arquivo: '//private.test/item.jpg' }] }),
+    answer(15, { tipo: null, questao_id: id(20), resposta: 'opaque-other-key' }),
+  ]);
+  db.tables.set('rm_questoes', [{ id: id(20), form_id: id(3), tipo: 'foto_antes_depois' }]);
+  const result = await data.getRecord(id(1)); assert.ok(result);
+  assert.equal(result.project, null); assert.ok(!db.calls.some(call => call.table === 'rm_projetos'));
+  assert.equal(result.users[0].foto_url, undefined);
+  assert.equal(result.answers[0].resposta, 'Conforme'); assert.equal(result.answers[0].media_restricted, undefined);
+  for (const row of result.answers.slice(1)) { assert.equal(row.media_restricted, true); assert.equal(row.resposta, null); assert.deepEqual(row.itens, []); assert.deepEqual(row.itens_questoes_ids, []); }
+  assert.ok(result.answers.every(row => row.fotos_urls === undefined && row.assinatura_url === undefined));
+  assert.ok(!JSON.stringify(result).includes('private.test'));
+  assert.ok(!db.calls.find(call => call.table === 'rm_respostas')?.columns.includes('fotos_urls'));
+});
+
+test('explicit photos capability preserves submitted media for permitted form consultation', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.forms.read', 'em.photos.read']);
+  db.tables.set('rm_registros_formulario', [{ id: id(1), form_id: id(3) }]);
+  db.tables.set('rm_respostas', [{ id: id(10), registro_formulario_id: id(1), tipo: 'foto', resposta: { imagens: ['https://media.test/a.jpg'] }, fotos_urls: ['https://media.test/b.jpg'] }]);
+  const result = await data.getRecord(id(1));
+  assert.deepEqual(result?.answers[0].resposta, { imagens: ['https://media.test/a.jpg'] });
+  assert.deepEqual(result?.answers[0].fotos_urls, ['https://media.test/b.jpg']);
+  assert.equal(result?.answers[0].media_restricted, undefined);
+});
+
+test('planning without project capability does not join or load the project table', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.planning.read']);
+  db.tables.set('rm_celulas_projeto', [{ id: id(1), projeto_id: id(2), numero_projeto: 'OS' }]);
+  const result = await data.listPlanning({ q: 'OS' });
+  assert.equal(result.rows[0].numero_projeto, 'OS'); assert.deepEqual(result.projects, []);
+  assert.ok(!db.calls.some(call => call.table === 'rm_projetos' || call.columns.includes('project:')));
+});
+
+test('editor reference choices require manage and expose only fields needed by that editor', async () => {
+  const readonly = setup(['em.portal.read', 'em.projects.read', 'em.planning.read']);
+  await assert.rejects(readonly.data.editorChoices('project'), /Acesso/);
+  await assert.rejects(readonly.data.editorChoices('planning'), /Acesso/);
+  assert.equal(readonly.db.calls.length, 0);
+  const { db, data } = setup(['em.portal.read', 'em.planning.manage']);
+  db.tables.set('rm_users', [{ id: id(1), nome: 'Operador', status: 'ativo', matricula: 'private', foto_url: 'https://private.test/photo', auth_user_id: id(2) }]);
+  db.tables.set('rm_forms', [{ id: id(3), titulo: 'Modelo', ativo: true, descricao: 'Not needed by editor' }]);
+  const choices = await data.editorChoices('planning');
+  assert.deepEqual(choices.users, [{ id: id(1), nome: 'Operador', status: 'ativo' }]);
+  assert.deepEqual(choices.forms, [{ id: id(3), titulo: 'Modelo', ativo: true }]);
+  assert.ok(db.calls.every(call => ['rm_users', 'rm_forms'].includes(call.table)));
+});
+
+test('catalog permission alone excludes user images, and every domain still requires portal permission', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.catalogs.read']);
+  db.tables.set('rm_users', [{ id: id(1), nome: 'Operador', foto_url: 'https://private.test/photo' }]);
+  const catalog = await data.getCatalogs({ kind: 'users' });
+  assert.equal(catalog.rows[0].foto_url, undefined);
+  assert.ok(!db.calls[0].columns.includes('foto_url'));
+  const missingPortal = setup(['em.projects.read']);
+  await assert.rejects(missingPortal.data.getProject(id(1)), /Acesso/);
+  assert.equal(missingPortal.db.calls.length, 0);
 });

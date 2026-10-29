@@ -2,6 +2,8 @@
 
 Estado: **014 e 015 aplicadas em 29/10/2026** ao projeto autorizado `oficina-em-mi-off` (`ellpxfbsrbhblyizvbbk`), com histórico 001–015 registrado. Nome/organização, URL utilizada pela aplicação e sequência das migrações foram conferidos antes da aplicação transacional. A 014 não modifica o gateway, as delegações de operador ou as políticas de leitura usadas pelo mobile; a 015 corrige somente o código de conflito para HTTP409.
 
+A instalação atual também inclui a **016**, que coloca uma guarda SSO diante deste core sem modificar seus payloads. Ela foi aplicada com exigência global desativada; usuários com vínculo SSO já exigem autorização curta do BFF. Consulte [SSO_BRIDGE.md](SSO_BRIDGE.md) para implantação, identidades dedicadas e ativação posterior. As cinco suítes atuais validam 001–016.
+
 ## Identidade e sessão
 
 O portal usa a conta Supabase Auth existente. A função obtém `auth.uid()`, encontra o `rm_users.auth_user_id` correspondente e exige `status='ativo'`. Não existe tabela separada `rm_operadores`. Não recebe `actor_id`, matrícula, palavra-chave do operador ou token mobile. O usuário DIGITAL já está vinculado ao Auth e possui perfil administrador; os demais usuários legados não adquirem uma conta Auth automaticamente.

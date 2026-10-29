@@ -5,6 +5,8 @@ import { resolveWebAccess } from '@/server/web/auth-policy';
 
 export type LoginState = { error: string };
 export async function signIn(_previous: LoginState, form: FormData): Promise<LoginState> {
+  // The hidden legacy action must not become an alternative to corporate policy.
+  if (process.env.EM_SSO_ENABLED === 'true') return { error: 'Use o acesso corporativo para entrar no EM.' };
   const email = form.get('email'), password = form.get('password');
   if (typeof email !== 'string' || typeof password !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
     || email.length > 254 || !password || password.length > 1024) return { error: 'Informe seu e-mail e sua senha.' };

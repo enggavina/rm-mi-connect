@@ -12,7 +12,8 @@
     "worker": "tsx src/server/bridge/worker.ts",
     "worker:once": "tsx src/server/bridge/worker.ts --once",
     "etl": "tsx ../rm-mobile-supabase/scripts/etl_bubble_to_supabase.ts",
-    "test:smoke": "tsx tests/runtime-smoke.ts"
+    "test:smoke": "tsx tests/runtime-smoke.ts",
+    "test:sso-smoke": "tsx tests/runtime-sso-smoke.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

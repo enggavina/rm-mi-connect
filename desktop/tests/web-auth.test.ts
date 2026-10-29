@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { resolveWebAccess, sameOriginPost, webCookieOptions } from '../src/server/web/auth-policy';
+import { resolveWebAccess, sameOriginPost, webCookieOptions, hasWebCapability } from '../src/server/web/auth-policy';
 
 const profile = { id: 'rm-user', auth_user_id: 'auth-user', nome: 'Operador', perfil: 'padr_o', status: 'ativo', cargo: 'Técnico', matricula: '123' };
 function fakeClient(options: { denied?: boolean; row?: unknown; databaseError?: boolean; factors?: unknown[]; aal?: string; subject?: string; claimsError?: boolean } = {}) {
@@ -62,6 +62,21 @@ test('session cookies are HttpOnly/Lax and secure in production; logout rejects 
   assert.equal(sameOriginPost('http://localhost:3000', 'localhost:3000'), true);
   for (const origin of [null, 'null', 'https://evil.example', 'https://em.example.evil.example', 'https://user@em.example']) assert.equal(sameOriginPost(origin, 'em.example'), false);
   assert.equal(sameOriginPost('https://em.example', 'em.example,evil.example'), false);
+});
+
+test('BFF local identity and MFA verification use the explicit JWT rather than a cookie session', async () => {
+  const jwt = 'verified-server-only-access-token';
+  const { client } = fakeClient({ factors: [{ id: 'factor', factor_type: 'totp', status: 'verified' }] });
+  client.auth.getUser = (async (token?: string) => { assert.equal(token, jwt); return { data: { user: { id: 'auth-user', factors: [{ id: 'factor', factor_type: 'totp', status: 'verified' }] } }, error: null }; }) as any;
+  client.auth.getClaims = (async (token?: string) => { assert.equal(token, jwt); return { data: { claims: { sub: 'auth-user', aal: 'aal2' } }, error: null }; }) as any;
+  assert.equal((await resolveWebAccess(client, jwt)).state, 'authenticated');
+});
+
+test('web capabilities preserve staged legacy access but an SSO portal grant cannot imply a write grant', () => {
+  assert.equal(hasWebCapability({}, 'em.projects.manage'), true);
+  const viewer = { sso: { capabilities: ['em.portal.read', 'em.projects.read'] as const as any } };
+  assert.equal(hasWebCapability(viewer, 'em.projects.read'), true);
+  for (const capability of ['em.projects.manage', 'em.planning.manage', 'em.forms.review'] as const) assert.equal(hasWebCapability(viewer, capability), false);
 });
 
 test('SSR password session stays in its own cookie jar and logout revokes only the local session', async () => {

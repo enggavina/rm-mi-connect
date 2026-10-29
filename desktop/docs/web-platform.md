@@ -15,13 +15,13 @@ A consulta e abertura dos documentos existentes estão nesta entrega. Geração/
 
 ## Acesso e autorização
 
-O login utiliza email e senha da conta Supabase vinculada a um usuário RM ativo. Nesta entrega de gestão interna entram os perfis `administrador`, `padr_o` e `auditor`; clientes, operadores mobile e vendedores não ganham acesso ao portal de gestão por terem uma conta. Contas legadas sem vínculo `auth_user_id` não são provisionadas automaticamente. O administrador inicial existente pode acessar com as credenciais locais já provisionadas.
+O portal passa a usar Microsoft SSO com a Central de Acessos. Foram aprovados perfis web dedicados para `mgavina@mielectric.com.br` (administrador) e `softdev05@mielectric.com.br` (consulta). O login por senha fica desativado quando `EM_SSO_ENABLED=true`. O [contrato SSO](sso.md) descreve configuração, perfis e limites. Contas legadas não são vinculadas automaticamente por email e o administrador do tablet permanece preservado.
 
-Sessões usam `@supabase/ssr`, cookies HttpOnly, SameSite Lax, Secure em produção e respostas privadas sem cache. O middleware Next 15 renova a sessão. Cada requisição é validada com `getUser` e perfil atual; TOTP cadastrado exige `aal2`. Logout POST verifica origem e encerra somente a sessão web (`scope:'local'`), preservando o tablet. O navegador não recebe a chave de serviço.
+Sessões SSO usam um cookie opaco HttpOnly, SameSite Lax e Secure em produção, com tokens cifrados apenas no servidor. Cada requisição verifica identidade, perfil e permissões atuais; TOTP cadastrado exige `aal2` no emissor correspondente. Logout POST verifica origem e encerra somente este acesso (`scope:'local'`), preservando o tablet. O navegador não recebe tokens ou chave de serviço. A implementação SSR por senha permanece somente para modo legado com SSO desativado.
 
 As leituras e downloads usam o JWT do usuário e as policies do banco. Dados sensíveis de `rm_private` nunca são consultados para montar a interface. As ações passam por `rm_web_mutate_v1` com autorização, recibo idempotente e `expected_updated_at` exato. Conflitos exigem uma nova leitura, sem sobrescrever silenciosamente as alterações de outro usuário ou operador. Retentativa após resposta de rede ambígua conserva o mesmo UUID e conteúdo.
 
-Migrações necessárias: **001–015**. O contrato, as regras e os testes SQL estão em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
+Migrações necessárias: **001–016**. O contrato de gestão está em [WEB_MANAGEMENT.md](../../rm-mobile-supabase/WEB_MANAGEMENT.md) e a ponte privada em [SSO_BRIDGE.md](../../rm-mobile-supabase/SSO_BRIDGE.md). A 015 usa `PT409` para conflito de versão porque `40001` provoca retentativas transacionais no PostgREST, inadequadas para um conflito deliberado do usuário.
 
 ## Executar e verificar
 
@@ -36,13 +36,13 @@ npm run build
 npm run test:smoke
 ```
 
-Para a aplicação web, definir no ambiente do servidor `SUPABASE_URL` e `SUPABASE_ANON_KEY`. O build funciona sem essas credenciais; a conexão é resolvida em runtime. `SUPABASE_SERVICE_ROLE_KEY`, tokens Bubble e segredos da ponte não são necessários ao serviço web e não devem ser adicionados por conveniência. `SYNC_OUTBOX_ENABLED=false` deve continuar desativado.
+Para a aplicação web, definir `SUPABASE_URL`, `SUPABASE_ANON_KEY` e as variáveis server-side do [SSO](sso.md). A chave privada `EM_SSO_BRIDGE_SERVICE_ROLE_KEY` é necessária somente à ponte de identidade e sessões do EM. Tokens administrativos da Central e tokens Bubble não são usados no runtime web. O build funciona sem credenciais e `SYNC_OUTBOX_ENABLED=false` continua desativado.
 
 O Dockerfile usa Node 22, saída standalone e usuário não-root. O serviço web deve publicar `0.0.0.0:$PORT`; Railway fornece a porta. O healthcheck `/api/health` testa o processo, não a disponibilidade do banco. A configuração mantém `Root Directory=/desktop` quando a origem é o repositório completo; ao enviar somente a pasta desktop pela CLI, o Dockerfile e `railway.json` ficam na raiz do pacote enviado.
 
 Publicação concluída em 29/10/2026: **[EM web](https://em-web-production.up.railway.app)**, no projeto Railway `em-mi-electric-brasil` (`472ac09b-a1b2-4b2f-b561-b43d0b471b06`), serviço `em-web` (`c26e7026-429b-4965-a8a0-b0c91a1665de`), ambiente `production` (`b6f8a871-027c-49eb-adac-43ad8586fbc9`). Os serviços de outros sistemas foram preservados.
 
-Deploy `97c7230c-be56-4aeb-a93c-0eb34bcd36f7`, origem CLI a partir de `desktop/`, commit de aplicação `cd2e520`. A imagem usa Node 22 e o serviço recebeu somente URL/chave pública Supabase, porta e `SYNC_OUTBOX_ENABLED=false`; nenhuma chave de serviço ou token Bubble foi configurado. Esta primeira publicação não está conectada a autodeploy do GitHub. Uma conexão futura ao repositório deve usar Root Directory `/desktop`.
+Publicação inicial anterior ao SSO: deploy `97c7230c-be56-4aeb-a93c-0eb34bcd36f7`, origem CLI a partir de `desktop/`, commit `cd2e520`, com URL/chave pública Supabase, porta e `SYNC_OUTBOX_ENABLED=false`. A integração SSO requer as novas variáveis privadas documentadas acima. O serviço não está conectado a autodeploy do GitHub; uma conexão futura deve usar Root Directory `/desktop`.
 
 ## Validação da entrega
 

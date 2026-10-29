@@ -5,7 +5,7 @@ import { webCookieOptions } from './server/web/auth-policy';
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
   const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_ANON_KEY;
-  if (url && key) {
+  if (url && key && process.env.EM_SSO_ENABLED !== 'true') {
     const client = createServerClient(url, key, {
       cookieOptions: { name: 'em-web-session', ...webCookieOptions() },
       global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
@@ -27,6 +27,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set('Cache-Control', 'private, no-store, max-age=0');
   response.headers.set('Pragma', 'no-cache');
   response.headers.set('Expires', '0');
+  if (request.nextUrl.pathname.startsWith('/auth/') || request.nextUrl.pathname.startsWith('/login')) response.headers.set('Referrer-Policy', 'no-referrer');
   return response;
 }
 

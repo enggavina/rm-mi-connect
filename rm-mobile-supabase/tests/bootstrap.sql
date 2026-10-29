@@ -4,6 +4,7 @@ do $$ begin create role authenticated nologin; exception when duplicate_object t
 do $$ begin create role service_role nologin bypassrls; exception when duplicate_object then null; end $$;
 create schema auth;
 create table auth.users(id uuid primary key);
+create table auth.sessions(id uuid primary key,user_id uuid not null references auth.users(id));
 create table auth.mfa_factors(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id),factor_type text not null,status text not null);
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid;

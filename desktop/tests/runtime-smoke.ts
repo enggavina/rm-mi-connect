@@ -16,13 +16,14 @@ async function main() {
     probe.listen(port, '127.0.0.1', () => probe.close(error => error ? reject(error) : resolve()));
   });
   const env = { ...process.env };
-  for (const name of Object.keys(env)) if (/SUPABASE|BUBBLE|WEBHOOK|N8N/.test(name)) env[name] = '';
+  for (const name of Object.keys(env)) if (/SUPABASE|BUBBLE|WEBHOOK|N8N|EM_SSO|EM_CORPORATE|EM_PUBLIC_ORIGIN/.test(name)) env[name] = '';
   // Empty values are deliberate: deleting them would let Next load real values from a traced .env.
   Object.assign(env, {
     NODE_ENV: 'production', PORT: String(port), HOSTNAME: '127.0.0.1', INTERNAL_API_SECRET: secret,
     SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '',
     NEXT_PUBLIC_SUPABASE_URL: '', NEXT_PUBLIC_SUPABASE_ANON_KEY: '', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '',
     BUBBLE_API_BASE_URL: '', BUBBLE_API_TOKEN: '', BUBBLE_WEBHOOK_SECRET: '', SYNC_OUTBOX_ENABLED: 'false',
+    EM_SSO_ENABLED: 'false', EM_SSO_ENCRYPTION_KEY: '', EM_SSO_BRIDGE_SERVICE_ROLE_KEY: '',
   });
   const server = spawn(process.execPath, ['.next/standalone/server.js'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env });
   let diagnostics = '', launchError: Error | undefined;

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { pageNumber, searchTerm, uuid } from './policy';
+import type { CorporateCapability } from './sso-policy';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -38,6 +39,11 @@ function checked<T extends { error: { message: string } | null }>(result: T): T 
   return result;
 }
 function ids(values: unknown[]): string[] { return [...new Set(values.filter((v): v is string => typeof v === 'string' && uuid.safeParse(v).success))]; }
+const MEDIA_ANSWER_TYPES = new Set(['foto', 'foto_antes_depois', 'assinatura', 'imagem', 'imagens']);
+function hasMediaReference(value: unknown): boolean {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return typeof text === 'string' && /https?:\/\/|(?:^|[\s"'])\/\/[a-z0-9]|data:image\/|blob:|file:\/\/|content:\/\//i.test(text);
+}
 function applySearch(query: any, value: unknown, columns: string[], referencedTable?: string) {
   const term = searchTerm(value);
   return term ? query.or(columns.map(column => `${column}.ilike.%${term}%`).join(','), referencedTable ? { referencedTable } : undefined) : query;
@@ -49,7 +55,15 @@ async function page(query: any, number: unknown, pageSize: number): Promise<WebP
 }
 
 /** Injectable RLS client makes pagination and scope testable without Auth secrets. */
-export function createWebData(client: SupabaseClient) {
+export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+  const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
+  const requireCapability = (capability: CorporateCapability) => {
+    if (!allowed('em.portal.read') || !allowed(capability)) throw new Error('Acesso não autorizado a esta área.');
+  };
+  const without = (columns: string, names: string[]) => columns.split(',').filter(column => !names.includes(column)).join(',');
+  const projectColumns = allowed('em.documents.read') ? PROJECT : without(PROJECT, ['arquivo_nota_fiscal_url', 'documento_proposta_url']);
+  const userColumns = allowed('em.photos.read') ? USER : without(USER, ['foto_url']);
+  const answerColumns = allowed('em.photos.read') ? ANSWER : without(ANSWER, ['fotos_urls', 'assinatura_url']);
   async function all(table: string, columns: string, filter?: (query: any) => any, order = 'id'): Promise<WebRow[]> {
     const output: WebRow[] = [];
     for (let offset = 0; offset < 20_000; offset += 500) {
@@ -80,107 +94,137 @@ export function createWebData(client: SupabaseClient) {
     return (checked(await query) as any).count ?? 0;
   }
   async function getOverview() {
+    requireCapability('em.portal.read');
+    const access = { projects: allowed('em.projects.read'), forms: allowed('em.forms.read'), planning: allowed('em.planning.read'), documents: allowed('em.documents.read') };
+    const none = { error: null, data: [] };
     const [projects, activeProjects, awaitingReview, overdueCells, reportCount, attachmentCount, recent, records, overdue] = await Promise.all([
-      count('rm_projetos'), count('rm_projetos', q => q.is('data_real_de_entrega', null).or(ACTIVE)),
-      count('rm_registros_formulario', q => q.eq('status', 'em_an_lise')),
-      count('rm_celulas_projeto', q => q.lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true)),
-      count('rm_documentos'), count('rm_docs'),
-      client.from('rm_projetos').select(PROJECT).order('updated_at', { ascending: false }).order('id').limit(8),
-      client.from('rm_registros_formulario').select(RECORD).eq('status', 'em_an_lise').order('updated_at', { ascending: false }).order('id').limit(8),
-      client.from('rm_celulas_projeto').select(ALLOCATION).lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true).order('data_limite').order('id').limit(8),
+      access.projects ? count('rm_projetos') : null, access.projects ? count('rm_projetos', q => q.is('data_real_de_entrega', null).or(ACTIVE)) : null,
+      access.forms ? count('rm_registros_formulario', q => q.eq('status', 'em_an_lise')) : null,
+      access.planning ? count('rm_celulas_projeto', q => q.lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true)) : null,
+      access.documents ? count('rm_documentos') : null, access.documents ? count('rm_docs') : null,
+      access.projects ? client.from('rm_projetos').select(projectColumns).order('updated_at', { ascending: false }).order('id').limit(8) : none,
+      access.forms ? client.from('rm_registros_formulario').select(RECORD).eq('status', 'em_an_lise').order('updated_at', { ascending: false }).order('id').limit(8) : none,
+      access.planning ? client.from('rm_celulas_projeto').select(ALLOCATION).lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true).order('data_limite').order('id').limit(8) : none,
     ]);
     const recentRows = (checked(recent) as any).data as WebRow[];
     const recentClients = await byIds('rm_clientes', CLIENT, recentRows.map(row => row.cliente_id));
     const recentProjects: WebRow[] = recentRows.map(row => ({ ...row, cliente_nome: recentClients.find(customer => customer.id === row.cliente_id)?.nome || row.cliente_nome_exportacao || null }));
     const recentRecords = (checked(records) as any).data as WebRow[];
     const tasks: WebRow[] = [
-      ...recentRecords.map(row => ({ ...row, kind: 'review', title: `Avaliar formulário ${row.codigo_text || row.codigo || ''}`, href: `/formularios/${row.id}` })),
-      ...((checked(overdue) as any).data as WebRow[]).map(row => ({ ...row, kind: 'overdue', title: `Prazo vencido · ${row.numero_projeto || 'Projeto'}`, href: `/projetos/${row.projeto_id}` })),
+      ...recentRecords.map(row => ({ ...row, kind: 'review', title: `${allowed('em.forms.review') ? 'Avaliar' : 'Consultar'} formulário ${row.codigo_text || row.codigo || ''}`, href: `/formularios/${row.id}` })),
+      ...((checked(overdue) as any).data as WebRow[]).map(row => ({ ...row, kind: 'overdue', title: `Prazo vencido · ${row.numero_projeto || 'Projeto'}`, href: access.projects ? `/projetos/${row.projeto_id}?tab=planejamento` : '/planejamento' })),
     ];
-    return { counts: { projects, activeProjects, awaitingReview, overdueCells, documents: reportCount + attachmentCount }, recentProjects, recentRecords, tasks };
+    return { access, counts: { projects, activeProjects, awaitingReview, overdueCells, documents: access.documents ? (reportCount ?? 0) + (attachmentCount ?? 0) : null }, recentProjects, recentRecords, tasks };
   }
   async function listProjects(filters: ProjectFilters = {}) {
-    let query: any = client.from('rm_projetos').select(PROJECT + (filters.cell ? ',allocations:rm_celulas_projeto!inner(celula_id)' : ''), { count: 'exact' });
+    requireCapability('em.projects.read');
+    if (filters.cell) requireCapability('em.planning.read');
+    let query: any = client.from('rm_projetos').select(projectColumns + (filters.cell ? ',allocations:rm_celulas_projeto!inner(celula_id)' : ''), { count: 'exact' });
     query = applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao', 'descricao_equipamento']);
     if (filters.status) query = query.eq('status_pcp', filters.status);
     if (filters.client) query = query.eq('cliente_id', uuid.parse(filters.client));
     if (filters.cell) query = query.eq('allocations.celula_id', uuid.parse(filters.cell));
     const [result, clients, cells, statuses] = await Promise.all([
       page(query.order('updated_at', { ascending: false }).order('id'), filters.page, 25),
-      all('rm_clientes', CLIENT, undefined, 'nome'), all('rm_celulas', CELL, undefined, 'nome'), options('status_pcp'),
+      all('rm_clientes', 'id,nome', undefined, 'nome'), allowed('em.planning.read') ? all('rm_celulas', CELL, undefined, 'nome') : [], options('status_pcp'),
     ]);
     const names = new Map(clients.map(row => [row.id, row.nome]));
     result.rows = result.rows.map(row => ({ ...row, cliente_nome: names.get(row.cliente_id) || row.cliente_nome_exportacao || null }));
     return { ...result, clients, cells, statuses };
   }
   async function getProject(id: string, filters: { photoPage?: number | string } = {}) {
-    const project = await one('rm_projetos', PROJECT, id);
+    requireCapability('em.projects.read');
+    const project = await one('rm_projetos', projectColumns, id);
     if (!project) return null;
     const [customers, equipmentRows, allocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
       byIds('rm_clientes', CLIENT, [project.cliente_id]),
       all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)),
-      all('rm_celulas_projeto', ALLOCATION, q => q.eq('projeto_id', id), 'posicao'), all('rm_celulas', CELL, undefined, 'indice'),
-      all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at'),
-      all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)),
-      all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at'),
-      page(client.from('rm_fotos').select(PHOTO, { count: 'exact' }).eq('projeto_id', id).eq('lixeira', false).not('foto_url', 'is', null).order('numero').order('id'), filters.photoPage, 24),
-      all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao'), all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome'),
+      allowed('em.planning.read') ? all('rm_celulas_projeto', ALLOCATION, q => q.eq('projeto_id', id), 'posicao') : [],
+      allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
+      allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
+      allowed('em.history.read') ? all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)) : [],
+      allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
+      allowed('em.photos.read') ? page(client.from('rm_fotos').select(PHOTO, { count: 'exact' }).eq('projeto_id', id).eq('lixeira', false).not('foto_url', 'is', null).order('numero').order('id'), filters.photoPage, 24) : { rows: [], total: 0, page: 1, pageSize: 24 },
+      allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
     ]);
     const [forms, users] = await Promise.all([
-      byIds('rm_forms', FORM, [...allocations.flatMap(row => row.forms_ids || []), ...records.map(row => row.form_id)]),
-      byIds('rm_users', USER, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
+      allowed('em.forms.read') ? byIds('rm_forms', FORM, [...allocations.flatMap(row => row.forms_ids || []), ...records.map(row => row.form_id)]) : [],
+      byIds('rm_users', userColumns, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
     ]);
+    const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
     return { project, client: customers[0] || null, equipment: equipmentRows.find(row => row.id === project.equipamento_id) || equipmentRows[0] || null,
-      allocations, cells, forms, records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
+      allocations, hasAllocations, cells, forms, records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {
+    requireCapability('em.forms.read');
     const record = await one('rm_registros_formulario', RECORD, id);
     if (!record) return null;
     const [project, form, answers, questions, items, users] = await Promise.all([
-      one('rm_projetos', PROJECT, record.projeto_id), one('rm_forms', FORM, record.form_id),
-      all('rm_respostas', ANSWER, q => q.eq('registro_formulario_id', id), 'indice'),
+      allowed('em.projects.read') ? one('rm_projetos', projectColumns, record.projeto_id) : null, one('rm_forms', FORM, record.form_id),
+      all('rm_respostas', answerColumns, q => q.eq('registro_formulario_id', id), 'indice'),
       all('rm_questoes', QUESTION, q => q.eq('form_id', record.form_id), 'indice'),
       all('rm_itens_questoes', ITEM, q => q.eq('form_id', record.form_id), 'indice'),
-      byIds('rm_users', USER, [record.identidade_user_id, record.created_by_user_id, record.responsavel_user_id, record.avaliador_user_id, record.user_revisao_id]),
+      byIds('rm_users', userColumns, [record.identidade_user_id, record.created_by_user_id, record.responsavel_user_id, record.avaliador_user_id, record.user_revisao_id]),
     ]);
-    return { record, project, form, answers, questions, items, users };
+    const visibleAnswers = allowed('em.photos.read') ? answers : answers.map(answer => {
+      const type = answer.tipo ?? questions.find(question => question.id === answer.questao_id)?.tipo;
+      if (MEDIA_ANSWER_TYPES.has(type) || hasMediaReference(answer.resposta) || hasMediaReference(answer.itens)) {
+        return { ...answer, resposta: null, itens: [], itens_questoes_ids: [], media_restricted: true };
+      }
+      return answer;
+    });
+    return { record, project, form, answers: visibleAnswers, questions, items, users };
   }
   async function listPlanning(filters: PlanningFilters = {}) {
-    let query: any = client.from('rm_celulas_projeto').select(`${ALLOCATION},project:rm_projetos!inner(id,numero,nome,status_pcp,data_real_de_entrega,cliente_nome_exportacao)`, { count: 'exact' });
+    requireCapability('em.planning.read');
+    let query: any = client.from('rm_celulas_projeto').select(ALLOCATION + (allowed('em.projects.read') ? ',project:rm_projetos!inner(id,numero,nome,status_pcp,data_real_de_entrega,cliente_nome_exportacao)' : ''), { count: 'exact' });
     if (filters.cell) query = query.eq('celula_id', uuid.parse(filters.cell));
     if (filters.status) query = query.eq('status', filters.status);
-    query = applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao'], 'project');
+    query = allowed('em.projects.read') ? applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao'], 'project') : applySearch(query, filters.q, ['numero_projeto', 'cliente_nome_export']);
     const [result, projects, cells, statuses] = await Promise.all([
       page(query.order('posicao').order('id'), filters.page, 50),
-      all('rm_projetos', 'id,numero,nome,status_pcp,data_real_de_entrega', undefined, 'numero'), all('rm_celulas', CELL, undefined, 'nome'), options('status_cel_proj'),
+      allowed('em.projects.read') ? all('rm_projetos', 'id,numero,nome,status_pcp,data_real_de_entrega', undefined, 'numero') : [], all('rm_celulas', CELL, undefined, 'nome'), options('status_cel_proj'),
     ]);
     return { ...result, projects, cells, statuses };
   }
   async function listForms(filters: FormFilters = {}) {
+    requireCapability('em.forms.read');
     let query: any = client.from('rm_registros_formulario').select(RECORD, { count: 'exact' });
     if (filters.status) query = query.eq('status', filters.status);
     query = applySearch(query, filters.q, ['numero_projeto_rm', 'codigo_text', 'descricao']);
     const [result, forms, projects, statuses] = await Promise.all([
       page(query.order('updated_at', { ascending: false }).order('id'), filters.page, 25), all('rm_forms', FORM, undefined, 'titulo'),
-      all('rm_projetos', 'id,numero,nome', undefined, 'numero'), options('status_registro0'),
+      allowed('em.projects.read') ? all('rm_projetos', 'id,numero,nome', undefined, 'numero') : [], options('status_registro0'),
     ]);
     return { ...result, forms, projects, statuses };
   }
   async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) {
+    requireCapability('em.catalogs.read');
     const kind: CatalogKind = catalogKinds.includes(filters.kind as CatalogKind) ? filters.kind as CatalogKind : 'clients';
     const catalog = catalogs[kind];
-    let query: any = client.from(catalog.table).select(catalog.columns, { count: 'exact' });
+    let query: any = client.from(catalog.table).select(kind === 'users' ? userColumns : catalog.columns, { count: 'exact' });
     query = applySearch(query, filters.q, catalog.search.split(','));
     return { ...await page(query.order(catalog.order).order('id'), filters.page, 50), kind, kinds: catalogKinds };
   }
-  return { getOverview, listProjects, getProject, getRecord, listPlanning, listForms, getCatalogs };
+  async function editorChoices(scope: 'project' | 'planning' = 'project') {
+    requireCapability(scope === 'project' ? 'em.projects.manage' : 'em.planning.manage');
+    const [clients, types, users, forms, statuses] = await Promise.all([
+      scope === 'project' ? all('rm_clientes', 'id,nome', undefined, 'nome') : [],
+      scope === 'project' ? all('rm_tipos_equipamento', 'id,nome', undefined, 'nome') : [],
+      all('rm_users', 'id,nome,status', undefined, 'nome'),
+      scope === 'planning' ? all('rm_forms', 'id,titulo,ativo', undefined, 'titulo') : [],
+      scope === 'project' ? options('status_pcp') : [],
+    ]);
+    return { clients, types, users, forms, statuses };
+  }
+  return { getOverview, listProjects, getProject, getRecord, listPlanning, listForms, getCatalogs, editorChoices };
 }
 
-async function data() { const { requireWebUser } = await import('./auth'); return createWebData((await requireWebUser()).client); }
-export async function getOverview() { return (await data()).getOverview(); }
-export async function listProjects(filters: ProjectFilters = {}) { return (await data()).listProjects(filters); }
-export async function getProject(id: string, filters: { photoPage?: number | string } = {}) { return (await data()).getProject(id, filters); }
-export async function getRecord(id: string) { return (await data()).getRecord(id); }
-export async function listPlanning(filters: PlanningFilters = {}) { return (await data()).listPlanning(filters); }
-export async function listForms(filters: FormFilters = {}) { return (await data()).listForms(filters); }
-export async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) { return (await data()).getCatalogs(filters); }
+async function data(capability: CorporateCapability) { const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability); return createWebData(session.client, session.sso?.capabilities); }
+export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
+export async function listProjects(filters: ProjectFilters = {}) { return (await data('em.projects.read')).listProjects(filters); }
+export async function getProject(id: string, filters: { photoPage?: number | string } = {}) { return (await data('em.projects.read')).getProject(id, filters); }
+export async function getRecord(id: string) { return (await data('em.forms.read')).getRecord(id); }
+export async function listPlanning(filters: PlanningFilters = {}) { return (await data('em.planning.read')).listPlanning(filters); }
+export async function listForms(filters: FormFilters = {}) { return (await data('em.forms.read')).listForms(filters); }
+export async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) { return (await data('em.catalogs.read')).getCatalogs(filters); }

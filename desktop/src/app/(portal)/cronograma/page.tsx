@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { listPlanning } from '@/server/web/data';
+import { requireWebUser } from '@/server/web/auth';
+import { hasWebCapability } from '@/server/web/auth-policy';
 import { formatGanttDay, ganttBar, ganttWindow, GANTT_DAYS, isoCalendarDay } from '@/server/web/gantt';
 import { Empty, PageHeading, Pagination, display } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
@@ -8,7 +10,8 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const params = await searchParams;
   const filters = Object.fromEntries(['q', 'cell', 'status', 'page'].map(key => [key, typeof params[key] === 'string' ? params[key] as string : undefined]));
   const window = ganttWindow(typeof params.start === 'string' ? params.start : undefined);
-  const data = await listPlanning(filters);
+  const [data, session] = await Promise.all([listPlanning(filters), requireWebUser('em.planning.read')]);
+  const canProjects = hasWebCapability(session, 'em.projects.read');
   const cells = new Map(data.cells.map(cell => [cell.id, cell.nome]));
   const periodFilters = { ...filters, start: window.isoStart };
   const periodHref = (start: number) => {
@@ -16,7 +19,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
     return `/cronograma?${query}`;
   };
   return <>
-    <PageHeading eyebrow="PCP · PLANEJAMENTO E CONTROLE" title="Cronograma" description="Prazos planejados das células em uma janela de seis semanas. Abra o projeto para consultar ou ajustar seu planejamento." actions={<Link className="button secondary" href="/planejamento"><Icon name="board" size={16} />Ver planejamento</Link>} />
+    <PageHeading eyebrow="PCP · PLANEJAMENTO E CONTROLE" title="Cronograma" description="Consulte os prazos planejados das células em uma janela de seis semanas." actions={<Link className="button secondary" href="/planejamento"><Icon name="board" size={16} />Ver planejamento</Link>} />
     {window.invalidStart && <p className="notice" role="status">A data informada é inválida. O período padrão está sendo exibido.</p>}
     <section className="panel">
       <div className="panel-header"><div><h2>{formatGanttDay(window.start)} — {formatGanttDay(window.end)}</h2><p>42 dias · Datas da oficina no horário de São Paulo</p></div><div className="heading-actions">
@@ -41,9 +44,9 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
           const range = bar.kind === 'bar' ? `${formatGanttDay(bar.start)} a ${formatGanttDay(bar.end)}` : '';
           const state = bar.kind === 'bar' ? bar.complete ? 'Finalizado' : bar.overdue ? 'Prazo vencido' : display(row.status) : '';
           return <div className="gantt-row" role="row" key={row.id}>
-            <div className="gantt-row-title" role="rowheader"><Link href={href}>{number ? `OS ${String(number).trim()}` : 'Projeto sem OS'}</Link><small>{cells.get(row.celula_id) || 'Célula não informada'}</small><small>{display(row.status)}</small></div>
+            <div className="gantt-row-title" role="rowheader">{canProjects ? <Link href={href}>{number ? `OS ${String(number).trim()}` : 'Projeto sem OS'}</Link> : <span>{number ? `OS ${String(number).trim()}` : 'Projeto sem OS'}</span>}<small>{cells.get(row.celula_id) || 'Célula não informada'}</small><small>{display(row.status)}</small></div>
             <div className="gantt-track" role="cell">
-              {bar.kind === 'bar' ? <Link href={href} className={`gantt-bar${bar.complete ? ' complete' : bar.overdue ? ' overdue' : ''}`} style={{ left: `${bar.left}%`, width: `${bar.width}%` }} title={`${range} · ${state}`} aria-label={`Planejamento: ${range}. ${state}. Abrir projeto.`}>{formatGanttDay(bar.start, true)} — {formatGanttDay(bar.end, true)}</Link>
+              {bar.kind === 'bar' ? canProjects ? <Link href={href} className={`gantt-bar${bar.complete ? ' complete' : bar.overdue ? ' overdue' : ''}`} style={{ left: `${bar.left}%`, width: `${bar.width}%` }} title={`${range} · ${state}`} aria-label={`Planejamento: ${range}. ${state}. Abrir projeto.`}>{formatGanttDay(bar.start, true)} — {formatGanttDay(bar.end, true)}</Link> : <span className={`gantt-bar${bar.complete ? ' complete' : bar.overdue ? ' overdue' : ''}`} style={{ left: `${bar.left}%`, width: `${bar.width}%` }} title={`${range} · ${state}`}>{formatGanttDay(bar.start, true)} — {formatGanttDay(bar.end, true)}</span>
                 : <span className="panel-caption" style={{ padding: '0 16px' }}>{bar.kind === 'missing' ? 'Sem datas planejadas' : bar.kind === 'invalid' ? 'Datas planejadas inválidas' : 'Fora do período'}</span>}
             </div>
           </div>;

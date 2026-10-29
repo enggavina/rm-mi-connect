@@ -30,5 +30,7 @@ jobs:
         run: npm run build
       - if: matrix.project == 'desktop'
         run: npm run test:smoke
+      - if: matrix.project == 'desktop'
+        run: npm run test:sso-smoke
       - if: matrix.project == 'mobile'
         run: npx expo install --check
