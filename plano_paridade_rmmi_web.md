@@ -2,6 +2,10 @@
 
 Revisão: 29/10/2026. Referência funcional: aplicativo Bubble `rmmi`, versão **Live**, consultado somente para leitura. Destino: este repositório EM, Supabase `oficina-em-mi-off` e portal Railway existente. Baseline local: `bf41b04`, migrações 001–016, SSO Microsoft validado pelo titular.
 
+**Execução iniciada e pacote 1A publicado:** gestão dos dados básicos de clientes, células e tipos disponível em https://em-web-production.up.railway.app/cadastros. Commit de aplicação `38f482e`, deploy Railway `7a225233-f6d4-4f3e-814e-b9497f3dbc42`, migração 017 aplicada. A capacidade `em.catalogs.manage` foi registrada e concedida somente a `mgavina@mielectric.com.br`; `softdev05` conserva as oito permissões de consulta. Os demais pacotes abaixo permanecem planejados.
+
+Validação desta entrega: 110 testes desktop, tipos, build, dois smokes e [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/40833409039) aprovados; seis suítes PostgreSQL isoladas, incluindo concorrência e atualização na mesma conexão; dez cenários de interface no Chrome com transporte/dados simulados e rede externa bloqueada. Em produção, as rotas novas e a entrada SSO foram conferidas sem gravar cadastros de teste. A migração preservou 53 snapshots de tabelas/recibos, e a concessão central preservou as demais contas e aplicações. O CRUD com dados reais não foi executado para QA.
+
 ## Diagnóstico
 
 A recriação ainda não tem paridade com o conjunto do RMMI. O portal possui seis áreas navegáveis, mas somente três comandos transacionais: salvar projeto, planejar célula e revisar formulário. Muitos dados foram importados e já podem ser consultados, porém seus fluxos de gestão não foram implementados. A existência de uma tabela SQL não comprova que seu módulo esteja pronto.
@@ -48,7 +52,7 @@ Fluxos explicitamente desativados no Bubble, como relatório fotográfico `proje
 
 | Pacote | Prioridade / dependências | Entrega e critérios de aceite |
 | --- | --- | --- |
-| **1A — dados cadastrais básicos** | **Primeiro incremento iniciado nesta solicitação.** | Criar/editar clientes, células e tipos; exclusão somente sem referências; validação no servidor, autoria, idempotência, versão otimista e capacidade `em.catalogs.manage`. Auditor continua somente leitura. Renomear célula preserva ou protege os vínculos legados de títulos por nome. Imagens e contatos ficam no pacote seguinte, sem prometer CRUD completo desses campos. |
+| **1A — dados cadastrais básicos** | **Concluído e publicado nesta solicitação.** | Criar/editar clientes, células e tipos; exclusão somente sem referências; validação no servidor, autoria, idempotência, versão otimista e capacidade `em.catalogs.manage`. Auditor continua somente leitura. Renomear célula preserva ou protege os vínculos legados de títulos por nome. Imagens e contatos ficam no pacote seguinte, sem prometer CRUD completo desses campos. |
 | 1B — cadastros e engenharia | Após 1A | Contatos, títulos de foto, matriz tipo/célula/formulário/foto/aprovador e roteiros. Não alterar retroativamente alocações em execução. Gerir usuários e permissões fora de um CRUD genérico; Central continua autoridade do acesso web. |
 | 2 — construtor de formulários | Após engenharia | Editor de blocos/perguntas/itens e prévia; tipos/unidades/opções; ordem fracionária preservada; cópia e versão publicada. Registros antigos não mudam quando um modelo evolui; modelos usados não podem perder perguntas por exclusão destrutiva. |
 | 3 — PCP e aprovações | Aproveita roteiro/modelos e estados atuais | Fila de recebimentos, prioridades e capacidade; fila/decisão de etapas com autorização do aprovador e exclusividade Liberar versus Retornar/Aprovar; histórico; bloqueios e encerramento validados por formulários/fotos obrigatórias. Web e mobile observam a mesma transação. |
