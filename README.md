@@ -50,6 +50,8 @@ Documentos remotos são baixados ao abrir e ficam disponíveis offline após ess
 
 ## Plataforma web
 
+Endereço publicado: **[Abrir EM web](https://em-web-production.up.railway.app)**. Login com a conta Supabase já cadastrada; o administrador inicial usa as credenciais provisionadas no arquivo local ignorado pelo Git.
+
 O portal de gestão em `desktop/` compartilha a base do mobile: visão geral, projetos, planejamento de células, cronograma, consulta/revisão de formulários, galeria, documentos e consulta de cadastros. O acesso usa Supabase Auth, perfis internos ativos e MFA quando cadastrada; a chave de serviço não participa da sessão web. As alterações de gestão usam as migrações 014–015, com autoria, idempotência e conflito de versão. Consulte [funcionalidades, execução e operação da plataforma](desktop/docs/web-platform.md).
 
 ## Banco e integração

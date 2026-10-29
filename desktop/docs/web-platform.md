@@ -40,4 +40,18 @@ Para a aplicação web, definir no ambiente do servidor `SUPABASE_URL` e `SUPABA
 
 O Dockerfile usa Node 22, saída standalone e usuário não-root. O serviço web deve publicar `0.0.0.0:$PORT`; Railway fornece a porta. O healthcheck `/api/health` testa o processo, não a disponibilidade do banco. A configuração mantém `Root Directory=/desktop` quando a origem é o repositório completo; ao enviar somente a pasta desktop pela CLI, o Dockerfile e `railway.json` ficam na raiz do pacote enviado.
 
-Não reutilizar os serviços de outros sistemas. O EM terá projeto e serviço próprios no Railway. O endereço e os identificadores efetivamente publicados serão registrados após o deploy e a verificação autenticada.
+Publicação concluída em 29/10/2026: **[EM web](https://em-web-production.up.railway.app)**, no projeto Railway `em-mi-electric-brasil` (`472ac09b-a1b2-4b2f-b561-b43d0b471b06`), serviço `em-web` (`c26e7026-429b-4965-a8a0-b0c91a1665de`), ambiente `production` (`b6f8a871-027c-49eb-adac-43ad8586fbc9`). Os serviços de outros sistemas foram preservados.
+
+Deploy `97c7230c-be56-4aeb-a93c-0eb34bcd36f7`, origem CLI a partir de `desktop/`, commit de aplicação `cd2e520`. A imagem usa Node 22 e o serviço recebeu somente URL/chave pública Supabase, porta e `SYNC_OUTBOX_ENABLED=false`; nenhuma chave de serviço ou token Bubble foi configurado. Esta primeira publicação não está conectada a autodeploy do GitHub. Uma conexão futura ao repositório deve usar Root Directory `/desktop`.
+
+## Validação da entrega
+
+- 61 testes desktop, TypeScript, build de produção e auditoria npm sem vulnerabilidades conhecidas.
+- CI do commit de aplicação aprovado, incluindo os 84 testes mobile e o smoke de runtime web sem credenciais reais.
+- Migrações 001–015 e quatro suítes PostgreSQL isoladas, incluindo planejamento, idempotência, conflitos, MFA e devolução web → correção mobile → aprovação web.
+- Navegador Chrome local e no endereço Railway: login, cookie HttpOnly/Secure/SameSite, busca, abas de projeto, ampliação da galeria, abertura/cancelamento de editor, cronograma, consulta de 136 respostas, seleção para devolução sem submeter, leitura de PDF privado, cadastros, rejeição de criação vazia, navegação em 390 px e logout local. Nenhum erro de execução do navegador.
+- Ambiente público sem sessão: login e health 200, painel redirecionando ao login e APIs de dados retornando 401. Os testes de navegador não aprovaram, devolveram ou editaram registros operacionais reais; operações positivas foram verificadas no PostgreSQL isolado.
+
+Abas, filtros de query e paginação usam navegação HTTP para garantir a leitura atual da seleção. No runtime Next 15 instalado, a transição cliente de query atualizou o cache interno sem confirmar a interface; o fallback nativo foi reproduzido e validado. Login e MFA redirecionam diretamente a `/painel`, evitando a resposta intermediária da rota `/` em Server Actions. Retornos bem-sucedidos de edição/revisão também fazem uma leitura completa da tela atualizada.
+
+Referências de implementação: [sessões SSR Supabase/Next](https://supabase.com/docs/guides/auth/server-side/creating-a-client?queryGroups=framework&framework=nextjs), [CLI Railway](https://docs.railway.com/guides/cli).
