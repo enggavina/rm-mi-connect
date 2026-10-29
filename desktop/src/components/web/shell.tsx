@@ -8,6 +8,7 @@ import type { CorporateCapability } from '@/server/web/sso-policy';
 const navigation: { href: string; label: string; icon: IconName; capability: CorporateCapability }[] = [
   { href: '/painel', label: 'Visão geral', icon: 'dashboard', capability: 'em.portal.read' }, { href: '/projetos', label: 'Projetos', icon: 'folder', capability: 'em.projects.read' },
   { href: '/planejamento', label: 'Planejamento', icon: 'board', capability: 'em.planning.read' }, { href: '/cronograma', label: 'Cronograma', icon: 'calendar', capability: 'em.planning.read' },
+  { href: '/aprovacoes', label: 'Aprovações de etapas', icon: 'check', capability: 'em.approvals.read' },
   { href: '/formularios', label: 'Formulários', icon: 'clipboard', capability: 'em.forms.read' }, { href: '/cadastros', label: 'Cadastros', icon: 'settings', capability: 'em.catalogs.read' },
   { href: '/engenharia', label: 'Engenharia', icon: 'board', capability: 'em.engineering.read' },
   { href: '/modelos-formularios', label: 'Modelos de formulário', icon: 'clipboard', capability: 'em.form_templates.read' },

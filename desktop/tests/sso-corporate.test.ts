@@ -92,6 +92,16 @@ test('form-template permissions are explicit and never implied by records or eng
   await assert.rejects(reader.auth.validateCorporateSession(reader.token, { subject: SUBJECT }, 'em.form_templates.manage'), code('CORP_FORBIDDEN'));
 });
 
+test('stage approvals require their current dedicated grants without inheriting planning or form review', async () => {
+  const old = fixture({ decision: { ...decision(), capabilities: CORPORATE_CAPABILITIES.filter(cap => !cap.startsWith('em.approvals.')) } });
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.planning.manage');
+  await old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, 'em.forms.review');
+  for (const capability of ['em.approvals.read', 'em.approvals.decide'] as const) await assert.rejects(old.auth.validateCorporateSession(old.token, { subject: SUBJECT }, capability), code('CORP_FORBIDDEN'));
+  const reader = fixture({ decision: { ...decision(), capabilities: ['em.portal.read', 'em.approvals.read'] } });
+  await reader.auth.validateCorporateSession(reader.token, { subject: SUBJECT }, 'em.approvals.read');
+  await assert.rejects(reader.auth.validateCorporateSession(reader.token, { subject: SUBJECT }, 'em.approvals.decide'), code('CORP_FORBIDDEN'));
+});
+
 test('corporate configuration is opt-in and pins the issuer, app and exact HTTPS callback', () => {
   assert.equal(corporateSettings({}), null);
   assert.equal(settings.callbackUrl, 'https://em.example.test/auth/sso/callback');

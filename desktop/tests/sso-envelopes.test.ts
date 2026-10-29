@@ -38,12 +38,12 @@ test('catalog capability is accepted in encrypted sessions and MFA without inval
   assert.equal(ssoSessionSchema.safeParse({ ...expanded, corporate: { ...expanded.corporate, decision: { ...expanded.corporate.decision, capabilities: [...CORPORATE_CAPABILITIES, 'em.unknown.manage'] } } }).success, false);
 });
 
-test('expanded consumer accepts legacy sessions without inferring engineering or form-template grants', () => {
-  assert.equal(CORPORATE_CAPABILITIES.length, 16);
+test('expanded consumer accepts legacy sessions without inferring engineering, form-template or approval grants', () => {
+  assert.equal(CORPORATE_CAPABILITIES.length, 18);
   const decision = { ...corporate.decision, capabilities: [...CORPORATE_CAPABILITIES] };
   const full = { ...contents, corporate: { ...corporate, decision } };
   assert.equal(ssoSessionSchema.safeParse(full).success, true);
-  for (const legacy of [CORPORATE_CAPABILITIES.slice(0, 12), CORPORATE_CAPABILITIES.slice(0, 14)]) {
+  for (const legacy of [CORPORATE_CAPABILITIES.slice(0, 12), CORPORATE_CAPABILITIES.slice(0, 14), CORPORATE_CAPABILITIES.slice(0, 16)]) {
     const previous = { ...full, corporate: { ...full.corporate, decision: { ...decision, capabilities: legacy } } };
     assert.equal(ssoSessionSchema.safeParse(previous).success, true);
   }

@@ -35,6 +35,7 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
   if (result.projeto_id) revalidatePath(`/projetos/${result.projeto_id}`);
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);
+  if (operation === 'transition_stage_approval') { revalidatePath('/aprovacoes'); revalidatePath(`/aprovacoes/${result.id}`); }
   return { ok: true, data: result };
 }
 

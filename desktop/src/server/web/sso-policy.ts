@@ -11,6 +11,7 @@ export const CORPORATE_CAPABILITIES = [
   'em.documents.read', 'em.catalogs.read', 'em.history.read', 'em.catalogs.manage',
   'em.engineering.read', 'em.engineering.manage',
   'em.form_templates.read', 'em.form_templates.manage',
+  'em.approvals.read', 'em.approvals.decide',
 ] as const;
 export type CorporateCapability = typeof CORPORATE_CAPABILITIES[number];
 export interface CorporateSettings {
