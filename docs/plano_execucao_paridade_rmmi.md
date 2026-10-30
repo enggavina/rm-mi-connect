@@ -1,8 +1,8 @@
 # Execução da revisão de paridade RMMI
 
-## Contrato do incremento 029 em desenvolvimento
+## Contrato do incremento 029 definido antes da implementação
 
-Próxima prioridade após a 028: criar comentários e anexos privados nas abas Histórico e Documentos do projeto, reutilizando `rm_comentarios`, `rm_docs`, o bucket privado `rm-documentos` e as permissões existentes. [Discovery somente leitura](discovery_rmmi_dossie_operacional.md). Comentário exige célula destinatária ativa do próprio projeto, versões exatas, autoria no servidor e preservação das células ocultas. Não oferecer edição ou exclusão nesta criação inicial.
+Planejamento registrado após a 028, concluído no incremento 029: criar comentários e anexos privados nas abas Histórico e Documentos do projeto, reutilizando `rm_comentarios`, `rm_docs`, o bucket privado `rm-documentos` e as permissões existentes. [Discovery somente leitura](discovery_rmmi_dossie_operacional.md). Comentário exige célula destinatária ativa do próprio projeto, versões exatas, autoria no servidor e preservação das células ocultas. Não oferecer edição ou exclusão nesta criação inicial.
 
 Anexo exige título, situação documental explícita No prazo/Vencido, arquivo PDF/JPEG/PNG de até 20 MiB e permite observação/vencimento. Reservar a intenção num journal privado, enviar para nome imutável derivado do protocolo e somente então publicar `rm_docs`; não mostrar sucesso sem arquivo confirmado. Tentativas conservam arquivo, SHA256, UUID e conteúdo. Reservas incompletas ficam privadas, sem descarte automático ou substituição. A credencial privada EM será usada no servidor somente para gravar/verificar esse namespace; as mutações de negócio continuam com JWT do usuário, SSO/MFA, capacidade de gestão de projetos e leituras correspondentes.
 
@@ -145,3 +145,29 @@ Não houve CRUD positivo/artificial em produção, login Microsoft humano automa
 [Contrato completo](../rm-mobile-supabase/WEB_CELL_AVAILABILITY.md) e [discovery](discovery_rmmi_disponibilidade_alocacoes.md).
 
 Provas locais ignoradas: `cell-availability-028-{rehearse,apply}-proof.json`, `cell-availability-postflight.json`, `cell-availability-ci-proof.json`, `cell-availability-deployment.json`, `cell-availability-public-qa.json`, `public-sso-qa.json`, `cell-availability-qa-summary.json`, `cell-availability-browser-secret-audit.json` e logs `cell-availability-{desktop-tests,build,full}.log`.
+
+## Resultado do incremento 029 publicado
+
+**Projetos → abrir projeto → Histórico → Adicionar comentário**: escolher célula destinatária ativa do próprio projeto e registrar até 10.000 caracteres. Célula oculta continua elegível; retirada não recebe novos comentários. Autor e data vêm do servidor. Em **Documentos → Adicionar anexo privado**, selecionar PDF, JPEG ou PNG de até 20 MiB, preencher título e situação documental manual No prazo/Vencido; vencimento e observação são opcionais.
+
+Comentários são acrescentados ao histórico existente, com contexto/versionamento e autoria preservados. O anexo só aparece após reserva da intenção, verificação dos bytes/assinatura/SHA256, upload privado imutável e confirmação no banco. UUID, conteúdo, arquivo e protocolos de reserva/publicação permanecem os mesmos na retentativa; nenhuma resposta incerta é apresentada como sucesso. Download exige permissão atual e assinatura curta. Abertura de links em outra aba conserva o arquivo e a proteção de saída da aba atual, inclusive com envio incerto. Novos anexos são internos, com `visivel_cliente=false`, RLS negando o perfil cliente e bloqueio de alteração/exclusão da linha publicada.
+
+As operações reutilizam `em.projects.manage`, perfis RM de escrita e leituras de projeto/histórico/planejamento ou documentos conforme o comando, com SSO/MFA e recibos atuais inclusive no replay. A chave privada EM é reutilizada somente no servidor, pelo adaptador de Storage do bucket/caminho reservados; mutações de negócio continuam com JWT do usuário. Não há chave no navegador, nova capacidade/concessão na Central ou promoção global.
+
+Banco e Storage não formam uma transação única. Se a conexão ou o contexto mudar após o upload, a reserva e o objeto incompletos permanecem privados, fora de `rm_docs`; repetir exige a intenção e o arquivo originais. Não há sobrescrita, descarte ou limpeza automática: situações pendentes exigem reconciliação explícita. Arquivos e URLs antigos, inclusive CDN Bubble, continuam como estavam; não foram copiados, re-hospedados ou apagados.
+
+**310 testes desktop, 87 testes mobile no CI, 18 suítes PostgreSQL e 9 disputas reais novas aprovados**, além de tipos, build e dois smokes. Os **20 cenários de navegador** usaram build `kJYesPUzmlDFI56ByvnDz`, DOM real e HTTP/autenticação simulados, com capturas desktop/390 px inspecionadas e zero erros de página/origens externas. Auditoria de **72 JavaScripts** sem os dez segredos locais conhecidos. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41097259016).
+
+Ensaio com rollback e aplicação preservaram **70 tabelas RM públicas/privadas e dois snapshots integrais de Storage**, incluindo configurações de buckets, objetos, comentários, anexos, journals e recibos anteriores; reservas novas vazias na instalação e namespace previamente livre. Pós-aplicação: **71 tabelas RM/privadas, 57 públicas com RLS**, 102 usuários, 778 registros de formulário, 14.595 fotos, 945 etapas, 94 comentários, 15 anexos, 14 documentos, outbox 4 e 4 recibos web. Na conferência havia 0 reservas/0 conclusões, 3 buckets/13 objetos; SSO, os dois administradores EM, guards 028 e envelope mobile preservados. Os journals antigos foram comparados sem presumir que estavam vazios.
+
+Fonte SQL, índice e commit conferidos com SHA256 `e3487be74dd56830d4f57d7d6bf29ee5f64022eac15d78fcb02d76cd582903cb`; a fonte aplicada tem o mesmo hash. Migrações **001–029 aplicadas e imutáveis**.
+
+Consumidor **`fb439d8bf210a619117fa9d3a3e7f99ad3edfb61`**, Railway **`5a9a036f-888f-4585-908b-3b0c6749d69f`** com `SUCCESS`; health 200, **44 negações em 22 URLs e seis verificações de API, total de 50 bloqueios** para anônimo/cookie forjado e POST sem origem autorizada. Login Microsoft-only, CSRF, callback estrito, cookie opaco HttpOnly/Secure e início PKCE real até Microsoft aprovados, cancelando somente o fluxo próprio de QA.
+
+Não houve CRUD positivo/artificial em produção, login Microsoft humano automatizado ou homologação em aparelho real. **APK 1.2.3 / versionCode 6 permanece inalterado e compatível**; pull/RLS, respostas, rascunhos, arquivos, fila e recibos offline existentes foram preservados. Nenhuma escrita no Bubble, ativação da ponte, reconfiguração de bucket ou execução de Word/Report Building; `SYNC_OUTBOX_ENABLED=false` permanece. Edição/exclusão de comentários, substituição/exclusão/versionamento de anexos, compartilhamento com cliente, edição técnica, QR e geração/compilação continuam pendentes.
+
+**Próxima prioridade:** consulta do dossiê com busca, filtros por autor/célula/período nos comentários e por metadados nos documentos, com paginação e escopo aplicados no backend. Edição técnica, Word/relatórios, QR, cadastros complementares, capacidade/calendários/lotes, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
+
+[Contrato completo](../rm-mobile-supabase/WEB_PROJECT_DOSSIER.md) e [discovery somente leitura](discovery_rmmi_dossie_operacional.md).
+
+Provas locais ignoradas: `dossier-029-{rehearse,apply}-proof.json`, `dossier-postflight.json`, `dossier-ci-proof.json`, `dossier-deployment.json`, `dossier-public-qa.json`, `public-sso-qa.json`, `dossier-qa-summary.json`, `dossier-browser-secret-audit.json` e logs `dossier-{desktop-tests,build,full}.log`.
