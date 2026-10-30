@@ -66,10 +66,18 @@ Consumidor **`801bb589d083cd270e45e3318dfad9912b44bf96`**, Railway **`8debd02e-4
 
 Próxima prioridade objetiva: atribuição de avaliador antes do primeiro registro de formulário; depois, editor das regras operacionais de etapas. Continuam pendentes exclusão protegida de alocação, visibilidade com manutenção de fila, cadastros complementares, Word/relatórios, autorização por elementos e comercial, conforme dependências da matriz.
 
-## Incremento 026 em desenvolvimento: avaliadores antes do registro
+## Incremento 026 publicado: avaliadores antes do registro
 
 Em 30/10/2026, a próxima prioridade autorizada é atribuir/trocar o avaliador por projeto, célula e formulário antes do primeiro preenchimento, no Cronograma. O [contrato](../rm-mobile-supabase/WEB_FORM_REVIEWER_ASSIGNMENTS.md) foi definido antes da migração: entidade contextual independente, elegibilidade pela identidade operacional ativa vinculada à célula, confirmação de troca/reaplicação, versões/hash e recibos SSO. Qualquer registro aprovado ou contexto encerrado bloqueia a atribuição. A decisão de revisão permanece no fluxo existente.
 
 A nova atribuição aplica-se explicitamente aos registros não aprovados do contexto e às criações futuras; o servidor deixa de herdar um alvo revogado sem bloquear os envios offline. Não fabricar registros para guardar a configuração nem inferir atribuição a partir do autor ou do histórico de decisão. Integração exige serializar atribuição, criação, correção mobile e decisão web pelo projeto, conservando os recibos já concluídos.
 
 A leitura Live identificou AprovacaoForm fora do ETL atual. Carga separada deve consolidar somente referências reais do escopo já importado, preservar todos os IDs de origem e manter referências incompletas/conflitantes em relatório de reconciliação. A importação é somente de entrada, insert-only, não reescreve registros/respostas/identidades e não ativa a ponte de saída. A migração026 cria o destino vazio; ensaio com rollback e aplicação definitiva serão feitos somente após validações e conferência do alvo EM.
+
+## Resultado do incremento 026
+
+Consumidor **`458aa69c70b62b395851beeb36046c352614ab13`**, Railway **`f8b8b7d1-7a5c-47e0-adfe-25c197ecbbd8`** com `SUCCESS`; migração **026 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41052670993). **248 testes desktop, 15 suítes PostgreSQL, 18 cenários de navegador, tipos, build e dois smokes aprovados**. Os cenários usaram o build local `s7ZvqnDxEDg5_RfuOclMl`, HTTP/autenticação simulados e DOM real, com zero erros de página ou origens externas; capturas desktop/390 px inspecionadas. PostgreSQL incluiu 20 disputas reais novas, callers aquecidos e replay de recibos anteriores. Não foi automatizado login Microsoft humano nem CRUD artificial em produção.
+
+Recuperadas **101 atribuições reais de 103 IDs Bubble**, sem alterar os 778 registros de formulário existentes: 100 contextos vinculados e um histórico fora do vínculo atual, somente consulta. Doze contextos com registro aprovado permanecem bloqueados. As 442 fontes sem contexto/aprovador ou fora dos projetos importados ficaram em relatório de reconciliação; nenhum vínculo ou identidade foi inventado. A carga passou ensaio, aplicação e repetição idêntica: 67 tabelas anteriores preservadas na inserção e 68 snapshots integrais no replay, com zero novas inserções. A migração e a carga foram ensaiadas com rollback antes da aplicação. Dados anteriores, identidades e filas preservados; worker desativado. Health 200, 24 negações e PKCE até Microsoft conferidos. Migrações 001–026 agora são aplicadas e imutáveis. [Relatório atualizado](relatorio_entrega_paridade_rmmi.md).
+
+**Próxima prioridade objetiva:** editor das regras de etapas operacionais no contexto do projeto/célula, reaproveitando o consumidor de decisões existente, sem alterar histórico ou copiar exclusões inseguras do legado.

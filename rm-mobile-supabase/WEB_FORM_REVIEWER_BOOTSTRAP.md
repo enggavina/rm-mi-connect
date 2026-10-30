@@ -65,3 +65,9 @@ Em PostgreSQL isolado com as migrações 001–026, o SQL produzido pelo mesmo c
 ## Limites
 
 Histórico Status/Historico_status/Parecer do Bubble não é transformado em decisões novas nesta carga. Nenhum registro de formulário, resposta, recibo, identidade, ACL ou modelo é criado/alterado por ela. Contexto histórico unlinked/inativo/encerrado continua somente para consulta nas operações normais; importação não é permissão para decidir ou atribuir novamente. Reimportações futuras exigem reconciliação da autoridade dos campos, não atualização automática pela ponte desativada.
+
+## Aplicação confirmada em 30/10/2026
+
+Após CI e ensaio026, a carga passou ROLLBACK, COMMIT e repetição idêntica no Supabase EM. Resultado real: 101 atribuições, 103 IDs de origem, 67 snapshots anteriores iguais na inserção; replay com zero inserções e 68 snapshots preservados. Os 778 registros existentes continuaram sem avaliador retroativo, incluindo os contextos aprovados. Nenhum dado fora do plano foi criado.
+
+Cutoff `2026-10-30T11:39:10.178Z`; hash lógico da origem `25ac7a4ef4096b8464e4b9da9ea8c82050cd3f31f302c603cdeb88bcd884d606`. SQL de aplicação revisado SHA256 `2055a3020bd9f4d316955558a0228dbfb0264bd1f3566b6350efa4a052424a82`. O relatório de reconciliação conserva 442 fontes excluídas, sem apagar a origem nem extrapolar os projetos importados. [Entrega e validação](../docs/relatorio_entrega_paridade_rmmi.md).

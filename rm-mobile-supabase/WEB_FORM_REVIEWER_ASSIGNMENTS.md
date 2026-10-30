@@ -1,6 +1,6 @@
 # Atribuição de avaliador antes do registro
 
-Contrato acordado em 30/10/2026, antes da implementação da026. Referência: [PL019 no discovery](../docs/discovery_rmmi_planejamento.md). Atribuição contextual não é decisão/histórico e não fabrica preenchimentos.
+Contrato acordado em 30/10/2026, antes da implementação da 026. Referência: [PL019 no discovery](../docs/discovery_rmmi_planejamento.md). Atribuição contextual não é decisão/histórico e não fabrica preenchimentos.
 
 ## Entidade e importação
 
@@ -22,7 +22,7 @@ Primitiva específica `rm_bootstrap_form_reviewer_assignment_v1(p_payload jsonb)
 - `eligible_users`: id, nome, matricula (nullable), deduplicados e ordenados.
 - `total`, `complete`, `records_total`, `records_complete`, `eligible_total`, `eligible_complete`.
 
-Forms é a união dos formulários ligados, atribuições existentes e registros legados do projeto/célula. Formulário não ligado é consulta. Limites completos:1.000forms,2.000registros totais e1.000elegíveis. Incompletude de forms/registros devolve forms[]; elegíveis incompletos devolvem choices[]. Qualquer incompletude bloqueia o comando. Leitor sem gestão não recebe choices. Auditor não recebe choices mesmo pedindo diretamente.
+Forms é a união dos formulários ligados, atribuições existentes e registros legados do projeto/célula. Formulário não ligado é consulta. Limites completos: 1.000 formulários, 2.000 registros totais e 1.000 elegíveis. Incompletude de forms/registros devolve forms[]; elegíveis incompletos devolvem choices[]. Qualquer incompletude bloqueia o comando. Leitor sem gestão não recebe choices. Auditor não recebe choices mesmo pedindo diretamente.
 
 Elegibilidade exige rm_user ativo com `rm_tablet_celula_users.identidade_id` na célula exata. `usuario_id` do tablet e bypass por administrador não tornam alguém candidato. A designação não concede login, capacidade, aprovação ou acesso na Central. Um designado legado inativo/desvinculado continua visível, com eligible=false.
 
@@ -64,6 +64,12 @@ Ordem comum: autorização/recibo14(web) ou0(mobile) → projeto11 → projeto/a
 
 ## Reversão e validação
 
-Reverter consumidor web sem excluir tabela/dados/recibos é seguro. Não voltar a primitiva antiga de criação enquanto houver designações usadas, nem apagar histórico para recriar atribuições. Evoluções exigem migração posterior; não editar001–025. Testes isolados devem comprovar preservação integral das67tabelas antigas no upgrade, novo destino vazio, callers aquecidos, receipts antigos, múltiplos registros, herança/revogação offline e disputas reais de atribuição/review/criação/correção.
+Reverter consumidor web sem excluir tabela/dados/recibos é seguro. Não voltar a primitiva antiga de criação enquanto houver designações usadas, nem apagar histórico para recriar atribuições. Evoluções exigem migração posterior; não editar 001–026. Testes isolados devem comprovar preservação integral das 67 tabelas antigas no upgrade, novo destino vazio, callers aquecidos, receipts antigos, múltiplos registros, herança/revogação offline e disputas reais de atribuição/review/criação/correção.
 
 `tests/web_form_reviewer_assignments.sql` exercita o DTO contextual, isolamento por projeto/célula/form, perfis/SSO/MFA, payload fechado e confirmação, múltiplos registros, reaplicação sem alterar respostas/status, no-op, bloqueio após aprovado, herança/revogação/UUID offline e limites completos1.000/2.000/1.000. Bootstrap tem provas de insert-only/proveniência, FK RESTRICT, preservação de aprovados e metadados closed/unlinked/inativos sem concessões.20disputas reais por dblink cobrem atribuição versus decisão/criação/correção, mesmo UUID, revogação de usuário/vínculo, bootstrap concorrente, escritor técnico de aprovação/novo registro e nome de célula nos dois sentidos. `tests/web_form_reviewer_assignments_upgrade.sql` aquece os dispatchers e primitivas antes da026, compara integralmente as67tabelas anteriores e comprova que o destino novo nasce vazio e que os receipts antigos continuam exatos. O runner isolado inclui esse upgrade e a suite junto das regressões históricas.
+
+## Publicação em 30/10/2026
+
+Consumidor **`458aa69c70b62b395851beeb36046c352614ab13`**, Railway **`f8b8b7d1-7a5c-47e0-adfe-25c197ecbbd8`** com `SUCCESS`; migração **026 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41052670993). **248 testes desktop, 15 suítes PostgreSQL, 18 cenários de navegador, tipos, build e dois smokes aprovados**. Os cenários usaram o build local `s7ZvqnDxEDg5_RfuOclMl`, HTTP/autenticação simulados e DOM real, com zero erros de página ou origens externas; capturas desktop/390 px inspecionadas. PostgreSQL incluiu 20 disputas reais novas, callers aquecidos e replay de recibos anteriores. Não foi automatizado login Microsoft humano nem CRUD artificial em produção.
+
+Migração preservou 67 tabelas anteriores e criou o destino vazio; carga separada recuperou 101 atribuições reais / 103 IDs sem alterar registros. Replay remoto preservou 68 snapshots com zero inserções. SHA256 026 aplicado: `a3758ce8311785df8685723109d207d8730a68593ab03d897f94d74022378eaa`. Próximas evoluções exigem migração posterior.

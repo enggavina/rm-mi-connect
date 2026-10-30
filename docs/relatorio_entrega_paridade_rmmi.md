@@ -1,12 +1,26 @@
 # Relatório de execução — revisão de paridade RMMI
 
-Data: 29/10/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
+Revisão iniciada em 29/10/2026; atualização de entrega em 30/10/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
 
 ## Situação
 
-**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): ajustes e fotos operacionais.** Consumidor **`801bb589d083cd270e45e3318dfad9912b44bf96`**, Railway **`8debd02e-4f6e-44e9-8e6a-22fc43a44216`** com `SUCCESS`, migração **025 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/40946936615). A paridade global solicitada não está concluída. O incremento anterior 022–024 permanece registrado nas seções históricas abaixo.
+**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): avaliadores antes do registro, em 30/10/2026.** Consumidor **`458aa69c70b62b395851beeb36046c352614ab13`**, Railway **`f8b8b7d1-7a5c-47e0-adfe-25c197ecbbd8`** com `SUCCESS`; migração **026 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41052670993). A paridade global não está concluída; as entregas anteriores permanecem nas seções históricas.
 
-## Incremento 025: ajustes e próxima prioridade entregue
+## Incremento 026: avaliadores e recuperação histórica
+
+- No Cronograma por projeto/célula, atribuição por formulário antes do primeiro registro; troca e reaplicação com confirmação. Escolhas por identidade ativa vinculada à célula, com homônimos diferenciados pela matrícula. Contextos aprovados/encerrados ou formulários fora do vínculo atual ficam somente leitura.
+- Atribuição contextual, avaliador do registro e ator da decisão permanecem distintos. O gestor aplica explicitamente aos não aprovados; novos envios herdam no servidor somente um alvo ainda elegível. Não fabricar formulário/decisão, não alterar respostas, status, lista de aprovadores ou histórico. Mesmo UUID preserva a tentativa e recibos antigos continuam válidos.
+- Leitor/ações/controle de envio usam SSO/MFA, capacidades existentes, hash e versões exatas. Todos os controles ficam bloqueados em conflito, tentativa incerta ou divergência entre SSR e snapshot, até confirmação/recarga. Nenhuma concessão na Central e nenhum novo APK. [Contrato](../rm-mobile-supabase/WEB_FORM_REVIEWER_ASSIGNMENTS.md).
+- **248 testes desktop, 15 suítes PostgreSQL, 18 cenários de navegador, tipos, build e dois smokes aprovados**. Os cenários usaram o build local `s7ZvqnDxEDg5_RfuOclMl`, HTTP/autenticação simulados e DOM real, com zero erros de página ou origens externas; capturas desktop/390 px inspecionadas. PostgreSQL incluiu 20 disputas reais novas, callers aquecidos e replay de recibos anteriores. Não foi automatizado login Microsoft humano nem CRUD artificial em produção. Os dois smokes e o CI são do mesmo consumidor; não existe lint próprio configurado. Auditoria de 424 fontes e 70 JavaScripts sem os dez segredos locais conhecidos.
+- Recuperadas **101 atribuições reais de 103 IDs Bubble**, sem alterar os 778 registros de formulário existentes: 100 contextos vinculados e um histórico fora do vínculo atual, somente consulta. Doze contextos com registro aprovado permanecem bloqueados. As 442 fontes sem contexto/aprovador ou fora dos projetos importados ficaram em relatório de reconciliação; nenhum vínculo ou identidade foi inventado. A carga passou ensaio, aplicação e repetição idêntica: 67 tabelas anteriores preservadas na inserção e 68 snapshots integrais no replay, com zero novas inserções. [Discovery e ferramenta](../rm-mobile-supabase/WEB_FORM_REVIEWER_BOOTSTRAP.md). A origem permaneceu somente leitura, sem emails ou chamadas ao worker.
+- Aplicação 026 comparou 67 tabelas anteriores integralmente e deixou a nova vazia; a carga contextual foi uma operação separada. Pós-aplicação confirmou 57 tabelas RM com RLS e fonte SHA256 `a3758ce8311785df8685723109d207d8730a68593ab03d897f94d74022378eaa`. Preservados 102 usuários, 778 registros (sem preenchimento retroativo de avaliador), 14.595 fotos, 945 etapas,outbox 4 e quatro recibos.
+- Railway `SUCCESS`, health 200, 24 negações em 12 URLs, Microsoft-only/CSRF/cookie seguro/PKCE até Microsoft verificados; só o fluxo próprio de QA foi cancelado. Nenhum CRUD artificial ou login humano automatizado em produção.
+
+Próxima prioridade: editor das regras de etapas operacionais por projeto/célula. Continuam pendentes exclusão protegida de alocação, visibilidade com manutenção de fila, cadastros complementares e os demais módulos do plano.
+
+Provas locais ignoradas: `evaluator-026-{rehearse,apply}-proof.json`, `evaluator-bootstrap-{rehearse,apply,replay}-proof.json`, `evaluator-postflight.json`, `evaluator-ci-proof.json`, `evaluator-deployment.json`, `evaluator-public-qa.json`, `form-reviewer-qa-summary.json`, `evaluator-browser-secret-audit.json`, `reviewer-final.log` e `form-reviewer-bootstrap/2026-10-30-initial/`.
+
+## Histórico do incremento 025: ajustes e fotos operacionais
 
 - Retirada da funcionalidade “Quantidade prevista de fotos” da interface, DTO e novas escritas. Coluna/116 valores históricos e replay de recibos anteriores preservados.
 - Retirada da aba “Aprovações de etapas” no detalhe do projeto; módulo próprio e aba da célula no Cronograma preservados. Nova alocação utiliza formulários dos modelos sem checkbox/payload manual; edição das alocações existentes conserva vínculos/proteções.
@@ -52,8 +66,8 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 
 | Área | Lacuna real / dependência |
 | --- | --- |
-| Group comJg completo | Atribuição de avaliador antes do primeiro registro; editor das regras operacionais de etapas; exclusão protegida de alocação; reconciliação da visibilidade com a fila. A nova composição não torna esses comandos existentes por si só. |
-| Formulários e aprovações | Consulta/revisão/decisão existentes foram reutilizadas. Atribuição prévia Bubble `AprovacaoForm` não equivale a `rm_aprovacoes_registro`, que é histórico e exige um registro. Não criar preenchimento fictício para suprir essa diferença. |
+| Group comJg completo | Editor das regras operacionais de etapas; exclusão protegida de alocação; reconciliação da visibilidade com a fila. A nova composição não torna esses comandos existentes por si só. |
+| Formulários e aprovações | Atribuição prévia e recuperação contextual publicadas com 026; homologação operacional e integração com relatórios continuam no plano. `rm_aprovacoes_registro` permanece histórico de decisões, sem preenchimentos fictícios. |
 | Títulos/tipos/células | Escopo do título continua imutável no editor, ao contrário do legado; transferência precisa reconciliar vínculos textuais/IDs. Complementos de imagens/contatos/equipes e gestão operacional de usuários ainda incompletos. |
 | Templates Word | Contrato distinto de Form, com criação/exclusão externa e Google ID. `rm_templates_word` existe, mas faltam reconciliação/importação, armazenamento, jobs e fluxo completo de falha/retentativa. |
 | Autorizações | Gestão de elementos e gestão individual ainda exigem contrato/carga de Elemento, identidade exata e integração com a autoridade Central; o helper005 não representa equivalência funcional. |
