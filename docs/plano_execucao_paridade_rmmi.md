@@ -1,5 +1,13 @@
 # Execução da revisão de paridade RMMI
 
+## Contrato do incremento 030 em desenvolvimento
+
+O pedido de 30/10/2026 acrescenta uma página inicial com cards de funcionalidades e uma lateral reduzida a atalhos. Usar um catálogo único por capacidade: cards em Operação, Planejamento e Cadastros; no máximo cinco atalhos na lateral. Conservar os indicadores e pendências abaixo dos acessos, os endereços existentes, a identidade EM e o limite servidor/Suspense do portal. Cada rota mantém sua autorização; ocultar um atalho não remove um módulo. Validar também navegação, menu por teclado e 390 px.
+
+Continuar a prioridade do dossiê com dois leitores paginados no banco: comentários por texto literal, autor, célula e período de criação; documentos/anexos numa única lista por busca, origem, situação, autor e período. Usar 25 itens por página, total filtrado e total do projeto, ordem estável, datas inclusivas de São Paulo e metadados de filtro restritos ao próprio projeto. Preservar células históricas, autores não identificados e IDs iguais em tabelas diferentes. Não incluir URLs ou chaves de Storage no DTO da lista.
+
+As consultas da aba ativa substituem as cargas integrais anteriores; entradas inválidas e falhas de consulta não viram listas vazias. Criação de comentário e upload privado continuam fora dos resultados filtrados, com os protocolos e proteções da 029. A 030 é somente leitura, funções e índices: sem novos registros de negócio, capacidades ou concessões; 001–029, as 71 tabelas anteriores, Storage, políticas, recibos e dados offline permanecem preservados. Validar filtros, paginação, escopo, upgrade e navegação real antes de publicar no Railway EM.
+
 ## Contrato do incremento 029 definido antes da implementação
 
 Planejamento registrado após a 028, concluído no incremento 029: criar comentários e anexos privados nas abas Histórico e Documentos do projeto, reutilizando `rm_comentarios`, `rm_docs`, o bucket privado `rm-documentos` e as permissões existentes. [Discovery somente leitura](discovery_rmmi_dossie_operacional.md). Comentário exige célula destinatária ativa do próprio projeto, versões exatas, autoria no servidor e preservação das células ocultas. Não oferecer edição ou exclusão nesta criação inicial.

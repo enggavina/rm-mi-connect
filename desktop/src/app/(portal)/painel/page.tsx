@@ -2,18 +2,25 @@ import Link from 'next/link';
 import { getOverview } from '@/server/web/data';
 import { PageHeading, Stat, Status, Empty, date } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
+import { requireWebUser } from '@/server/web/auth';
+import { HomeModules } from '@/components/web/home-modules';
+import { portalHomeModules } from '@/components/web/navigation';
+import s from '@/components/web/home-modules.module.css';
 
 export default async function Painel() {
-  const { access, counts, recentProjects, tasks } = await getOverview();
+  const [{ access, counts, recentProjects, tasks }, session] = await Promise.all([getOverview(), requireWebUser('em.portal.read')]);
+  const hasModules = portalHomeModules(session.sso?.capabilities).length > 0;
   return <>
-    <PageHeading eyebrow="O DIA A DIA DA OPERAÇÃO" title="Visão geral" description="Acompanhe os projetos, os prazos e os registros que precisam da sua atenção." actions={access.projects && <Link className="button secondary" href="/projetos">Ver projetos<Icon name="arrow" size={16} /></Link>} />
-    <div className="stats-grid">
+    <PageHeading eyebrow="EM · MI ELECTRIC BRASIL" title="O que você precisa fazer?" description="Escolha uma funcionalidade para começar. Os atalhos do menu lateral levam às áreas mais usadas." />
+    <HomeModules capabilities={session.sso?.capabilities} />
+    {Object.values(access).some(Boolean) && <div className={s.summaryHeading}><h2>Acompanhamento da operação</h2><p>Projetos, prazos e registros que precisam da sua atenção.</p></div>}
+    {Object.values(access).some(Boolean) && <div className="stats-grid">
       {access.projects && <Stat label="Projetos em operação" value={counts.activeProjects ?? 0} detail={`${counts.projects} projetos na base`} icon="folder" />}
       {access.forms && <Stat label="Formulários em análise" value={counts.awaitingReview ?? 0} detail="Registros aguardando avaliação" icon="clipboard" accent />}
       {access.planning && <Stat label="Células com prazo vencido" value={counts.overdueCells ?? 0} detail="Etapas visíveis ainda não finalizadas" icon="clock" />}
       {access.documents && <Stat label="Documentos e anexos" value={counts.documents ?? 0} detail="Arquivos vinculados aos projetos" icon="file" />}
-    </div>
-    {!Object.values(access).some(Boolean) && <section className="panel"><Empty title="Seu acesso ao portal está confirmado" detail="As áreas disponíveis dependem das funcionalidades autorizadas para sua conta na Central de Acessos." icon="settings" /></section>}
+    </div>}
+    {!hasModules && <section className="panel"><Empty title="Seu acesso ao portal está confirmado" detail="As áreas disponíveis dependem das funcionalidades autorizadas para sua conta na Central de Acessos." icon="settings" /></section>}
     <div className="two-columns">
       {access.projects && <section className="panel"><div className="panel-header"><div><h2>Projetos atualizados recentemente</h2><p>Acesso direto ao equipamento e ao histórico da operação.</p></div><Link className="text-link" href="/projetos">Ver todos<Icon name="chevron" size={13} /></Link></div>
         {recentProjects.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Projeto / equipamento</th><th>Cliente</th><th>Status PCP</th><th className="table-action">Abrir</th></tr></thead><tbody>{recentProjects.map(project => <tr key={project.id}>
@@ -26,6 +33,5 @@ export default async function Painel() {
           : <Empty title="Nenhuma pendência encontrada" detail="Não há registros ou células com prazo vencido nas áreas disponíveis para sua conta." icon="check" />}
       </section>}
     </div>
-    <section className="panel"><div className="panel-header"><div><h2>Da oficina ao acompanhamento</h2><p>As atividades enviadas pelos operadores ficam disponíveis nesta plataforma após a sincronização.</p></div>{access.planning && <Link className="button small secondary" href="/planejamento">Acompanhar células<Icon name="arrow" size={14} /></Link>}</div></section>
   </>;
 }

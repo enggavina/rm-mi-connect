@@ -29,6 +29,7 @@ const PHOTO = 'id,projeto_id,celula_id,celula_projeto_id,categoria_foto,tipo_rec
 const DOCUMENT = 'id,projeto_id,registro_formulario_id,nome,tipo_documento,arquivo_url,ordem_compilacao,incluir_no_compilado,created_at,updated_at';
 const ATTACHMENT = 'id,projeto_id,nome,descricao,arquivo_url,tipo_arquivo,status,data_vencimento,created_by,visivel_cliente,created_at,updated_at';
 const ACTIVE = 'status_pcp.not.in.(cancelado,finalizando_para_faturar),status_pcp.is.null';
+export type ProjectReadFilters = ProjectPhotoFilters & { includeDossier?: boolean };
 const catalogs = {
   users: { table: 'rm_users', columns: USER, order: 'nome', search: 'nome,matricula' },
   cells: { table: 'rm_celulas', columns: CELL + ',updated_at', order: 'nome', search: 'nome,codigo' },
@@ -135,7 +136,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     result.rows = result.rows.map(row => ({ ...row, cliente_nome: names.get(row.cliente_id) || row.cliente_nome_exportacao || null }));
     return { ...result, clients, cells, statuses };
   }
-  async function getProject(id: string, filters: ProjectPhotoFilters = {}) {
+  async function getProject(id: string, filters: ProjectReadFilters = {}) {
     requireCapability('em.projects.read');
     const project = await one('rm_projetos', projectColumns, id);
     if (!project) return null;
@@ -153,9 +154,9 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
       allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.history.read') ? all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)) : [],
-      allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
+      filters.includeDossier !== false && allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.photos.read') ? projectPictures() : { rows: [], total: 0, page: 1, pageSize: 24 },
-      allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
+      filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
     ]);
     const [forms, users] = await Promise.all([
       allowed('em.forms.read') ? byIds('rm_forms', FORM, [...allocations.flatMap(row => row.forms_ids || []), ...records.map(row => row.form_id)]) : [],
@@ -240,7 +241,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
 async function data(capability: CorporateCapability) { const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability); return createWebData(session.client, session.sso?.capabilities); }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
 export async function listProjects(filters: ProjectFilters = {}) { return (await data('em.projects.read')).listProjects(filters); }
-export async function getProject(id: string, filters: ProjectPhotoFilters = {}) { return (await data('em.projects.read')).getProject(id, filters); }
+export async function getProject(id: string, filters: ProjectReadFilters = {}) { return (await data('em.projects.read')).getProject(id, filters); }
 export async function getRecord(id: string) { return (await data('em.forms.read')).getRecord(id); }
 export async function listPlanning(filters: PlanningFilters = {}) { return (await data('em.planning.read')).listPlanning(filters); }
 export async function listForms(filters: FormFilters = {}) { return (await data('em.forms.read')).listForms(filters); }

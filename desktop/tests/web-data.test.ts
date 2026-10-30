@@ -40,6 +40,17 @@ class Query {
 }
 function setup(capabilities?: readonly CorporateCapability[]) { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient, capabilities) }; }
 
+test('paged dossier mode never loads the legacy unbounded tables or their author identities', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.history.read', 'em.documents.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);
+  db.tables.set('rm_comentarios', [{ id: id(2), projeto_id: id(1), cadastrado_por_id: id(3) }]);
+  db.tables.set('rm_docs', [{ id: id(4), projeto_id: id(1), created_by: id(3) }]);
+  db.tables.set('rm_documentos', [{ id: id(5), projeto_id: id(1), created_by: id(3) }]);
+  const result = await data.getProject(id(1), { includeDossier: false });
+  assert.deepEqual(result?.comments, []); assert.deepEqual(result?.documents, []); assert.deepEqual(result?.attachments, []);
+  assert.ok(!db.calls.some(call => ['rm_comentarios', 'rm_documentos', 'rm_docs', 'rm_users'].includes(call.table)));
+});
+
 test('project attachments expose existing status/expiry and safe author labels only under document scope', async () => {
   const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.documents.read']);
   db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);

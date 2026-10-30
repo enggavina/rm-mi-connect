@@ -14,15 +14,29 @@ import { scheduleId } from '@/server/web/project-schedule-policy';
 import { availabilityMatchesContext } from '@/components/web/cell-availability-model';
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
 import { ProjectDocumentsPanel, ProjectHistoryPanel } from '@/components/web/project-dossier-panels';
+import { readDossierSearchQuery } from '@/components/web/project-dossier-search-model';
+import { getProjectComments, getProjectDocuments } from '@/server/web/project-dossier-search-data';
+import type { ProjectCommentPage, ProjectDocumentPage } from '@/server/web/project-dossier-search-policy';
 
 const allTabs: { id: string; label: string; capability: CorporateCapability }[] = [{ id: 'informacoes', label: 'Informações', capability: 'em.projects.read' }, { id: 'planejamento', label: 'Células e planejamento', capability: 'em.planning.read' }, { id: 'formularios', label: 'Formulários', capability: 'em.forms.read' }, { id: 'fotos', label: 'Galeria de fotos', capability: 'em.photos.read' }, { id: 'documentos', label: 'Documentos', capability: 'em.documents.read' }, { id: 'historico', label: 'Histórico', capability: 'em.history.read' }];
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { id } = await params; const query = await searchParams;
+  const { id: rawId } = await params; const id = rawId.toLowerCase(); const query = await searchParams;
   const selection = query.selection === 'selected' ? 'selected' : 'all';
   const photoOrder = query.photo_order === 'selected' ? 'selected' : 'sequence';
-  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined, selection, photoOrder }), requireWebUser('em.projects.read')]); if (!data) notFound();
+  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined, selection, photoOrder, includeDossier: false }), requireWebUser('em.projects.read')]); if (!data) notFound();
   const tabs = allTabs.filter(item => hasWebCapability(session, item.capability));
   const tab = tabs.some(item => item.id === query.tab) ? String(query.tab) : 'informacoes';
+  const commentQuery = readDossierSearchQuery('comments', query), documentQuery = readDossierSearchQuery('documents', query);
+  let commentPage: ProjectCommentPage | null = null, documentPage: ProjectDocumentPage | null = null;
+  let commentError = commentQuery.errors.join(' '), documentError = documentQuery.errors.join(' ');
+  if (tab === 'historico' && !commentError) {
+    try { commentPage = await getProjectComments(id, commentQuery.filters); }
+    catch { commentError = 'Não foi possível consultar os comentários agora. Confira os filtros ou recarregue a página.'; }
+  }
+  if (tab === 'documentos' && !documentError) {
+    try { documentPage = await getProjectDocuments(id, documentQuery.filters); }
+    catch { documentError = 'Não foi possível consultar os documentos agora. Confira os filtros ou recarregue a página.'; }
+  }
   const project = data.project; const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome])); const userNames = new Map(data.users.map(user => [user.id, user.nome])); const formNames = new Map(data.forms.map(form => [form.id, form.titulo]));
   const manager = ['administrador', 'padr_o'].includes(session.profile.perfil);
   const canPlan = manager && hasWebCapability(session, 'em.planning.manage');
@@ -91,7 +105,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
         : <section className="panel"><Empty title={selection === 'selected' ? 'Nenhuma foto selecionada' : 'Nenhuma foto registrada'} detail={selection === 'selected' ? 'Exiba todas as fotos para selecionar as que devem compor o relatório.' : 'As fotos capturadas pela equipe aparecerão aqui após a sincronização.'} icon="image" /></section>}
       <Pagination page={data.photoPage} pageSize={data.photoPageSize} total={data.photoTotal} base={`/projetos/${id}`} filters={{ tab: 'fotos', selection, photo_order: photoOrder }} />
     </>}
-    {tab === 'documentos' && <ProjectDocumentsPanel projectId={id} projectVersion={project.updated_at} documents={data.documents} attachments={data.attachments} users={data.users} canAdd={canEdit} closed={closed} />}
-    {tab === 'historico' && <ProjectHistoryPanel projectId={id} projectVersion={project.updated_at} comments={data.comments} stages={data.stages} cells={data.cells} users={data.users} allocations={data.allocations} canAdd={canEdit && hasWebCapability(session, 'em.planning.read')} closed={closed} />}
+    {tab === 'documentos' && <ProjectDocumentsPanel projectId={id} projectVersion={project.updated_at} data={documentPage} filters={documentQuery.filters} error={documentError || undefined} canAdd={canEdit} closed={closed} />}
+    {tab === 'historico' && <ProjectHistoryPanel projectId={id} projectVersion={project.updated_at} data={commentPage} filters={commentQuery.filters} error={commentError || undefined} stages={data.stages} cells={data.cells} users={data.users} allocations={data.allocations} canAdd={canEdit && hasWebCapability(session, 'em.planning.read')} closed={closed} />}
   </>;
 }
