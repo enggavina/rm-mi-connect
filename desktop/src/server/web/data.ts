@@ -29,7 +29,7 @@ const PHOTO = 'id,projeto_id,celula_id,celula_projeto_id,categoria_foto,tipo_rec
 const DOCUMENT = 'id,projeto_id,registro_formulario_id,nome,tipo_documento,arquivo_url,ordem_compilacao,incluir_no_compilado,created_at,updated_at';
 const ATTACHMENT = 'id,projeto_id,nome,descricao,arquivo_url,tipo_arquivo,status,data_vencimento,created_by,visivel_cliente,created_at,updated_at';
 const ACTIVE = 'status_pcp.not.in.(cancelado,finalizando_para_faturar),status_pcp.is.null';
-export type ProjectReadFilters = ProjectPhotoFilters & { includeDossier?: boolean };
+export type ProjectReadFilters = ProjectPhotoFilters & { includeDossier?: boolean; includeEquipment?: boolean };
 const catalogs = {
   users: { table: 'rm_users', columns: USER, order: 'nome', search: 'nome,matricula' },
   cells: { table: 'rm_celulas', columns: CELL + ',updated_at', order: 'nome', search: 'nome,codigo' },
@@ -149,7 +149,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     };
     const [customers, equipmentRows, allocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
       byIds('rm_clientes', CLIENT, [project.cliente_id]),
-      all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)),
+      filters.includeEquipment !== false ? all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)) : [],
       allowed('em.planning.read') ? all('rm_celulas_projeto', ALLOCATION, q => q.eq('projeto_id', id), 'posicao') : [],
       allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
       allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
@@ -163,7 +163,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       byIds('rm_users', userColumns, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...attachments.map(row => row.created_by), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
     ]);
     const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
-    return { project, client: customers[0] || null, equipment: equipmentRows.find(row => row.id === project.equipamento_id) || equipmentRows[0] || null,
+    return { project, client: customers[0] || null, equipment: equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null,
       allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {

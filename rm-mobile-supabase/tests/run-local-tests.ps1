@@ -49,6 +49,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_cell_availability.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_dossier.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_dossier_search.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_equipment.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -88,10 +89,14 @@ try {
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '030_rm_web_project_dossier_search.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_project_dossier_search_upgrade.sql'
     }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '031_rm_web_project_equipment.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_equipment_upgrade.sql'
+    }
     $migration028Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\028_rm_web_cell_availability.sql'))
     $migration029Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\029_rm_web_project_dossier.sql'))
     $migration030Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\030_rm_web_project_dossier_search.sql'))
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -c 'SET client_min_messages=warning' -f $executionFile
+    $migration031Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\031_rm_web_project_equipment.sql'))
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit

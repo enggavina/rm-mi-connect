@@ -17,18 +17,26 @@ import { ProjectDocumentsPanel, ProjectHistoryPanel } from '@/components/web/pro
 import { readDossierSearchQuery } from '@/components/web/project-dossier-search-model';
 import { getProjectComments, getProjectDocuments } from '@/server/web/project-dossier-search-data';
 import type { ProjectCommentPage, ProjectDocumentPage } from '@/server/web/project-dossier-search-policy';
+import { getProjectEquipment } from '@/server/web/project-equipment-data';
+import type { ProjectEquipmentSnapshot } from '@/server/web/project-equipment-policy';
+import { ProjectEquipmentPanel } from '@/components/web/project-equipment-panel';
 
 const allTabs: { id: string; label: string; capability: CorporateCapability }[] = [{ id: 'informacoes', label: 'Informações', capability: 'em.projects.read' }, { id: 'planejamento', label: 'Células e planejamento', capability: 'em.planning.read' }, { id: 'formularios', label: 'Formulários', capability: 'em.forms.read' }, { id: 'fotos', label: 'Galeria de fotos', capability: 'em.photos.read' }, { id: 'documentos', label: 'Documentos', capability: 'em.documents.read' }, { id: 'historico', label: 'Histórico', capability: 'em.history.read' }];
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id: rawId } = await params; const id = rawId.toLowerCase(); const query = await searchParams;
   const selection = query.selection === 'selected' ? 'selected' : 'all';
   const photoOrder = query.photo_order === 'selected' ? 'selected' : 'sequence';
-  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined, selection, photoOrder, includeDossier: false }), requireWebUser('em.projects.read')]); if (!data) notFound();
+  const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined, selection, photoOrder, includeDossier: false, includeEquipment: false }), requireWebUser('em.projects.read')]); if (!data) notFound();
   const tabs = allTabs.filter(item => hasWebCapability(session, item.capability));
   const tab = tabs.some(item => item.id === query.tab) ? String(query.tab) : 'informacoes';
   const commentQuery = readDossierSearchQuery('comments', query), documentQuery = readDossierSearchQuery('documents', query);
   let commentPage: ProjectCommentPage | null = null, documentPage: ProjectDocumentPage | null = null;
   let commentError = commentQuery.errors.join(' '), documentError = documentQuery.errors.join(' ');
+  let equipmentSnapshot: ProjectEquipmentSnapshot | null = null;
+  if (tab === 'informacoes') {
+    try { equipmentSnapshot = await getProjectEquipment(id); }
+    catch { /* Keep the dossier readable without trusting an unchecked equipment binding. */ }
+  }
   if (tab === 'historico' && !commentError) {
     try { commentPage = await getProjectComments(id, commentQuery.filters); }
     catch { commentError = 'Não foi possível consultar os comentários agora. Confira os filtros ou recarregue a página.'; }
@@ -78,9 +86,8 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       <section className="panel"><div className="panel-header"><h2>Informações do projeto</h2></div><div className="panel-content"><Details values={[
         ['OS / número', project.numero], ['Nome', project.nome], ['Cliente', data.client?.nome || project.cliente_nome_exportacao], ['Descrição do equipamento', project.descricao_equipamento], ['Contato', project.contato], ['Proprietário', project.proprietario], ['Status PCP', display(project.status_pcp)], ['Etapa do projeto', display(project.status)], ['Nota fiscal', project.nota_fiscal], ['Chegada do equipamento', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Data renegociada', date(project.data_renegociada)], ['Entrega realizada', date(project.data_real_de_entrega)], ['Última atualização', date(project.updated_at, true)], ['Escopo', project.escopo_abreviado], ['Eventualidades', project.eventualidades], ['Motivo de replanejamento', project.replanejamento_motivo],
       ]} />{project.arquivo_nota_fiscal_url && <div style={{ marginTop: 25 }}><a className="button small secondary" href={`/api/web/documents/${id}?source=invoice`} target="_blank" rel="noopener noreferrer"><Icon name="download" size={14} />Abrir nota fiscal</a></div>}</div></section>
-      <section className="panel"><div className="panel-header"><h2>Dados do equipamento</h2></div>{data.equipment ? <div className="panel-content"><Details values={[
-        ['Fabricante', data.equipment.fabricante], ['Modelo', data.equipment.modelo], ['Número de série', data.equipment.numero_serie], ['Placa do motor', display(data.equipment.placa_motor)], ['Descrição', data.equipment.descricao], ['Potência', data.equipment.potencia], ['Rotação', data.equipment.rotacao], ['Tensão do estator', data.equipment.tensao_estator], ['Corrente do estator', data.equipment.corrente_estator], ['Frequência', data.equipment.frequencia], ['Classe de isolamento', data.equipment.classe_isolamento], ['Grau de proteção', data.equipment.grau_ip], ['Forma', data.equipment.forma], ['Regime', data.equipment.regime], ['Peso', data.equipment.peso], ['Ligação', data.equipment.ligacao], ['Norma', data.equipment.norma], ['Certificado', data.equipment.certificado],
-      ]} /></div> : <Empty title="Dados de equipamento ainda não informados" detail="As informações serão exibidas conforme o recebimento e os registros do projeto." icon="settings" />}</section>
+      <ProjectEquipmentPanel snapshot={equipmentSnapshot} project={{ id: project.id, updated_at: project.updated_at, equipamento_id: project.equipamento_id,
+        tipo_equipamento_id: project.tipo_equipamento_id, status_pcp: project.status_pcp, data_real_de_entrega: project.data_real_de_entrega }} canManage={canEdit} />
     </>}
     {tab === 'planejamento' && <>
       {closed && <div className="notice">Este projeto está encerrado. O planejamento permanece disponível para consulta.</div>}

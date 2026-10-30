@@ -40,6 +40,23 @@ class Query {
 }
 function setup(capabilities?: readonly CorporateCapability[]) { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient, capabilities) }; }
 
+test('equipment snapshot mode skips legacy equipment queries entirely', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), equipamento_id: id(2) }]);
+  db.tables.set('rm_equipamentos', [{ id: id(2), projeto_id: id(1), fabricante: 'Preservado' }]);
+  assert.equal((await data.getProject(id(1), { includeEquipment: false }))?.equipment, null);
+  assert.ok(!db.calls.some(call => call.table === 'rm_equipamentos'));
+});
+
+test('general project reader never substitutes the first equipment for a conflicting canonical link', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), equipamento_id: id(3) }]);
+  db.tables.set('rm_equipamentos', [{ id: id(2), projeto_id: id(1), fabricante: 'Outro' }]);
+  assert.equal((await data.getProject(id(1)))?.equipment, null);
+  db.tables.set('rm_projetos', [{ id: id(1), equipamento_id: id(2) }]);
+  assert.equal((await data.getProject(id(1)))?.equipment?.id, id(2));
+});
+
 test('paged dossier mode never loads the legacy unbounded tables or their author identities', async () => {
   const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.history.read', 'em.documents.read']);
   db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);

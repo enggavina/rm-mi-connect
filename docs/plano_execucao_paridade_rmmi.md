@@ -203,3 +203,12 @@ Não houve CRUD artificial em produção nem login Microsoft humano automatizado
 **Próxima prioridade:** edição técnica do equipamento, com contrato dos campos, autorização, histórico e proteção das respostas e trabalhos offline existentes. Edição/exclusão/versionamento do dossiê, Word/relatórios, QR, cadastros complementares, capacidade/calendários/lotes, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
 
 [Contrato completo](../rm-mobile-supabase/WEB_PROJECT_DOSSIER_SEARCH.md). Provas locais ignoradas: `dossier-search-030-{rehearse,apply}-proof.json`, `dossier-search-postflight.json`, `dossier-search-ci-proof.json`, `dossier-search-deployment.json`, `dossier-search-public-qa.json`, `public-sso-qa.json`, `home-qa-summary.json`, `dossier-search-qa-summary.json`, `dossier-search-browser-secret-audit.json`, `em-emulator-open-proof.json` e logs `dossier-search-{desktop-tests,build,full}.log`.
+
+## Incremento 031 — edição técnica em desenvolvimento
+
+1. Conferir o fluxo Live e o contrato dos campos. A ação ativa legada edita seis campos; o EM ampliará a edição aos 25 campos técnicos escalares já existentes, preservando textos, unidades e precisão decimal. Não criar equipamentos, reparar vínculos ou sincronizar classificações automaticamente.
+2. Acrescentar snapshot autorizado, alteração parcial versionada, confirmação, recibo idempotente e histórico privado de antes/depois. Projetos encerrados e vínculos inconsistentes permanecem em consulta.
+3. Proteger os campos corrigidos no portal contra sobrescrita por recebimentos offline antigos ou importações. Preservar o envio original, os arquivos, os protocolos e os recibos concluídos.
+4. Validar banco isolado, concorrência, BFF, interface responsiva, build, autenticação e preservação dos dados; ensaiar com rollback, aplicar somente a nova migração e publicar no Railway EM.
+
+[Revisão Live e limites](discovery_rmmi_equipamento_tecnico.md). Esta seção registra trabalho em andamento; a publicação e suas evidências serão registradas após a validação.
