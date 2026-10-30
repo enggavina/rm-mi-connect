@@ -56,6 +56,9 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
     revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga');
     revalidatePath('/recebimentos'); revalidatePath('/aprovacoes', 'layout');
   }
+  if (operation === 'add_project_comment' || operation === 'finalize_project_attachment') {
+    revalidatePath('/projetos', 'layout');
+  }
   return { ok: true, data: result };
 }
 

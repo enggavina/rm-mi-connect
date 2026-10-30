@@ -1,5 +1,13 @@
 # Execução da revisão de paridade RMMI
 
+## Contrato do incremento 029 em desenvolvimento
+
+Próxima prioridade após a 028: criar comentários e anexos privados nas abas Histórico e Documentos do projeto, reutilizando `rm_comentarios`, `rm_docs`, o bucket privado `rm-documentos` e as permissões existentes. [Discovery somente leitura](discovery_rmmi_dossie_operacional.md). Comentário exige célula destinatária ativa do próprio projeto, versões exatas, autoria no servidor e preservação das células ocultas. Não oferecer edição ou exclusão nesta criação inicial.
+
+Anexo exige título, situação documental explícita No prazo/Vencido, arquivo PDF/JPEG/PNG de até 20 MiB e permite observação/vencimento. Reservar a intenção num journal privado, enviar para nome imutável derivado do protocolo e somente então publicar `rm_docs`; não mostrar sucesso sem arquivo confirmado. Tentativas conservam arquivo, SHA256, UUID e conteúdo. Reservas incompletas ficam privadas, sem descarte automático ou substituição. A credencial privada EM será usada no servidor somente para gravar/verificar esse namespace; as mutações de negócio continuam com JWT do usuário, SSO/MFA, capacidade de gestão de projetos e leituras correspondentes.
+
+Projetos encerrados e leitores permanecem consultivos. Preservar documentos, comentários, objetos de Storage, filas, recibos e identidades existentes; não alterar 001–028 nem ativar a ponte. Validar upgrade com as 70 tabelas anteriores e Storage intactos, concorrência, autorização, envio/retentativa, assinatura/tamanho/tipo de arquivo e interface desktop/390 px antes da aplicação e publicação no Railway EM.
+
 Pedido de 29/10/2026. Complementa [o plano de paridade](../plano_paridade_rmmi_web.md), sem substituir o histórico das entregas. O sistema existente é a base; a implementação ocorre no EM e o Bubble permanece somente para leitura.
 
 Primeiro incremento desta revisão **publicado**: seleção de fotos (A), composição do Cronograma e ordem do roteiro (parte de B/C), exclusão protegida de títulos e organização de menus (D/E/F). Migrações 022–024, consumidor `675649e`, Railway `65221686-f149-4917-aa1e-f5e1c3b234f8` com `SUCCESS`. [Relatório com validações, diferenças e pendências](relatorio_entrega_paridade_rmmi.md). A tabela abaixo registra o baseline e a ordem definida **antes** das alterações; não declara todos os itens concluídos.

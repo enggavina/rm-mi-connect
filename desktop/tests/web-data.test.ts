@@ -40,6 +40,28 @@ class Query {
 }
 function setup(capabilities?: readonly CorporateCapability[]) { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient, capabilities) }; }
 
+test('project attachments expose existing status/expiry and safe author labels only under document scope', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.documents.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);
+  db.tables.set('rm_docs', [{ id: id(2), projeto_id: id(1), nome: 'Laudo', status: 'No prazo', data_vencimento: '2026-11-05T12:00:00.000Z', created_by: id(3),
+    arquivo_url: 'https://example.invalid/existing.pdf', tipo_arquivo: 'application/pdf', visivel_cliente: false }]);
+  db.tables.set('rm_users', [{ id: id(3), nome: 'Autora do laudo', auth_user_id: id(99), email: 'never@private.invalid' }]);
+  const result = await data.getProject(id(1));
+  assert.equal(result?.attachments[0].status, 'No prazo'); assert.equal(result?.attachments[0].data_vencimento, '2026-11-05T12:00:00.000Z');
+  assert.equal(result?.attachments[0].created_by, id(3)); assert.equal(result?.attachments[0].visivel_cliente, false); assert.equal(result?.users[0].nome, 'Autora do laudo');
+  assert.ok(db.calls.filter(call => call.table === 'rm_users').every(call => !/auth_user_id|email|credentials/.test(call.columns)));
+  assert.deepEqual(result?.comments, []); assert.ok(!db.calls.some(call => call.table === 'rm_comentarios'));
+});
+
+test('absence of document scope keeps attachment metadata and their authors out of project queries', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);
+  db.tables.set('rm_docs', [{ id: id(2), projeto_id: id(1), created_by: id(3), status: 'Vencido' }]);
+  const result = await data.getProject(id(1));
+  assert.deepEqual(result?.attachments, []); assert.deepEqual(result?.users, []);
+  assert.ok(!db.calls.some(call => ['rm_docs', 'rm_documentos', 'rm_users'].includes(call.table)));
+});
+
 test('active planning keeps hidden work in place while excluding withdrawn allocations from totals and rows', async () => {
   const { db, data } = setup(['em.portal.read', 'em.planning.read']);
   const base = { projeto_id: id(9), celula_id: id(8), status: 'pendente', retirada: false, indice: 7, prioridade: 'alta' };
