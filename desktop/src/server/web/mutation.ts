@@ -47,6 +47,10 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   if (operation === 'assign_form_reviewer') {
     revalidatePath('/cronograma'); revalidatePath('/projetos', 'layout'); revalidatePath('/formularios', 'layout');
   }
+  if (operation === 'manage_stage_rules') {
+    revalidatePath('/cronograma'); revalidatePath('/aprovacoes', 'layout'); revalidatePath('/projetos', 'layout');
+    revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga');
+  }
   return { ok: true, data: result };
 }
 

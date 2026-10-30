@@ -104,7 +104,7 @@ export function recordedQuestions(templates: readonly Row[], answers: readonly D
 export const approvalActions = ['liberar','retornar','aprovar','finalizar_ciclo'] as const;
 export type ApprovalAction = typeof approvalActions[number];
 export function canApprove(operator: {operador_id: string; perfil?: string; perfil_assinante?: string[]} | null, stage: Row, action?: ApprovalAction) {
-  if (!operator) return false;
+  if (!operator || stage.ativo === false) return false;
   const general = operator.perfil === 'administrador' ||
     stage.aprovador_id === operator.operador_id || (stage.aprovadores_ids ?? []).includes(operator.operador_id) ||
     (!stage.aprovador_id && !(stage.aprovadores_ids ?? []).length &&

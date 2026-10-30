@@ -51,6 +51,16 @@ A complementação histórica preservou 61.803 respostas dos 778 registros insta
 
 Para revogar uma delegação perdida, o administrador pode marcar `rm_private.operator_delegations.revoked=true` pelo backend/SQL administrativo. Desativar operador ou conta de tablet também bloqueia suas mutações. Não expor essas tabelas via PostgREST.
 
+## APK interno 1.2.3
+
+Em 30/10/2026 foi atualizado o arquivo local `artifacts/em-mi-electric-brasil-internal.apk`: versão **1.2.3**, código **6**, pacote `br.com.mielectric.rmconnect`, Android 7+ e arquiteturas ARM64/x86_64. A assinatura continua sendo Android Debug para homologação interna. O certificado SHA-256 foi comparado ao APK 1.2.2 antes de substituir o arquivo: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. O SHA-256 do novo APK é `586e453ad2432de94350f9a9d3eadd72c824a9079926b3a9ca8770697dd898bf`.
+
+Esta versão trata `ativo=false` nas etapas como retirada da apresentação, dos contadores e das novas ações de aprovação. Catálogos antigos sem esse campo continuam compatíveis. O pull e o SQLite mantêm as linhas retiradas; decisões offline conservam UUID, autoria, payload e recibo. Uma configuração substituída usa outra identidade de etapa no servidor; a fila anterior não é transferida para ela. A restauração explícita conserva a identidade original. A validação do servidor permanece necessária para decisões baseadas em um catálogo offline desatualizado.
+
+Passaram 87 testes mobile, TypeScript, `expo install --check`, exportação Android/iOS e `:app:assembleRelease`. O build reutilizou o projeto Android e os caches, com Gradle 8.14.3, SDK 36, JBR do Android Studio, um trabalhador, heap Java de 1024 MB e metaspace de 512 MB. O bundler usou um trabalhador e limite Node de 768 MB. O APK final passou na verificação de assinatura, pacote, versão e arquiteturas; a varredura dos assets confirmou apenas a configuração pública do Supabase autorizado e nenhum JWT de serviço ou chave privada Supabase.
+
+Para atualizar uma instalação existente, usar instalação de atualização com o mesmo pacote e certificado, sem desinstalar nem limpar os dados do aplicativo. Nenhum dispositivo, banco SQLite, rascunho ou fila foi alterado durante esta geração do arquivo. Esta rodada validou o build e o conteúdo do APK; não realizou uma nova homologação em tablet físico.
+
 ## Validação local
 
 Com PostgreSQL instalado e seus binários no PATH:

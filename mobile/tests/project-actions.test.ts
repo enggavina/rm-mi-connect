@@ -37,6 +37,38 @@ test('return stages match Bubble: approve does not require returned cell status,
   assert.deepEqual(availableStageActions(returnOnly, context('em_dia'), assigned), []);
 });
 
+test('retired stages disappear from operational counts and actions while older offline catalogs remain usable', () => {
+  const active = Object.freeze({ ...stage, id: 'active', ativo: true });
+  const retired = Object.freeze({ ...stage, id: 'retired', ativo: false });
+  const retiredApproved = Object.freeze({ ...retired, id: 'retired-approved', status: 'aprovado' });
+  const legacy = Object.freeze({ ...stage, id: 'legacy' });
+  const catalog = Object.freeze([active, retired, retiredApproved, legacy]);
+  const visible = cellProjectStages(allocation, catalog);
+  assert.deepEqual(visible.map(row => row.id), ['active', 'legacy']);
+  assert.equal(visible.filter(row => row.status === 'aprovado').length, 0);
+  assert.deepEqual(availableStageActions(admin, context(), retired), []);
+  assert.deepEqual(availableStageActions(admin, context('retornado'), { ...retired, status_cel_proj: 'retornado' }), []);
+  assert.deepEqual(availableStageActions(admin, context(), legacy), ['liberar']);
+  assert.equal(catalog.length, 4, 'retirement must not delete cached catalog rows');
+  assert.deepEqual(cellProjectStages(allocation, [{ ...retired, ativo: true }]).map(row => row.id), ['retired'], 'explicit restoration retains the original stage ID');
+});
+
+test('retirement or replacement never rewrites an existing queued approval, its actor or completed receipt', () => {
+  const retired = Object.freeze({ ...stage, ativo: false });
+  const replacement = Object.freeze({ ...stage, id: 'replacement-stage', ativo: true });
+  const params = JSON.stringify({ p_aprovacao_etapa_id: stage.id, p_acao: 'liberar', p_observacao: 'Decisão offline' });
+  const pending: Readonly<OutboxRow> = Object.freeze({ id: 'original-protocol', rpc_name: 'rm_transition_stage_approval_v1', params_json: params, status: 'pending', actor_id: 'original-operator', attempts: 0, created_at: '2026-10-30T12:00:00Z', next_retry_at: 0, token_key: 'original-token-reference', draft_id: 'original-draft' });
+  const failed = Object.freeze({ ...pending, id: 'failed-protocol', status: 'failed' } as OutboxRow);
+  const completed = Object.freeze({ ...pending, id: 'completed-protocol', status: 'completed', result_json: '{"ok":true}' } as OutboxRow);
+  const queue = Object.freeze([pending, failed, completed]);
+  const before = JSON.stringify(queue);
+  assert.deepEqual(cellProjectStages(allocation, [retired, replacement]).map(row => row.id), ['replacement-stage']);
+  assert.deepEqual(queuedProjectActions(queue, 'rm_transition_stage_approval_v1', { field: 'p_aprovacao_etapa_id', id: stage.id }).map(row => row.operation.id), ['original-protocol', 'failed-protocol']);
+  assert.deepEqual(queuedProjectActions(queue, 'rm_transition_stage_approval_v1', { field: 'p_aprovacao_etapa_id', id: replacement.id }), []);
+  assert.equal(JSON.stringify(queue), before, 'existing requests and completed receipt remain unchanged');
+  assert.equal(queue[0].actor_id, 'original-operator');
+});
+
 test('approved and returned decisions are terminal; pending null is supported and no finalize action exists', () => {
   for (const status of ['aprovado', 'reprovado']) {
     assert.deepEqual(availableStageActions(admin, context(), { ...stage, status }), []);

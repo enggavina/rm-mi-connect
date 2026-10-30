@@ -45,6 +45,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_route.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_operational_photos.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_reviewer_assignments.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_stage_rules.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -71,6 +72,9 @@ try {
     }
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '026_rm_web_form_reviewer_assignments.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_form_reviewer_assignments_upgrade.sql'
+    }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '027_rm_web_stage_rules.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_stage_rules_upgrade.sql'
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }

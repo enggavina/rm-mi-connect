@@ -24,8 +24,9 @@ export function frontProjectPhoto(projectId: string, photos: Row[]): Row | undef
     .sort((a, b) => Number(b.tipo_recebimento === 'frente') - Number(a.tipo_recebimento === 'frente') || (a.numero ?? 0) - (b.numero ?? 0) || a.id.localeCompare(b.id))[0];
 }
 
-export function cellProjectStages(allocation: Row, stages: Row[]): Row[] {
-  return stages.filter(stage => stage.projeto_id === allocation.projeto_id && stage.celula_origem_id === allocation.celula_id && (!stage.celula_projeto_id || stage.celula_projeto_id === allocation.id));
+export function cellProjectStages(allocation: Row, stages: readonly Row[]): Row[] {
+  // Older offline catalogs lack ativo; only an explicit retirement hides a stage.
+  return stages.filter(stage => stage.ativo !== false && stage.projeto_id === allocation.projeto_id && stage.celula_origem_id === allocation.celula_id && (!stage.celula_projeto_id || stage.celula_projeto_id === allocation.id));
 }
 export function cellProjectLogs(allocation: Row, logs: Row[]): Row[] {
   return logs.filter(log => log.projeto_id === allocation.projeto_id && log.celula_id === allocation.celula_id).sort((a, b) => String(b.data_aprovacao || b.created_at).localeCompare(String(a.data_aprovacao || a.created_at)));

@@ -18,6 +18,8 @@ import { ProjectAllocationList } from '@/components/web/project-schedule';
 import { OperationalPhotoEditor } from '@/components/web/operational-photo-editor';
 import { FormReviewerEditor } from '@/components/web/form-reviewer-editor';
 import { getFormReviewerAssignments } from '@/server/web/form-reviewer-data';
+import { getOperationalStageRules } from '@/server/web/operational-stage-rule-data';
+import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
 import s from '@/components/web/project-schedule.module.css';
 
@@ -81,6 +83,13 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
   const stages = current && tab === 'etapas' ? await reader.stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
+  const stageRules = current && tab === 'etapas' ? await getOperationalStageRules(projectId, current.id) : null;
+  const activeStageRules = stageRules?.rules.filter(rule => rule.ativo) ?? [];
+  const stageRulesCurrent = !!stageRules && !!stages && stageRules.complete && stageRules.allocations_complete
+    && stageRules.project.updated_at === project.updated_at && stageRules.allocation.updated_at === current?.updated_at
+    && activeStageRules.length === stages.total && stages.items.every(item => activeStageRules.some(rule => rule.id === item.stage.id
+      && rule.updated_at === item.stage.updated_at && (rule.status ?? 'nulo') === (item.stage.status ?? 'nulo')
+      && item.allocation?.updated_at === stageRules.allocation.updated_at));
   const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome]));
   const userNames = new Map(data.users.map(user => [user.id, user.nome]));
   const formNames = new Map(data.forms.map(form => [form.id, form.titulo]));
@@ -131,7 +140,14 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
             destination={scheduleHref(projectId, current.id, 'formularios')} recordPanels={recordPanels} />
             : <><p className="notice" role="status">O contexto dos avaliadores não está mais disponível. Recarregue a célula antes de atribuir.</p>{Object.entries(recordPanels).map(([id, panel]) => <div className="panel-content" key={id}><h3 className={s.slotTitle}>{formNames.get(id) || 'Formulário não disponível'}</h3>{panel}</div>)}</>}
         </section>}
-        {tab === 'etapas' && stages && <section className="panel"><div className="panel-header"><h2>Aprovações da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
+        {tab === 'etapas' && <>
+          {stageRules ? <details className="panel"><summary className={s.orderSummary}><span>{canPlan ? 'Configurar regras de etapas' : 'Consultar regras de etapas'}</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary>
+            {stageRules.complete && stageRules.allocations_complete && !stageRulesCurrent && <div className="panel-content"><p className="notice" role="status">As etapas ou a célula mudaram durante a consulta. <a className="text-link" href={scheduleHref(projectId, current.id, 'etapas')}>Recarregar regras e decisões</a> antes de configurar.</p></div>}
+            <OperationalStageRuleEditor key={`${current.id}:${stageRules.rules_version}`} snapshot={stageRules} canManage={canPlan && stageRulesCurrent}
+              destination={scheduleHref(projectId, current.id, 'etapas')} />
+          </details> : <p className="notice" role="status">O contexto de configuração não está disponível. Recarregue a célula antes de alterar regras.</p>}
+          {stages && <section className="panel"><div className="panel-header"><h2>Decisões da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
+        </>}
       </> : <section className="panel"><Empty title="Selecione uma célula" detail="Escolha uma célula do roteiro para consultar datas, planejamento, fotos, formulários e aprovações." icon="board" /></section>}
     </div></div>
   </>;

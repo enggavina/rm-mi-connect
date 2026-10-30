@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { answerDisplayKey, answerHasValue, approvalActions, canApprove, canCorrectAnswer, displayedRecordAnswers, emptyAnswer, firstInvalidSection, formSections, hasQuestionId, naAnswer, qrProjectValue, recordedQuestions, sectionForQuestion, storedAnswer, validateAnswer } from '../src/domain/forms';
+
+test('retirement blocks every approval role, including administrators, without rejecting legacy active stages', () => {
+  const stage = { id: 'retired', ativo: false, aprovador_id: 'assigned', aprovadores_ids: ['listed'], aprovadores_retorno_ids: ['return-only'] };
+  for (const operator of [{ operador_id: 'admin', perfil: 'administrador' }, { operador_id: 'assigned' }, { operador_id: 'listed' }, { operador_id: 'return-only' }, { operador_id: 'signer', perfil_assinante: ['aprovador'] }]) {
+    assert.equal(canApprove(operator, stage), false);
+    assert.ok(approvalActions.every(action => !canApprove(operator, stage, action)));
+  }
+  assert.equal(canApprove({ operador_id: 'admin', perfil: 'administrador' }, { id: 'legacy' }), true);
+  assert.equal(canApprove({ operador_id: 'assigned' }, { ...stage, ativo: true }, 'aprovar'), true);
+});
 import type { Row } from '../src/core/types';
 
 const stage: Row = {id:'gate',aprovador_id:null,aprovadores_ids:[],aprovadores_retorno_ids:['return-only']};

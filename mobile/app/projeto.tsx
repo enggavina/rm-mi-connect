@@ -3,6 +3,7 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import { assignedForms, pendingProjectPhotos, projectPhotos, requiredPhotoProgress } from '../src/domain/journey';
 import { galleryPhotos } from '../src/domain/gallery';
+import { cellProjectStages } from '../src/domain/project-actions';
 import { useRows } from '../src/ui/state';
 import { useQueue } from '../src/ui/queue';
 import { Badge, C, Notice, Screen, s } from '../src/ui/components';
@@ -16,7 +17,7 @@ export default function Projeto() {
   const assigned = assignedForms(context.allocation, forms.rows); const gallery = projectPhotos(context, photos.rows);
   const revisions = records.rows.filter(r => r.projeto_id === projeto && r.celula_id === celula && r.status === 'direcionado' && assigned.some(form => form.id === r.form_id)).length;
   const pending = pendingProjectPhotos(context, photos.rows, queue); const progress = requiredPhotoProgress(gallery.required, pending.slots);
-  const approvals = stages.rows.filter(stage => stage.projeto_id === projeto && stage.celula_origem_id === celula);
+  const approvals = cellProjectStages(context.allocation, stages.rows);
   const params = { celula: context.cell.id, projeto: context.project.id };
   const menus = [
     { title: 'Informações do projeto', icon: 'info' as const, route: '/informacoes-projeto', detail: 'Cliente, equipamento, prazos e planejamento' },

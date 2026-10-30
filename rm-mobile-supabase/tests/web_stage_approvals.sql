@@ -69,12 +69,12 @@ values(pg_temp.stage_key('7',1),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1
   array[pg_temp.stage_key('2',2)],array[pg_temp.stage_key('2',3)]);
 insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,status_cel_proj) values
   (pg_temp.stage_key('7',3),pg_temp.stage_key('5',1),pg_temp.stage_key('4',3),'em_dia'),
-  (pg_temp.stage_key('7',4),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia'),
   (pg_temp.stage_key('7',5),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia'),
   (pg_temp.stage_key('7',6),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),null),
   (pg_temp.stage_key('7',7),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia'),
   (pg_temp.stage_key('7',9),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'pendente');
-update public.rm_aprovacoes_etapas set celula_projeto_id=pg_temp.stage_key('6',3) where id=pg_temp.stage_key('7',4);
+insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,status_cel_proj,celula_projeto_id)
+ values(pg_temp.stage_key('7',4),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia',pg_temp.stage_key('6',3));
 update public.rm_aprovacoes_etapas set status='aprovado' where id=pg_temp.stage_key('7',7);
 insert into public.rm_aprovacoes_etapas(id,celula_origem_id,status_cel_proj) values(pg_temp.stage_key('7',8),pg_temp.stage_key('4',1),'em_dia');
 insert into public.rm_logs_aprovacao(id,projeto_id,celula_id,aprovador_id,status_aprovacao)
