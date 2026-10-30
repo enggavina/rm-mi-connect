@@ -14,7 +14,7 @@ function useDossierExitGuard(dirty: boolean, pending: boolean, stale: boolean, l
     if (!dirty && !pending) return;
     const unload = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
     const navigate = (event: MouseEvent) => {
-      if (leaving.current || event.defaultPrevented || !(event.target instanceof Element)) return;
+      if (leaving.current || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !(event.target instanceof Element)) return;
       const link = event.target.closest('a[href]'); if (!link || link.getAttribute('target') === '_blank') return;
       if (link.hasAttribute('data-engineering-reload') && stale && !pending) {
         if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) leaving.current = true;
