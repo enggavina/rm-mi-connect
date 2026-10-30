@@ -1,5 +1,7 @@
 # EM · MI Electric Brasil — Banco para a Fase 1 mobile
 
+Estado atual em **30/10/2026**: produção com migrações **001–033 aplicadas e imutáveis** e APK interno **1.2.4/código 7**, descrito abaixo. A entrega QR 034 não exige nova migração. Os capítulos de provisionamento e 001–015 registram a instalação original; consulte [a plataforma web](../desktop/docs/web-platform.md) para a sequência completa e o estado publicado.
+
 ## Projeto provisionado em 27/10/2026
 
 Foi criado, por solicitação do usuário, o projeto **[oficina-em-mi-off](https://supabase.com/dashboard/project/ellpxfbsrbhblyizvbbk)** (`ellpxfbsrbhblyizvbbk`) na organização MI Electric Brasil de plano **Pro** (`rdqixfbnsgawcgrvqegw`), região **São Paulo / sa-east-1**, compute **Micro**, sem adicionais. Nenhum projeto anterior foi alterado.
@@ -51,7 +53,23 @@ A complementação histórica preservou 61.803 respostas dos 778 registros insta
 
 Para revogar uma delegação perdida, o administrador pode marcar `rm_private.operator_delegations.revoked=true` pelo backend/SQL administrativo. Desativar operador ou conta de tablet também bloqueia suas mutações. Não expor essas tabelas via PostgREST.
 
-## APK interno 1.2.3
+## APK interno 1.2.4 — identificação por QR
+
+Publicado como instalador local em 30/10/2026; portal [EM web](https://em-web-production.up.railway.app) com consumidor `3a1367cf398e8bc3c3f97ab3191b8c8555098909` e Railway `33c646e4-4b9a-4c25-a84a-8583f187379a` em SUCCESS.
+
+Instalador local: `artifacts/em-mi-electric-brasil-internal.apk`, **1.2.4/código 7**, pacote `br.com.mielectric.rmconnect`, ARM64/x86_64, **68.982.012 bytes**, SHA256 `7ab57b1b1b5ccf02a8f0430e3dbbf5b7e5961c446e7298c1ebba3c94d6074b66`. Mesmo certificado SHA256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`, com assinatura Android Debug para homologação interna. Assets verificaram o novo runtime QR e apenas a configuração pública do Supabase autorizado, sem os segredos locais conhecidos ou JWT de serviço. O instalador anterior foi conservado em backup ignorado pelo Git.
+
+A revisão encontrou a lacuna real do APK 1.2.3/código 6: o helper e o componente de câmera não tinham consumidor na jornada. O novo **APK 1.2.4/código 7** acrescenta **Ler QR Code** e digitação do UUID na lista da célula selecionada. Resolve somente SQLite e abre a rota existente quando operador/turno/política e célula permitidos, projeto ativo e uma única alocação visível não retirada conferem. Mudanças de identidade, célula, foco ou catálogo invalidam a leitura; offline exige catálogo já sincronizado. Não há busca por URL/OS/Bubble ID nem seleção automática de outra célula.
+
+Passaram **99 testes mobile**, tipos, validação de dependências Expo, exportação Android/iOS, build assembleRelease e verificação de assinatura/assets; o CI completo de 398 testes desktop e dois testes integrados também foi aprovado: [execução](https://github.com/enggavina/rm-mi-connect/actions/runs/41135639324). A imagem real gerada no portal foi decodificada independentemente antes de chegar ao resolvedor mobile nos testes.
+
+O incremento 034 é somente leitura/navegação: não há migração SQL nova, RPC, DML, upload ou gravação em qrcode_url. As migrações **001–033 permanecem aplicadas e imutáveis**. Ler o QR não inicia sincronização, altera recebimento/resposta/rascunho/foto, reenvia fila ou troca UUID/autoria anteriores. Bubble permaneceu somente leitura, sem nova concessão na Central, alteração de identidade ou ativação da ponte; SYNC_OUTBOX_ENABLED=false permanece.
+
+**Nenhum dispositivo foi instalado, desinstalado, limpo ou alterado. Não houve homologação óptica em câmera/tablet físico nesta rodada.** Atualizar uma instalação existente exige o mesmo pacote/certificado e instalação de atualização, sem desinstalar ou limpar dados. A geração/verificação do APK e os testes automatizados não substituem essa homologação. Uma revogação remota ainda não sincronizada não pode ser conhecida offline; as guardas do servidor continuam controlando mutações após reconexão.
+
+[Contrato QR](WEB_PROJECT_QR.md) e [discovery/limites](../docs/discovery_rmmi_qr_projeto.md). Provas: `.tmp/project-qr-apk-proof.json`, `.tmp/project-qr-apk-baseline.json`, `mobile/.tmp/em-124-apk-verification.json` e logs nativos ignorados pelo Git.
+
+## Histórico do APK interno 1.2.3
 
 Em 30/10/2026 foi atualizado o arquivo local `artifacts/em-mi-electric-brasil-internal.apk`: versão **1.2.3**, código **6**, pacote `br.com.mielectric.rmconnect`, Android 7+ e arquiteturas ARM64/x86_64. A assinatura continua sendo Android Debug para homologação interna. O certificado SHA-256 foi comparado ao APK 1.2.2 antes de substituir o arquivo: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. O SHA-256 do novo APK é `586e453ad2432de94350f9a9d3eadd72c824a9079926b3a9ca8770697dd898bf`.
 
