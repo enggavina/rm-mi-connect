@@ -300,3 +300,11 @@ Nenhum novo APK, identidade/grant na Central, escrita no Bubble, evento novo na 
 **Próxima prioridade:** QR de identificação do projeto, integrado à jornada mobile existente, com contrato próprio e preservação dos vínculos e trabalhos offline. QR ainda não foi implementado por este incremento. Word/relatórios, cadastros complementares, capacidade/calendários/lotes, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
 
 [Contrato](../rm-mobile-supabase/WEB_PROJECT_ATTACHMENT_VERSIONS.md). Provas locais ignoradas: `attachment-versions-033-{rehearse,apply}-proof.json`, `attachment-versions-postflight.json`, `attachment-versions-ci-proof.json`, `attachment-versions-deployment.json`, `attachment-versions-public-qa.json`, `public-sso-qa.json`, `project-attachment-version-qa-summary.json`, `attachment-versions-browser-secret-audit.json` e logs `attachment-versions-{desktop-tests,build,smoke,sso-smoke,final-full}.log`.
+
+## Contrato de execução do incremento 034 — identificação por QR
+
+1. Gerar no portal uma etiqueta consultável, imprimível e baixável com o UUID canônico do projeto. A imagem exige autenticação e leitura do projeto; não gravar dados nem alterar a imagem legada `qrcode_url`.
+2. Incluir a leitura na lista de projetos da célula escolhida no aplicativo. Consultar somente o catálogo local e as permissões atuais do operador; recusar projetos desconhecidos, encerrados, retirados, invisíveis ou de outra célula, além de contexto alterado durante a leitura.
+3. Manter os trabalhos offline, recebimentos, respostas, arquivos, filas e protocolos existentes. A leitura é navegação: não sincroniza nem cria intenções. Bubble permanece somente leitura e a ponte desativada.
+4. Validar o SVG com decodificador independente, o contrato portal/mobile, as regras offline e a interface responsiva/impressa. Publicar o portal após os testes e gerar APK interno 1.2.4/código 7 com o mesmo pacote e certificado, sem apagar dados nem substituir a instalação usada no emulador.
+5. Não há alteração de schema para esta entrega: migrações 001–033 permanecem aplicadas e imutáveis. O QR identifica o projeto; não concede acesso nem é um link público.

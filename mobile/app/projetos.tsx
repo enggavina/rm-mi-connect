@@ -1,17 +1,18 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
-import type { OutboxRow, Row } from '../src/core';
+import { service, type OutboxRow, type Row } from '../src/core';
 import { canAccessCell, cellAllocations } from '../src/domain/journey';
+import { projectQrContextCurrent, projectQrContextKey, readProjectQr, type ProjectQrContext } from '../src/domain/project-qr';
 import { cellProjectLogs, cellProjectStages, cellStatusOptions, frontProjectPhoto, projectClientName } from '../src/domain/project-actions';
 import { label } from '../src/domain/forms';
 import { pageItems } from '../src/domain/pagination';
-import { useApp, useRows } from '../src/ui/state';
+import { useApp, useRouteFocused, useRows } from '../src/ui/state';
 import { useQueue } from '../src/ui/queue';
 import { PageControls } from '../src/ui/pagination';
 import { CellStatusAction } from '../src/ui/cell-status-action';
-import { MediaImage } from '../src/ui/media';
+import { MediaImage, QrScanner } from '../src/ui/media';
 import { Badge, Button, C, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
 
 function ProjectCard({ allocation, project, clients, records, catalogsLoaded, stages, logs, users, queue, queueReady }: { allocation: Row; project?: Row; clients: Row[]; records: Row[]; catalogsLoaded: boolean; stages: Row[]; logs: Row[]; users: Row[]; queue: OutboxRow[]; queueReady: boolean }) {
@@ -38,10 +39,27 @@ function ProjectCard({ allocation, project, clients, records, catalogsLoaded, st
 
 export default function Projetos() {
   const { celula } = useLocalSearchParams<{ celula?: string }>(); const app = useApp();
+  const focused = useRouteFocused(); const active = useRef(false); const currentCell = useRef(celula); currentCell.current = celula;
+  useFocusEffect(useCallback(() => { active.current = true; return () => { active.current = false; }; }, []));
   const cells = useRows('rm_celulas'); const projects = useRows('rm_projetos'); const allocations = useRows('rm_celulas_projeto'); const stages = useRows('rm_aprovacoes_etapas');
   const clients = useRows('rm_clientes'); const logs = useRows('rm_logs_aprovacao'); const users = useRows('rm_users'); const queue = useQueue();
   const records = useRows('rm_registros_formulario', { field: 'celula_id', value: celula });
   const [search, setSearch] = useState(''); const [filter, setFilter] = useState(''); const [page, setPage] = useState(0);
+  const [qrError, setQrError] = useState(''); const [qrBusy, setQrBusy] = useState(false); const qrReading = useRef(false);
+  const [manualQr, setManualQr] = useState(false); const [qrValue, setQrValue] = useState('');
+  const qrContext = (): ProjectQrContext => ({ ...service.getSnapshot(), cellId: currentCell.current, focused: active.current, catalogRevision: service.getCatalogRevision() });
+  async function openQr(value: string) {
+    if (qrReading.current || !active.current) return;
+    qrReading.current = true; setQrBusy(true); setQrError('');
+    try {
+      const result = await readProjectQr(value, { context: qrContext, list: service.list });
+      if (!active.current) return;
+      if (!result.ok) { setQrError(result.reason); return; }
+      if (!projectQrContextCurrent(result.contextKey, qrContext())) { setQrError('A célula, o operador ou o catálogo mudou. Leia o QR Code novamente.'); return; }
+      setQrValue(''); setManualQr(false);
+      router.push({ pathname: '/projeto', params: result.params });
+    } finally { qrReading.current = false; setQrBusy(false); }
+  }
   const scrollRef = useRef<ScrollView>(null);
   const changePage = (next: number) => { setPage(next); requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false })); };
   const cell = cells.rows.find(row => row.id === celula); const allowed = canAccessCell(app.operator, celula);
@@ -56,6 +74,12 @@ export default function Projetos() {
   return <Screen scrollRef={scrollRef} title="Projetos alocados" eyebrow={cell?.nome || 'Célula'} backHref="/celula" backLabel="Trocar célula" subtitle="Abra um projeto ou consulte as atividades da célula.">
     {!allowed || !cell ? <><Notice error>{!allowed ? 'Escolha uma célula vinculada ao operador identificado.' : 'Esta célula ainda não está disponível no catálogo local. Sincronize novamente.'}</Notice><Button title="Escolher célula" onPress={() => router.replace('/celula')} /></> : <>
       <Badge text={`${allocated.length} ${allocated.length === 1 ? 'projeto alocado' : 'projetos alocados'}`} />
+      <Card><Text style={s.h2}>Abrir pelo QR Code</Text><Text style={s.muted}>Leia a etiqueta EM para abrir um projeto desta célula. Sem conexão, o projeto precisa estar disponível no catálogo deste dispositivo.</Text>
+        <QrScanner key={projectQrContextKey({ ...app, cellId: celula, focused, catalogRevision: service.getCatalogRevision() })} disabled={!focused || qrBusy || app.syncing} onRead={value => { void openQr(value); }} />
+        <Button secondary disabled={qrBusy} title={manualQr ? 'Cancelar digitação do código' : 'Digitar código do projeto'} onPress={() => { setManualQr(!manualQr); setQrValue(''); setQrError(''); }} />
+        {manualQr && <><Field label="Código do projeto (UUID)" value={qrValue} onChangeText={setQrValue} autoCapitalize="none" autoCorrect={false} placeholder="Cole o código exibido na etiqueta EM" editable={!qrBusy} /><Button title="Abrir pelo código" busy={qrBusy} disabled={!qrValue} onPress={() => { void openQr(qrValue); }} /></>}
+        {!!qrError && <Notice error>{qrError}</Notice>}
+      </Card>
       <Field label="Buscar projeto / OS, cliente ou equipamento" value={search} onChangeText={value => { setSearch(value); setPage(0); }} />
       <Select label="Status" value={filter} options={[{ value: '', label: 'Todos' }, ...cellStatusOptions, { value: 'waiting', label: 'Aguardando aprovação' }]} onChange={values => { setFilter(values[0] ?? ''); setPage(0); }} />
       {!!error && <Notice error>{error}</Notice>}

@@ -62,8 +62,23 @@ export function Signature({ value, onChange, disabled }: { value?: string | null
     <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}><SafeAreaView style={{ flex: 1, backgroundColor: C.bg, padding: 20, gap: 18 }}><Text style={s.h2}>Assine no espaço abaixo</Text><ViewShot ref={shot} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ flex: 1, backgroundColor: 'white', borderWidth: 1, borderColor: C.line }}><View {...responder.panHandlers} style={{ flex: 1 }}><Svg width="100%" height="100%">{paths.map((d, i) => <Path key={i} d={d} stroke={C.ink} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />)}</Svg></View></ViewShot>{!!error && <Notice error>{error}</Notice>}<View style={s.row}><Button secondary title="Limpar" onPress={() => { pathsRef.current = []; setPaths([]); }} /><Button secondary title="Cancelar" onPress={() => setOpen(false)} /><Button title="Salvar assinatura" disabled={!paths.length} busy={busy} onPress={() => { void save(); }} /></View></SafeAreaView></Modal>
   </View>;
 }
-export function QrScanner({ onRead }: { onRead: (data: string) => void }) {
+export function QrScanner({ onRead, disabled = false }: { onRead: (data: string) => void; disabled?: boolean }) {
   const [permission, requestPermission] = useCameraPermissions(); const [open, setOpen] = useState(false); const scanned = useRef(false); const [error, setError] = useState('');
-  async function start() { if (!permission?.granted && !(await requestPermission()).granted) { setError('Autorize a câmera para ler o QR Code.'); return; } scanned.current = false; setOpen(true); }
-  return <View style={{ gap: 8 }}><Button secondary title="Ler QR Code" onPress={() => { void start(); }} />{!!error && <Notice error>{error}</Notice>}<Modal visible={open} onRequestClose={() => setOpen(false)}><SafeAreaView style={{ flex: 1, backgroundColor: C.navy, padding: 16, gap: 16 }}>{open && <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => { if (scanned.current) return; scanned.current = true; setOpen(false); onRead(data); }} />}<Button title="Cancelar leitura" onPress={() => setOpen(false)} /></SafeAreaView></Modal></View>;
+  const live = useRef(true); const attempt = useRef(0); const unavailable = useRef(disabled); unavailable.current = disabled;
+  useEffect(() => { live.current = true; return () => { live.current = false; attempt.current++; }; }, []);
+  function close() { attempt.current++; scanned.current = true; setOpen(false); }
+  useEffect(() => { if (disabled) close(); }, [disabled]);
+  async function start() {
+    if (unavailable.current) return;
+    const current = ++attempt.current; setError('');
+    try {
+      const granted = permission?.granted || (await requestPermission()).granted;
+      if (!live.current || unavailable.current || current !== attempt.current) return;
+      if (!granted) { setError('Autorize a câmera nas configurações do dispositivo ou use “Digitar código do projeto”.'); return; }
+      scanned.current = false; setOpen(true);
+    } catch {
+      if (live.current && current === attempt.current) setError('Não foi possível abrir a câmera. Tente novamente ou digite o código do projeto.');
+    }
+  }
+  return <View style={{ gap: 8 }}><Button secondary disabled={disabled} title="Ler QR Code" onPress={() => { void start(); }} />{!!error && <Notice error>{error}</Notice>}<Modal visible={open} onRequestClose={close}><SafeAreaView style={{ flex: 1, backgroundColor: C.navy, padding: 16, gap: 16 }}><Text style={[s.body, { color: C.white }]}>Aponte a câmera para o QR Code da etiqueta EM.</Text>{open && <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onMountError={() => { close(); setError('Câmera indisponível. Tente novamente ou digite o código do projeto.'); }} onBarcodeScanned={({ data }) => { if (scanned.current || unavailable.current || !live.current) return; close(); onRead(data); }} />}<Button title="Cancelar leitura" onPress={close} /></SafeAreaView></Modal></View>;
 }

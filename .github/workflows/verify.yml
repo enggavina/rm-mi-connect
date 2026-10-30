@@ -27,6 +27,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - if: matrix.project == 'desktop'
+        name: Verify project QR web/mobile contract
+        run: node node_modules/tsx/dist/cli.mjs --test --test-concurrency=1 ../tests/project-qr-contract.test.ts
+      - if: matrix.project == 'desktop'
         run: npm run build
       - if: matrix.project == 'desktop'
         run: npm run test:smoke
