@@ -234,3 +234,13 @@ Não houve CRUD artificial em produção, novo APK, alteração de identidades/g
 **Próxima prioridade:** edição protegida de comentários do projeto, com autoria, versões e histórico. Exclusão de comentários e substituição/exclusão/versionamento de documentos continuam fora desse próximo incremento; Word/relatórios, QR, cadastros complementares, capacidade/calendários/lotes, comercial, laboratório e coexistência permanecem no plano. A paridade global continua em andamento.
 
 [Contrato](../rm-mobile-supabase/WEB_PROJECT_EQUIPMENT.md). Provas locais ignoradas: `project-equipment-031-{rehearse,apply}-proof.json`, `project-equipment-postflight.json`, `project-equipment-ci-proof.json`, `project-equipment-deployment.json`, `project-equipment-public-qa.json`, `public-sso-qa.json`, `project-equipment-source-proof.json`, `project-equipment-qa-summary.json`, `project-equipment-browser-secret-audit.json`, `.tmp/equipment-desktop-tests.log` e `.tmp/equipment-final-full.log`.
+
+## Contrato de execução do incremento 032 — correção de comentários
+
+1. Consultar o comentário exato e seu histórico, por projeto e ID, em uma página própria. Preservar a busca e a paginação existentes do Histórico do projeto.
+2. Permitir correções somente quando a origem manual estiver comprovada por recibo web/mobile. Observações ligadas a decisões, registros automáticos e comentários de origem não comprovada permanecem em consulta. Administrador pode corrigir comentários elegíveis; perfil padrão somente os próprios.
+3. Alterar somente o texto, com motivo obrigatório, confirmação, versões/hash e protocolo idempotente. Preservar ID, autor, criação, projeto e célula; manter versões anteriores e autoria da correção em histórico autorizado, paginado por 25. Projetos encerrados e alocações retiradas permanecem em consulta.
+4. Proteger o texto corrigido e sua identidade contra sobrescrita ou exclusão por outros escritores. Manter os recibos de criação, trabalhos offline, filas e arquivos; a ponte Bubble permanece desativada.
+5. Validar tipos, BFF, interface, banco isolado e concorrência; ensaiar a migração nova com rollback, conferir a preservação e publicar no Supabase/Railway EM.
+
+[Revisão Live e limites](discovery_rmmi_correcao_comentarios.md). Incremento em desenvolvimento; resultado e evidências de publicação serão registrados após a validação.
