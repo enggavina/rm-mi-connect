@@ -67,3 +67,25 @@ Fila/carga/recebimentos/roteiro ativos excluem retiradas; consulta histórica pe
 Provar 69 projeções antigas intactas, retirada=false em todas existentes e journal vazio na instalação; sem presumir stage_rule_events vazio. Testes devem cobrir todos os bloqueios, ambos arquivos de foto, fila oculta/retirada/restaurada e posições preservadas, recibo antes de guarda, escopos/ator/MFA, replays, trigger de identidade/reativação e concorrência real com fila/roteiro/plan_cell/materialização, criação de trabalho e decisões de etapas.
 
 Reversão conserva schema, flags, journal, IDs e guardas; pode reverter a interface mantendo leitores, lifecycle e guardas 028 compatíveis. Não remover guardas ou reativar retiradas por lote. Migração posterior é necessária para mudar o contrato.
+
+## Incremento 028 publicado: disponibilidade
+
+Acesso: **Cronograma → projeto → célula → Disponibilidade da célula**, ou **Projetos → abrir projeto → Células e planejamento → Disponibilidade da célula**. Planejamento e disponibilidade têm controles separados; mudanças usam confirmação, versões exatas/hash e o protocolo idempotente com as permissões existentes de planejamento.
+
+**283 testes desktop, 87 testes mobile no CI, 17 suítes PostgreSQL, 22 disputas reais novas, tipos, build e dois smokes aprovados**. Os **21 cenários de navegador** usaram build `fDa0ypRC3QvS4gCkKOivl`, HTTP/autenticação simulados e DOM real, sem erros de página ou origens externas. Auditoria de **71 JavaScripts** sem os dez segredos locais conhecidos. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41080041076).
+
+Ensaio com rollback e aplicação preservaram **69 projeções de todas as colunas antigas**, incluindo journals, recibos e dados operacionais; a nova coluna nasceu falsa em todas as alocações e o journal de disponibilidade vazio. Pós-aplicação: **70 tabelas RM/privadas, 57 públicas com RLS**, 102 usuários, 778 registros de formulário, 14.595 fotos, 945 etapas, 101 atribuições, outbox 4 e 4 recibos web; journal de etapas 0, journal de disponibilidade 0 e 0 alocações retiradas no momento da conferência. SSO, os dois administradores EM e o envelope mobile preservados.
+
+Fonte SQL congelada, índice e commit conferidos com SHA256 `c82526e755861117186ee9a8f6d17f56673037e0d5ca484bc5fffabf746ff38b`; a fonte aplicada tem o mesmo hash. Migrações **001–028 aplicadas e imutáveis**.
+
+Railway **`b05868e3-ceaa-49db-a9da-15818e0062ae`** com `SUCCESS`, consumidor **`72948b22160cff8edabca3bbc35b7c3f9669f3a8`**; health 200 e **40 negações em 20 URLs** para anônimo/cookie forjado, mantendo login e `no-store`. Microsoft-only, CSRF, callback estrito, cookie opaco HttpOnly/Secure e início PKCE real até Microsoft aprovados; apenas o fluxo próprio de QA foi cancelado.
+
+Corrigido o retorno após salvar e os links de recarga quando o endereço contém âncora: o navegador preserva o contexto/posição e exige nova leitura SSR, em vez de manter dados antigos no DOM. Os testes conferem nova navegação e novo snapshot; cliques modificados continuam nativos e tentativas incertas permanecem protegidas. O limite Suspense e o shell do portal foram preservados.
+
+Não houve CRUD positivo/artificial em produção, login Microsoft humano automatizado ou homologação em aparelho real. **APK 1.2.3 / versionCode 6 permanece inalterado e compatível**: pull/RLS, rascunhos, arquivos e fila offline conservados; nenhum novo instalador foi necessário. Nenhuma capacidade ou concessão nova na Central, promoção global, escrita no Bubble ou ativação da ponte; `SYNC_OUTBOX_ENABLED=false` permanece.
+
+Leitores ativos excluem retiradas; `hasAllocations`/proteção de tipo e consultas históricas continuam contando todas as linhas. `rm_web_receivings_v1` distingue `allocation_count` de `historical_allocation_count`; o consumidor correspondente integra a reversão compatível. Nenhum estado existente foi retirado, restaurado ou reordenado durante a instalação.
+
+**Próxima prioridade:** dossiê operacional, começando pela criação de comentários do projeto e anexos privados, com autorização atual, armazenamento privado, limites de upload, autoria e retentativa. Edição técnica, QR, Templates Word/geração, capacidade/calendários/lotes, cadastros complementares, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
+
+Provas locais ignoradas: `cell-availability-028-{rehearse,apply}-proof.json`, `cell-availability-postflight.json`, `cell-availability-ci-proof.json`, `cell-availability-deployment.json`, `cell-availability-public-qa.json`, `public-sso-qa.json`, `cell-availability-qa-summary.json`, `cell-availability-browser-secret-audit.json` e logs `cell-availability-{desktop-tests,build,full}.log`.

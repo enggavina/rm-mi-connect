@@ -4,9 +4,33 @@ Revisão iniciada em 29/10/2026; atualização de entrega em 30/10/2026. Complem
 
 ## Situação
 
-**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): regras operacionais de etapas, em 30/10/2026.** Consumidor **`bdf182671fd2188331827eb38f973bad0d70fd82`**, Railway **`6a67b5a4-de4e-49a2-ba28-926f13b7fed4`** com `SUCCESS`; migração **027 aplicada** após ensaio com rollback. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41062212110). A paridade global não está concluída; 026 e as entregas anteriores permanecem nas seções históricas.
+**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): disponibilidade e retirada protegida de alocações, em 30/10/2026.** Consumidor **`72948b22160cff8edabca3bbc35b7c3f9669f3a8`**, Railway **`b05868e3-ceaa-49db-a9da-15818e0062ae`** com `SUCCESS`; migração **028 aplicada**, [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41080041076). A paridade global não está concluída; 027 e as entregas anteriores permanecem no histórico.
 
-## Incremento 027 publicado: regras operacionais de etapas
+## Incremento 028 publicado: disponibilidade e retirada protegida
+
+Acesso: **Cronograma → projeto → célula → Disponibilidade da célula**, ou **Projetos → abrir projeto → Células e planejamento → Disponibilidade da célula**. Planejamento e disponibilidade têm controles separados; mudanças usam confirmação, versões exatas/hash e o protocolo idempotente com as permissões existentes de planejamento.
+
+**Ocultar** muda somente a disponibilidade no mobile: trabalhos ativos ocultos continuam na fila e aceitam envios offline válidos. **Retirar** exige alocação pendente sem evidência de uso; mantém o mesmo ID, o par projeto/célula, configuração, filhos, histórico, posição, índice e prioridade, mas sai de fila, carga, Gantt e roteiro ativos. **Restaurar** reativa a mesma linha sempre oculta, sem clonar modelos; disponibilizar novamente é uma decisão explícita. Recibos concluídos continuam com replay autenticado antes das novas guardas; tentativas pendentes preservam ator, UUID, conteúdo, arquivos e ordem para restauração/reconciliação.
+
+Corrigido o retorno após salvar e os links de recarga quando o endereço contém âncora: o navegador preserva o contexto/posição e exige nova leitura SSR, em vez de manter dados antigos no DOM. Os testes conferem nova navegação e novo snapshot; cliques modificados continuam nativos e tentativas incertas permanecem protegidas. O limite Suspense e o shell do portal foram preservados.
+
+**283 testes desktop, 87 testes mobile no CI, 17 suítes PostgreSQL, 22 disputas reais novas, tipos, build e dois smokes aprovados**. Os **21 cenários de navegador** usaram build `fDa0ypRC3QvS4gCkKOivl`, HTTP/autenticação simulados e DOM real, sem erros de página ou origens externas. Auditoria de **71 JavaScripts** sem os dez segredos locais conhecidos. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41080041076).
+
+Ensaio com rollback e aplicação preservaram **69 projeções de todas as colunas antigas**, incluindo journals, recibos e dados operacionais; a nova coluna nasceu falsa em todas as alocações e o journal de disponibilidade vazio. Pós-aplicação: **70 tabelas RM/privadas, 57 públicas com RLS**, 102 usuários, 778 registros de formulário, 14.595 fotos, 945 etapas, 101 atribuições, outbox 4 e 4 recibos web; journal de etapas 0, journal de disponibilidade 0 e 0 alocações retiradas no momento da conferência. SSO, os dois administradores EM e o envelope mobile preservados.
+
+Fonte SQL congelada, índice e commit conferidos com SHA256 `c82526e755861117186ee9a8f6d17f56673037e0d5ca484bc5fffabf746ff38b`; a fonte aplicada tem o mesmo hash. Migrações **001–028 aplicadas e imutáveis**.
+
+Railway **`b05868e3-ceaa-49db-a9da-15818e0062ae`** com `SUCCESS`, consumidor **`72948b22160cff8edabca3bbc35b7c3f9669f3a8`**; health 200 e **40 negações em 20 URLs** para anônimo/cookie forjado, mantendo login e `no-store`. Microsoft-only, CSRF, callback estrito, cookie opaco HttpOnly/Secure e início PKCE real até Microsoft aprovados; apenas o fluxo próprio de QA foi cancelado.
+
+Não houve CRUD positivo/artificial em produção, login Microsoft humano automatizado ou homologação em aparelho real. **APK 1.2.3 / versionCode 6 permanece inalterado e compatível**: pull/RLS, rascunhos, arquivos e fila offline conservados; nenhum novo instalador foi necessário. Nenhuma capacidade ou concessão nova na Central, promoção global, escrita no Bubble ou ativação da ponte; `SYNC_OUTBOX_ENABLED=false` permanece.
+
+**Próxima prioridade:** dossiê operacional, começando pela criação de comentários do projeto e anexos privados, com autorização atual, armazenamento privado, limites de upload, autoria e retentativa. Edição técnica, QR, Templates Word/geração, capacidade/calendários/lotes, cadastros complementares, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
+
+[Contrato](../rm-mobile-supabase/WEB_CELL_AVAILABILITY.md) e [discovery](discovery_rmmi_disponibilidade_alocacoes.md).
+
+Provas locais ignoradas: `cell-availability-028-{rehearse,apply}-proof.json`, `cell-availability-postflight.json`, `cell-availability-ci-proof.json`, `cell-availability-deployment.json`, `cell-availability-public-qa.json`, `public-sso-qa.json`, `cell-availability-qa-summary.json`, `cell-availability-browser-secret-audit.json` e logs `cell-availability-{desktop-tests,build,full}.log`.
+
+## Histórico do incremento 027: regras operacionais de etapas
 
 - No Cronograma → projeto → célula → Etapas, configuração recolhida ao abrir e tabela de decisões preservada. Criação de regra forward com destino alocado, status-alvo e aprovadores por Identidade ativa nas células corretas. Correção, inclusive do vínculo/bloqueio, cria UUID novo e retira a versão anterior sem alterar sua configuração.
 - Retirada/restauração conserva IDs e linhagem. Regra usada, reaberta com evidências, retorno gerado ou histórico ambíguo permanece consultivo; restauração não concorre com sucessora ativa nem reabre destino incompatível. Não apaga inversas pelo primeiro item, decisões ou logs. Nenhum backfill dos 875 vínculos diretos legados.
@@ -68,6 +92,7 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 | Exclusão de título de foto | Confirmação pelo título exato, exclusão de item sem referência, recusa de item usado, retorno à lista e resposta sanitizada. Salvar/excluir compartilham uma única tentativa; resultado incerto não permite comando paralelo. | `delete_photo_title`, administrador RM com `em.engineering.manage`, versão/recibo/SSO/MFA, FK RESTRICT inclusive modelos aposentados/fotos em lixeira. Não limpa referências nem apaga fotos. |
 | Organização de navegação | Entradas existentes agrupadas em Planejamento e Cadastros; títulos, matriz de tipos e gestão de formulários reutilizam suas rotas. Atalhos nos Cadastros; navegação lateral rola preservando saída da conta. | Cada entrada exige sua capacidade própria. Tipos de equipamento, matriz e construtor continuam distintos; menus pendentes não são apresentados como módulos prontos. |
 | Regras operacionais de etapas (027) | Criar forward, corrigir por substituição com novo UUID e retirar/restaurar conservando família e histórico; tabela de decisões preservada. Uso, ambiguidade, retorno gerado e destino incompatível bloqueiam gestão. | `manage_stage_rules`, `em.planning.manage` e leituras existentes, SSO/MFA, hash/versões, recibos e journal privado. Mobile filtra regras retiradas sem alterar pull/fila. Nenhum backfill ou novo grant. |
+| Disponibilidade e retirada de alocações (028) | Ocultar mantém a fila/offline; retirar preserva ID/filhos e sai do planejamento ativo; restaurar a mesma linha sempre oculta, com proteções de uso e consulta histórica. | `manage_cell_availability`, planejamento autorizado, confirmação, SSO/MFA, versões/hash, recibos e journal privado. Sem reordenação ou rematerialização. |
 
 ## Reutilizado e preservado
 
@@ -81,14 +106,14 @@ Foi criado o plano com origem/destino, dependências, arquivos, riscos e ordem a
 
 | Área | Lacuna real / dependência |
 | --- | --- |
-| Group comJg completo | Regras operacionais publicadas com 027; permanecem exclusão/retirada protegida de alocação e reconciliação da visibilidade com a fila. |
+| Group comJg e demais fluxos PCP | Regras operacionais publicadas com 027 e disponibilidade/retirada com 028. Homologação operacional, capacidade/calendários, lotes/requisições, indicadores e demais fluxos PCP continuam no plano. |
 | Formulários e aprovações | Atribuição prévia e recuperação contextual publicadas com 026; homologação operacional e integração com relatórios continuam no plano. `rm_aprovacoes_registro` permanece histórico de decisões, sem preenchimentos fictícios. |
 | Títulos/tipos/células | Escopo do título continua imutável no editor, ao contrário do legado; transferência precisa reconciliar vínculos textuais/IDs. Complementos de imagens/contatos/equipes e gestão operacional de usuários ainda incompletos. |
 | Templates Word | Contrato distinto de Form, com criação/exclusão externa e Google ID. `rm_templates_word` existe, mas faltam reconciliação/importação, armazenamento, jobs e fluxo completo de falha/retentativa. |
 | Autorizações | Gestão de elementos e gestão individual ainda exigem contrato/carga de Elemento, identidade exata e integração com a autoridade Central; o helper005 não representa equivalência funcional. |
 | Comercial | Precificação, materiais, associação vendedor-cliente, propostas/revisões, numeração transacional e PDFs PT/EN não estão implementados. A 005 aproxima campos divergentes; é necessária reconciliação aditiva e carga própria antes do módulo. |
 | Relatórios | A seleção é persistente e compatível com o campo legado. O aplicativo Report Building continua consumindo seu fornecedor n8n; não foi alterado nem homologado um relatório real. Geração e compilação EM continuam pendentes, sem sucesso simulado enquanto suas APIs retornam 501. |
-| Demais pacotes | Comentários/anexos novos, edição técnica, QR, laboratório, liberação/requisições comerciais, capacidade/calendários/lotes e coexistência continuam no plano geral. Recebimentos não foi renomeado como uma liberação comercial sem o respectivo workflow. |
+| Demais pacotes | Próxima prioridade: criação de comentários do projeto e anexos privados do dossiê. Edição técnica, QR, laboratório, liberação/requisições comerciais, capacidade/calendários/lotes e coexistência continuam no plano geral. Recebimentos não equivale à liberação comercial. |
 
 ## Comportamentos da origem não copiados literalmente
 

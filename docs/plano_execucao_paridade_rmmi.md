@@ -102,7 +102,7 @@ APK **1.2.3, versionCode 6**, gerado para instalação sobre o aplicativo existe
 
 Pós-aplicação 027: 69 tabelas RM/privadas no total, 57 públicas com RLS; 102 usuários, 778 registros de formulário, 14.595 fotos, 945 etapas, 101 atribuições, outbox 4 e quatro recibos preservados; journal de configuração vazio. SSO e os dois administradores EM preservados. Snapshot anônimo/serviço e journal privado recusados, envelope mobile mantido. Histórico 001–027 aplicado e imutável. Railway **`6a67b5a4-de4e-49a2-ba28-926f13b7fed4`** com `SUCCESS`; health 200, 30 negações em 15 URLs com anônimo/cookie forjado, `no-store` e login preservados. Microsoft-only, CSRF, cookie opaco HttpOnly/Secure, callback estrito e início PKCE real até Microsoft aprovados; apenas o fluxo próprio de QA foi cancelado, sem autenticação humana ou CRUD positivo em produção.
 
-**Próxima prioridade objetiva:** exclusão/retirada protegida de alocação e reconciliação da visibilidade com a fila, preservando histórico, arquivos e trabalhos offline.
+**Prioridade registrada após a 027:** retirada protegida de alocação e reconciliação da visibilidade com a fila, entregue no incremento 028 abaixo.
 
 Provas locais ignoradas: `stage-rules-027-{rehearse,apply}-proof.json`, `stage-rules-postflight.json`, `stage-rules-ci-proof.json`, `stage-rules-deployment.json`, `stage-rules-public-qa.json`, `public-sso-qa.json` e `operational-stage-rule-qa-summary.json`.
 
@@ -113,3 +113,27 @@ Próxima prioridade iniciada após a 027: separar a disponibilidade no mobile da
 A retirada será lógica, reversível e distinta de ocultar. Manter a linha, a unicidade projeto/célula, IDs de filhos, registros e configuração; nunca recriar a alocação nem rematerializar modelos para restaurá-la. Fora da operação e da carga enquanto retirada, mas consultável no contexto do projeto. A restauração conserva a posição histórica e começa oculta, exigindo disponibilização explícita. Evidência de execução/histórico deve bloquear a retirada, sem confundir ausência de registros no banco com ausência de rascunhos desconectados.
 
 Toda nova escrita operacional deve recusar um contexto retirado, incluindo formulários que identificam apenas projeto/célula e efeitos de avanço/retorno de outras etapas. Recibos concluídos continuam permitindo replay exato antes dessa guarda; intenções pendentes mantêm autor, UUID, conteúdo, arquivo e ordem da fila para reconciliação ou restauração explícita. Ocultar por si só não revoga esses envios. Materialização e edição antiga de planejamento não podem restaurar uma alocação retirada silenciosamente. Definir snapshot, autorização, versões e locks antes de implementar a migração 028; preservar 001–027, o Supabase EM e a ponte desativada.
+
+## Resultado do incremento 028 publicado
+
+Acesso: **Cronograma → projeto → célula → Disponibilidade da célula**, ou **Projetos → abrir projeto → Células e planejamento → Disponibilidade da célula**. Planejamento e disponibilidade têm controles separados; mudanças usam confirmação, versões exatas/hash e o protocolo idempotente com as permissões existentes de planejamento.
+
+**Ocultar** muda somente a disponibilidade no mobile: trabalhos ativos ocultos continuam na fila e aceitam envios offline válidos. **Retirar** exige alocação pendente sem evidência de uso; mantém o mesmo ID, o par projeto/célula, configuração, filhos, histórico, posição, índice e prioridade, mas sai de fila, carga, Gantt e roteiro ativos. **Restaurar** reativa a mesma linha sempre oculta, sem clonar modelos; disponibilizar novamente é uma decisão explícita. Recibos concluídos continuam com replay autenticado antes das novas guardas; tentativas pendentes preservam ator, UUID, conteúdo, arquivos e ordem para restauração/reconciliação.
+
+Corrigido o retorno após salvar e os links de recarga quando o endereço contém âncora: o navegador preserva o contexto/posição e exige nova leitura SSR, em vez de manter dados antigos no DOM. Os testes conferem nova navegação e novo snapshot; cliques modificados continuam nativos e tentativas incertas permanecem protegidas. O limite Suspense e o shell do portal foram preservados.
+
+**283 testes desktop, 87 testes mobile no CI, 17 suítes PostgreSQL, 22 disputas reais novas, tipos, build e dois smokes aprovados**. Os **21 cenários de navegador** usaram build `fDa0ypRC3QvS4gCkKOivl`, HTTP/autenticação simulados e DOM real, sem erros de página ou origens externas. Auditoria de **71 JavaScripts** sem os dez segredos locais conhecidos. [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41080041076).
+
+Ensaio com rollback e aplicação preservaram **69 projeções de todas as colunas antigas**, incluindo journals, recibos e dados operacionais; a nova coluna nasceu falsa em todas as alocações e o journal de disponibilidade vazio. Pós-aplicação: **70 tabelas RM/privadas, 57 públicas com RLS**, 102 usuários, 778 registros de formulário, 14.595 fotos, 945 etapas, 101 atribuições, outbox 4 e 4 recibos web; journal de etapas 0, journal de disponibilidade 0 e 0 alocações retiradas no momento da conferência. SSO, os dois administradores EM e o envelope mobile preservados.
+
+Fonte SQL congelada, índice e commit conferidos com SHA256 `c82526e755861117186ee9a8f6d17f56673037e0d5ca484bc5fffabf746ff38b`; a fonte aplicada tem o mesmo hash. Migrações **001–028 aplicadas e imutáveis**.
+
+Railway **`b05868e3-ceaa-49db-a9da-15818e0062ae`** com `SUCCESS`, consumidor **`72948b22160cff8edabca3bbc35b7c3f9669f3a8`**; health 200 e **40 negações em 20 URLs** para anônimo/cookie forjado, mantendo login e `no-store`. Microsoft-only, CSRF, callback estrito, cookie opaco HttpOnly/Secure e início PKCE real até Microsoft aprovados; apenas o fluxo próprio de QA foi cancelado.
+
+Não houve CRUD positivo/artificial em produção, login Microsoft humano automatizado ou homologação em aparelho real. **APK 1.2.3 / versionCode 6 permanece inalterado e compatível**: pull/RLS, rascunhos, arquivos e fila offline conservados; nenhum novo instalador foi necessário. Nenhuma capacidade ou concessão nova na Central, promoção global, escrita no Bubble ou ativação da ponte; `SYNC_OUTBOX_ENABLED=false` permanece.
+
+**Próxima prioridade:** dossiê operacional, começando pela criação de comentários do projeto e anexos privados, com autorização atual, armazenamento privado, limites de upload, autoria e retentativa. Edição técnica, QR, Templates Word/geração, capacidade/calendários/lotes, cadastros complementares, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
+
+[Contrato completo](../rm-mobile-supabase/WEB_CELL_AVAILABILITY.md) e [discovery](discovery_rmmi_disponibilidade_alocacoes.md).
+
+Provas locais ignoradas: `cell-availability-028-{rehearse,apply}-proof.json`, `cell-availability-postflight.json`, `cell-availability-ci-proof.json`, `cell-availability-deployment.json`, `cell-availability-public-qa.json`, `public-sso-qa.json`, `cell-availability-qa-summary.json`, `cell-availability-browser-secret-audit.json` e logs `cell-availability-{desktop-tests,build,full}.log`.
