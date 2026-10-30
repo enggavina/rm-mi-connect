@@ -9,12 +9,13 @@ const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options'
 const timestamp = z.string().datetime({ offset: true });
 const fail = (code: string, error: string): WebActionResult => ({ ok: false, code, error });
 const unavailable = () => fail('UNAVAILABLE', 'Não foi possível confirmar o anexo. Tente novamente com o mesmo arquivo e protocolo.');
-function response(result: WebActionResult, status?: number) {
+export function attachmentUploadResponse(result: WebActionResult, status?: number) {
   const code = result.ok ? '' : result.code;
   return Response.json(result, { status: status ?? (result.ok ? 200 : code === 'CORP_UNAUTHORIZED' ? 401
     : ['42501', 'CORP_FORBIDDEN'].includes(code) ? 403 : ['PT409', 'P0002', '23505', '40001'].includes(code) ? 409
       : ['INVALID_INPUT', '22023', '22P02', '23514', '23503'].includes(code) ? 400 : 503), headers });
 }
+const response = attachmentUploadResponse;
 /** Reserve and finalization use distinct, deterministic receipts for one frozen intent. */
 export function attachmentReservationId(submissionId: string) {
   const bytes = createHash('sha256').update(`em-dossier-reserve:${submissionId}`).digest().subarray(0, 16);
@@ -22,8 +23,9 @@ export function attachmentReservationId(submissionId: string) {
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-class BodyTooLarge extends Error {}
-async function boundedForm(request: Request): Promise<FormData> {
+export class AttachmentBodyTooLarge extends Error {}
+const BodyTooLarge = AttachmentBodyTooLarge;
+export async function boundedAttachmentForm(request: Request): Promise<FormData> {
   const maximum = MAX_PROJECT_ATTACHMENT_BYTES + 64 * 1024;
   const contentLength = request.headers.get('content-length');
   if (contentLength && (!/^\d+$/.test(contentLength) || Number(contentLength) > maximum)) throw new BodyTooLarge();
@@ -41,6 +43,7 @@ async function boundedForm(request: Request): Promise<FormData> {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   return new Response(bytes, { headers: { 'Content-Type': request.headers.get('content-type')! } }).formData();
 }
+const boundedForm = boundedAttachmentForm;
 export async function handleProjectAttachmentUpload(request: Request, projectId: string, dependencies: Dependencies): Promise<Response> {
   if (!sameOriginPost(request.headers.get('origin'), request.headers.get('host'))) return response(fail('42501', 'Origem da solicitação não autorizada.'), 403);
   if (!z.string().uuid().safeParse(projectId).success) return response(fail('INVALID_INPUT', 'Projeto inválido.'), 400);

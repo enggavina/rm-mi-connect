@@ -266,3 +266,13 @@ Nenhum novo APK, identidade/grant na Central, escrita no Bubble ou ativação da
 **Próxima prioridade:** substituição de anexos privados com versionamento, preservando os arquivos e as versões anteriores. Exclusão de arquivos não faz parte do próximo incremento. Word/relatórios, QR, cadastros complementares, capacidade/calendários/lotes, comercial, laboratório e coexistência continuam no plano; a paridade global permanece em andamento.
 
 [Contrato](../rm-mobile-supabase/WEB_PROJECT_COMMENT_REVISIONS.md). Provas locais ignoradas: `comment-revisions-032-{rehearse,apply}-proof.json`, `comment-revisions-postflight.json`, `comment-revisions-ci-proof.json`, `comment-revisions-deployment.json`, `comment-revisions-public-qa.json`, `public-sso-qa.json`, `project-comment-qa-summary.json`, `comment-revisions-browser-secret-audit.json` e logs `comment-revisions-{desktop-tests,build,smoke,sso-smoke,final-full}.log`.
+
+## Contrato de execução do incremento 033 — versões de anexos privados
+
+1. Consultar o anexo exato e as versões publicadas por projeto/ID, sem alterar a paginação ou ocultar registros da lista atual de documentos. Documentos gerados e anexos legados sem publicação privada comprovada permanecem em consulta.
+2. Substituir somente a versão atual de anexo privado comprovado, em projeto aberto, com permissão de gestão e leitura de documentos. Exigir novo arquivo, motivo, revisão e confirmação; manter autor/data/arquivo de cada versão anterior.
+3. Reservar a intenção, conferir bytes/tipo/SHA256, enviar objeto imutável em novo caminho e concluir uma nova linha de anexo. Revalidar projeto e versão atual na conclusão para impedir ramificações concorrentes.
+4. Preservar arquivo, corpo e protocolos da retentativa. Objetos pendentes não publicados ficam privados; não sobrescrever nem excluir arquivos para resolver conflitos. A ponte Bubble permanece desativada.
+5. Validar BFF, interface responsiva, banco isolado e concorrência; ensaiar nova migração com rollback, conferir preservação e publicar no Supabase/Railway EM.
+
+[Revisão Live e limites](discovery_rmmi_versoes_anexos.md). Incremento em desenvolvimento; resultado e evidências de publicação serão registrados após a validação.

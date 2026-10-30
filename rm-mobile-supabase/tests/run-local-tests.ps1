@@ -51,6 +51,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_dossier_search.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_equipment.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_comment_revisions.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_attachment_versions.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -96,12 +97,16 @@ try {
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '032_rm_web_project_comment_revisions.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_project_comment_revisions_upgrade.sql'
     }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '033_rm_web_project_attachment_versions.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_attachment_versions_upgrade.sql'
+    }
     $migration028Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\028_rm_web_cell_availability.sql'))
     $migration029Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\029_rm_web_project_dossier.sql'))
     $migration030Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\030_rm_web_project_dossier_search.sql'))
     $migration031Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\031_rm_web_project_equipment.sql'))
     $migration032Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\032_rm_web_project_comment_revisions.sql'))
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -c 'SET client_min_messages=warning' -f $executionFile
+    $migration033Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\033_rm_web_project_attachment_versions.sql'))
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -v "rm_migration_033_path=$migration033Path" -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit
