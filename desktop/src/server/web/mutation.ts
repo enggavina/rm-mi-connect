@@ -44,6 +44,9 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   if (operation === 'manage_operational_photos') {
     revalidatePath('/cronograma'); revalidatePath('/projetos', 'layout');
   }
+  if (operation === 'assign_form_reviewer') {
+    revalidatePath('/cronograma'); revalidatePath('/projetos', 'layout'); revalidatePath('/formularios', 'layout');
+  }
   return { ok: true, data: result };
 }
 

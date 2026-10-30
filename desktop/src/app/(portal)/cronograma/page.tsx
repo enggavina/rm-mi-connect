@@ -16,6 +16,8 @@ import { StageApprovalTable } from '@/components/web/stage-approval-list';
 import { GanttSchedule } from '@/components/web/gantt-schedule';
 import { ProjectAllocationList } from '@/components/web/project-schedule';
 import { OperationalPhotoEditor } from '@/components/web/operational-photo-editor';
+import { FormReviewerEditor } from '@/components/web/form-reviewer-editor';
+import { getFormReviewerAssignments } from '@/server/web/form-reviewer-data';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
 import s from '@/components/web/project-schedule.module.css';
 
@@ -77,12 +79,30 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const choices = canPlan && !closed ? await editorChoices('planning') : null;
   const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
+  const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
   const stages = current && tab === 'etapas' ? await reader.stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
   const cellNames = new Map(data.cells.map(cell => [cell.id, cell.nome]));
   const userNames = new Map(data.users.map(user => [user.id, user.nome]));
   const formNames = new Map(data.forms.map(form => [form.id, form.titulo]));
   const records = current ? allocationRecords(data.records, current) : [];
   const formIds = current ? [...new Set<string>([...(current.forms_ids || []), ...records.map(record => record.form_id)].filter((id): id is string => typeof id === 'string'))] : [];
+
+  const reviewerRecords = reviewers?.forms.flatMap(form => form.records) ?? [];
+  const reviewerRecordsCurrent = !reviewers || reviewers.complete && reviewers.records_complete
+    && reviewerRecords.length === records.length && reviewerRecords.every(record => records.some(row => row.id === record.id
+      && row.updated_at === record.updated_at && row.status === record.status && row.preenchido === record.preenchido
+      && (row.avaliador_user_id ?? null) === record.avaliador_user_id));
+  const recordPanels = Object.fromEntries([...new Set([...formIds, ...(reviewers?.forms.map(form => form.id) ?? [])])].map(formId => {
+    const submitted = records.filter(record => record.form_id === formId);
+    const snapshotRecords = reviewers?.forms.find(form => form.id === formId)?.records;
+    const changed = reviewers?.complete && reviewers.records_complete && (!snapshotRecords || snapshotRecords.length !== submitted.length
+      || snapshotRecords.some(record => !submitted.some(row => row.id === record.id && row.updated_at === record.updated_at
+        && row.status === record.status && row.preenchido === record.preenchido && (row.avaliador_user_id ?? null) === record.avaliador_user_id)));
+    if (changed) return [formId, <p className="notice" key={formId}>Os registros foram atualizados durante a consulta. <a className="text-link" href={scheduleHref(projectId, current?.id, 'formularios')}>Recarregar formulários da célula</a> para consultar o estado atual.</p>];
+    return [formId, submitted.length ? <div className="table-scroll" key={formId}><table className="data-table"><thead><tr><th>Registro</th><th>Operador</th><th>Status</th><th>Registro em</th><th className="table-action">Consultar</th></tr></thead><tbody>{submitted.map(record => <tr key={record.id}>
+      <td>{record.codigo_text || record.codigo || 'Sem código'}<span className="table-subtitle">{record.preenchido ? 'Preenchido' : 'Em preenchimento'}{record.revisado ? ' · Revisado' : ''}</span></td><td>{userNames.get(record.identidade_user_id) || userNames.get(record.created_by_user_id) || 'Não informado'}{record.avaliador_user_id && <span className="table-subtitle">Avaliador do registro: {userNames.get(record.avaliador_user_id) || 'Não disponível'}</span>}</td><td><Status value={record.status} /></td><td>{date(record.created_at, true)}</td><td className="table-action"><Link href={`/formularios/${record.id}`} aria-label={`Consultar respostas de ${formNames.get(formId) || 'formulário'}`}><Icon name="arrow" size={15} /></Link></td>
+    </tr>)}</tbody></table></div> : <p className="form-note" key={formId}>Aguardando preenchimento pela equipe.</p>];
+  }));
 
   return <>{heading}{viewNavigation}<a className="back-link" href={scheduleHref()}><Icon name="back" size={15} />Trocar projeto</a>
     <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</h2><p>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</p></div><div className="heading-actions"><Status value={project.status_pcp} /><Link className="button small secondary" href={`/projetos/${projectId}`}>Informações do projeto</Link>{canEditProject && <Link className="button small secondary" href={`/projetos/${projectId}/editar`}><Icon name="edit" size={14} />Editar projeto</Link>}</div></div>
@@ -105,16 +125,11 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
           <OperationalPhotoEditor key={`${current.id}:${photos.photos_version}`} snapshot={photos} canManage={canPlan}
             destination={scheduleHref(projectId, current.id, 'fotos')} />
         </section>}
-        {tab === 'formularios' && <section className="panel"><div className="panel-header"><div><h2>Formulários da célula <span className="inline-count">{formIds.length}</span></h2><p>Vínculos do projeto e registros preservados da execução.</p></div></div>
-          {formIds.length ? formIds.map(formId => {
-            const submitted = records.filter(record => record.form_id === formId);
-            return <div className="panel-content" key={formId}><h3 className={s.slotTitle}>{formNames.get(formId) || 'Formulário não disponível'}</h3>
-              {!current.forms_ids?.includes(formId) && <p className="form-note">Registro histórico de formulário que não está no vínculo atual.</p>}
-              {submitted.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Registro</th><th>Operador</th><th>Status</th><th>Registro em</th><th className="table-action">Consultar</th></tr></thead><tbody>{submitted.map(record => <tr key={record.id}>
-                <td>{record.codigo_text || record.codigo || 'Sem código'}<span className="table-subtitle">{record.preenchido ? 'Preenchido' : 'Em preenchimento'}{record.revisado ? ' · Revisado' : ''}</span></td><td>{userNames.get(record.identidade_user_id) || userNames.get(record.created_by_user_id) || 'Não informado'}{record.avaliador_user_id && <span className="table-subtitle">Avaliador: {userNames.get(record.avaliador_user_id) || 'Não disponível'}</span>}</td><td><Status value={record.status} /></td><td>{date(record.created_at, true)}</td><td className="table-action"><Link href={`/formularios/${record.id}`} aria-label={`Consultar respostas de ${formNames.get(formId) || 'formulário'}`}><Icon name="arrow" size={15} /></Link></td>
-              </tr>)}</tbody></table></div> : <p className="form-note">Aguardando preenchimento pela equipe.</p>}
-            </div>;
-          }) : <Empty title="Nenhum formulário vinculado" detail="O planejamento pode vincular os formulários publicados para esta célula." icon="clipboard" />}
+        {tab === 'formularios' && <section className="panel"><div className="panel-header"><div><h2>Formulários da célula <span className="inline-count">{reviewers?.total ?? formIds.length}</span></h2><p>Defina o avaliador dos próximos envios e consulte os registros da execução.</p></div></div>
+          {reviewers && reviewers.complete && reviewers.records_complete && !reviewerRecordsCurrent && <p className="notice" role="status">Os registros mudaram durante a consulta. Recarregue os formulários da célula antes de atribuir um avaliador.</p>}
+          {reviewers ? <FormReviewerEditor key={`${current.id}:${reviewers.forms.map(form => form.context_version).join('|')}`} snapshot={reviewers} canManage={canPlan && reviewerRecordsCurrent}
+            destination={scheduleHref(projectId, current.id, 'formularios')} recordPanels={recordPanels} />
+            : <><p className="notice" role="status">O contexto dos avaliadores não está mais disponível. Recarregue a célula antes de atribuir.</p>{Object.entries(recordPanels).map(([id, panel]) => <div className="panel-content" key={id}><h3 className={s.slotTitle}>{formNames.get(id) || 'Formulário não disponível'}</h3>{panel}</div>)}</>}
         </section>}
         {tab === 'etapas' && stages && <section className="panel"><div className="panel-header"><h2>Aprovações da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
       </> : <section className="panel"><Empty title="Selecione uma célula" detail="Escolha uma célula do roteiro para consultar datas, planejamento, fotos, formulários e aprovações." icon="board" /></section>}
