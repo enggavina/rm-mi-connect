@@ -77,7 +77,7 @@ do $$ begin
     raise exception 'FAIL: null role wrote project'; exception when insufficient_privilege then null; end;
 end $$;
 select set_config('request.jwt.claim.sub','14000000-0000-4000-8000-000000000002',true);
-do $$ declare p jsonb; r jsonb; v timestamptz; begin
+do $$ declare p jsonb; r jsonb; v timestamptz; availability jsonb; begin
   p:=jsonb_build_object('projeto_id','94000000-0000-4000-8000-000000000001','celula_id','34000000-0000-4000-8000-000000000001',
     'expected_updated_at',null,'changes',jsonb_build_object('data_inicio','2026-11-01T10:00:00Z','data_limite','2026-11-02T10:00:00Z','horas_previstas',2.5));
   r:=public.rm_web_mutate_v1('a4000000-0000-4000-8000-000000000002','plan_cell',p);
@@ -98,10 +98,20 @@ do $$ declare p jsonb; r jsonb; v timestamptz; begin
   begin
     perform public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_set(p,'{changes}','{"forms_ids":["64000000-0000-4000-8000-000000000002"]}'));
     raise exception 'FAIL: inactive form added'; exception when invalid_parameter_value then null; end;
-  r:=public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_set(p,'{changes}','{"observacao":"Plan","visibilidade":false}'));
+  begin
+    perform public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_set(p,'{changes}','{"observacao":"Plan","visibilidade":false}'));
+    raise exception 'FAIL: old planning bypassed the dedicated visibility command'; exception when invalid_parameter_value then null; end;
+  perform pg_temp.check((select visibilidade and updated_at=v and observacao is null from public.rm_celulas_projeto where id=(r->>'id')::uuid),
+    'rejected old visibility edit preserves the allocation and its exact version');
+  r:=public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_set(p,'{changes}','{"observacao":"Plan"}'));
   begin
     perform public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_set(p,'{changes}','{"observacao":"Stale"}'));
     raise exception 'FAIL: stale planning overwrote newer version'; exception when sqlstate 'PT409' then null; end;
+  availability:=public.rm_web_cell_availability_snapshot_v1('94000000-0000-4000-8000-000000000001',(r->>'id')::uuid);
+  r:=public.rm_web_mutate_v1(gen_random_uuid(),'manage_cell_availability',jsonb_build_object('action','set_visibility',
+    'projeto_id','94000000-0000-4000-8000-000000000001','celula_projeto_id',r->>'id',
+    'expected_project_updated_at',availability->'project'->>'updated_at','expected_allocation_updated_at',availability->'allocation'->>'updated_at',
+    'expected_context_version',availability->>'context_version','visibilidade',false,'confirm_change',true));
   perform set_config('rm.test.web_cell',r->>'id',true);
   perform set_config('rm.test.web_cell_version',r->>'updated_at',true);
   perform public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',jsonb_build_object(
@@ -210,6 +220,7 @@ do $$ begin
 end $$;
 reset role;
 select pg_temp.check(not has_function_privilege('anon','public.rm_web_mutate_v1(uuid,text,jsonb)','EXECUTE'),'anonymous RPC denied');
-select pg_temp.check((select count(*)=7 from rm_private.web_mutation_receipts),'only successful unique mutations have receipts');
+select pg_temp.check((select count(*)=8 and count(*) filter(where operation='manage_cell_availability')=1 from rm_private.web_mutation_receipts),
+  'only successful unique mutations, including the dedicated visibility command, have receipts');
 select 'PASS: web actor permissions, idempotency, optimistic versions, materialization and mobile review compatibility' as result;
 rollback;

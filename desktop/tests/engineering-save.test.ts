@@ -18,7 +18,11 @@ const success: WebActionResult = { ok: true, data: { operation: 'delete_photo_ti
 test('one frozen title attempt prevents parallel save and keeps delete through an uncertain retry', async () => {
   const paths: string[] = [], calls: PhotoTitleAttempt[] = [];
   const prior = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { assign: (path: string) => paths.push(path) } } });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    location: { href: 'https://em.example.invalid/engenharia/titulos/title', assign: (path: string) => paths.push(path),
+      reload: () => assert.fail('Different native destinations must retain assign.') },
+    history: { state: {}, replaceState: () => assert.fail('Different native destinations must preserve their history behavior.') },
+  } });
   try {
     let release!: (value: WebActionResult) => void;
     const first = new Promise<WebActionResult>(resolve => { release = resolve; });

@@ -73,8 +73,15 @@ insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,status_ce
   (pg_temp.stage_key('7',6),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),null),
   (pg_temp.stage_key('7',7),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia'),
   (pg_temp.stage_key('7',9),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'pendente');
-insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,status_cel_proj,celula_projeto_id)
- values(pg_temp.stage_key('7',4),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia',pg_temp.stage_key('6',3));
+-- The malformed historical-link consultation is retained in the 028 upgrade
+-- fixture (written before the new guard). New inconsistent writes are refused.
+do $$ begin
+ begin insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,status_cel_proj,celula_projeto_id)
+  values(pg_temp.stage_key('7',4),pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'em_dia',pg_temp.stage_key('6',3));
+  raise exception 'FAIL: new mismatched allocation link accepted'; exception when invalid_parameter_value then null; end;
+ perform pg_temp.check(not exists(select 1 from public.rm_aprovacoes_etapas where id=pg_temp.stage_key('7',4)),
+  'rejected incoherent stage creates no operational row');
+end $$;
 update public.rm_aprovacoes_etapas set status='aprovado' where id=pg_temp.stage_key('7',7);
 insert into public.rm_aprovacoes_etapas(id,celula_origem_id,status_cel_proj) values(pg_temp.stage_key('7',8),pg_temp.stage_key('4',1),'em_dia');
 insert into public.rm_logs_aprovacao(id,projeto_id,celula_id,aprovador_id,status_aprovacao)
@@ -87,16 +94,17 @@ select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key(
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',2))->'available_actions'='["aprovar"]','return stage approves even before Retornado, never liberates');
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',3))->'allocation'='null'::jsonb
   and public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',3))->'available_actions'='[]','missing allocation remains read-only');
-select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',4))->'available_actions'='[]','explicit mismatched allocation stays read-only');
+-- Pre-existing mismatched linkage remains read-only: proven after installation
+-- by web_cell_availability_upgrade.sql, without disabling the new write guard.
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',1))->'project'->>'cliente_nome'='Cliente da aprovação','current client and historical fallback are distinct');
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',1))->'legacy_history'->0->>'id'=pg_temp.stage_key('a',1)::text,'unlinked history stays cell-only');
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(pg_temp.stage_key('7',8)) is null,'template is not a project approval');
 select pg_temp.check(public.rm_web_stage_approval_snapshot_v1(gen_random_uuid()) is null,'absent detail is null');
-select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'',1,2)->>'total')::int=8
+select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'',1,2)->>'total')::int=7
   and jsonb_array_length(public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'',1,2)->'items')=2,'stable paginated total excludes templates');
 select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'pending',true,'',1,25)->>'total')::int=3,'mine means executable now');
 select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),pg_temp.stage_key('4',1),'approved',false,'',1,25)->>'total')::int=1,'state and cell filters');
-select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'cliente da aprovação',1,25)->>'total')::int=8,'literal search includes current client');
+select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'cliente da aprovação',1,25)->>'total')::int=7,'literal search includes current client');
 select pg_temp.check((public.rm_web_stage_approvals_v1(pg_temp.stage_key('5',1),null,'all',false,'%',1,25)->>'total')::int=0,'search is literal, not wildcard');
 reset role;
 do $$ declare snapshot jsonb; begin
@@ -113,7 +121,6 @@ do $$ declare snapshot jsonb; begin
   perform pg_temp.reject_stage(pg_temp.stage_payload(1)||'{"expected_updated_at":"2000-01-01T00:00:00Z"}','PT409');
   perform pg_temp.reject_stage(pg_temp.stage_payload(1)||'{"expected_cell_updated_at":"2000-01-01T00:00:00Z"}','PT409');
   perform pg_temp.reject_stage(pg_temp.stage_payload(1)||'{"expected_updated_at":"infinity"}','22023');
-  perform pg_temp.reject_stage(pg_temp.stage_payload(4),'22023');
   perform pg_temp.reject_stage(pg_temp.stage_payload(3)||jsonb_build_object('expected_cell_updated_at',clock_timestamp()),'P0002');
   perform pg_temp.reject_stage(pg_temp.stage_payload(8)||jsonb_build_object('expected_cell_updated_at',clock_timestamp()),'P0002');
   perform pg_temp.reject_stage(pg_temp.stage_payload(9),'22023');

@@ -19,6 +19,9 @@ import { OperationalPhotoEditor } from '@/components/web/operational-photo-edito
 import { FormReviewerEditor } from '@/components/web/form-reviewer-editor';
 import { getFormReviewerAssignments } from '@/server/web/form-reviewer-data';
 import { getOperationalStageRules } from '@/server/web/operational-stage-rule-data';
+import { getCellAvailability } from '@/server/web/cell-availability-data';
+import { availabilityMatchesContext } from '@/components/web/cell-availability-model';
+import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
 import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
 import s from '@/components/web/project-schedule.module.css';
@@ -68,6 +71,9 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const project = data.project;
   const allocations = orderedProjectAllocations(data.allocations, projectId);
   const current = selectedAllocation(allocations, projectId, params.allocation);
+  const availability = current ? await getCellAvailability(projectId, current.id) : null;
+  const availabilityCurrent = !!availability && !!current && availabilityMatchesContext(availability, project, current);
+  const currentWritable = !!current && current.retirada !== true && availabilityCurrent && !availability?.allocation.retirada;
   const tabs: { id: ScheduleTab; label: string }[] = [
     ...(hasWebCapability(session, 'em.photos.read') ? [{ id: 'fotos' as const, label: 'Fotos previstas' }] : []),
     ...(hasWebCapability(session, 'em.forms.read') ? [{ id: 'formularios' as const, label: 'Formulários' }] : []),
@@ -76,9 +82,10 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const tab = scheduleTab(params.tab, tabs.map(item => item.id));
   const manager = ['administrador', 'padr_o'].includes(session.profile.perfil);
   const canPlan = manager && hasWebCapability(session, 'em.planning.manage');
+  const canPlanCurrent = canPlan && currentWritable;
   const canEditProject = manager && hasWebCapability(session, 'em.projects.manage');
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
-  const choices = canPlan && !closed ? await editorChoices('planning') : null;
+  const choices = canPlan && !closed && (!current || currentWritable) ? await editorChoices('planning') : null;
   const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
@@ -118,35 +125,38 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
       <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
     </section>
     {closed && <p className="notice" role="status">Este projeto está encerrado. O planejamento permanece disponível para consulta.</p>}
-    {route && route.total > 0 && canPlan && !closed && <details className="panel"><summary className={s.orderSummary}><span>Organizar sequência de execução</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary><div className="panel-content">
+    {route && route.total > 0 && canPlan && !closed && (!current || currentWritable) && <details className="panel"><summary className={s.orderSummary}><span>Organizar sequência de execução</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary><div className="panel-content">
       <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={scheduleHref(projectId, current?.id, tab)} />
     </div></details>}
     {params.allocation && !current && <p className="notice" role="status">A célula selecionada não pertence a este projeto ou não está mais disponível. Selecione uma célula do roteiro.</p>}
     <div className={s.workspace}><div><ProjectAllocationList projectId={projectId} allocations={allocations} cells={data.cells} selectedId={current?.id} tab={tab} />
-      {choices && data.cells.some(cell => !allocations.some(row => row.celula_id === cell.id)) && <CellEditor key={projectId} projectId={projectId} cells={data.cells.filter(cell => !allocations.some(row => row.celula_id === cell.id))} forms={choices.forms} users={choices.users} />}
+      {choices && data.cells.some(cell => !allocations.some(row => row.celula_id === cell.id)) && <CellEditor key={projectId} projectId={projectId} cells={data.cells.filter(cell => !allocations.some(row => row.celula_id === cell.id))} forms={choices.forms} users={choices.users} destination={scheduleHref(projectId)} />}
     </div><div className={s.context}>
-      {current ? <><section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{cellNames.get(current.celula_id) || 'Célula selecionada'}</h2><p>{current.visibilidade ? 'Disponível no mobile' : 'Oculta no mobile'} · {current.forms_ids?.length || 0} formulários vinculados</p></div><div className="heading-actions"><Status value={current.status} /><a className="button small secondary" href={scheduleHref(projectId)}><Icon name="close" size={14} />Fechar célula</a></div></div>
+      {current ? <><section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{cellNames.get(current.celula_id) || 'Célula selecionada'}</h2><p>{current.retirada ? 'Retirada do planejamento · consulta histórica' : current.visibilidade ? 'Disponível no mobile' : 'Oculta no mobile'} · {current.forms_ids?.length || 0} formulários vinculados</p></div><div className="heading-actions"><Status value={current.status} /><a className="button small secondary" href={scheduleHref(projectId)}><Icon name="close" size={14} />Fechar célula</a></div></div>
         <div className="panel-content"><Details values={[[ 'Início previsto', date(current.data_inicio)], ['Prazo', date(current.data_limite)], ['Responsável', userNames.get(current.responsavel_id)], ['Prioridade', display(current.prioridade)], ['Execução', current.bloqueada === 'sim' ? `Bloqueada · ${current.motivo_bloqueio || 'Motivo não informado'}` : 'Sem bloqueio'], ['Observação', current.observacao]]} />
-          {choices && !['finalizado', 'n_a'].includes(current.status) && <CellEditor key={current.id} projectId={projectId} allocation={current} cells={data.cells} forms={choices.forms} users={choices.users} />}
+          {current.retirada && <p className="notice">Esta alocação foi retirada. Seus registros e vínculos permanecem disponíveis para consulta; restaurar conserva o mesmo identificador e começa com a célula oculta no mobile.</p>}
+          <AllocationPlanningPanel key={`${current.id}:${availability?.context_version ?? current.updated_at}`} projectId={projectId} allocation={current} cells={data.cells}
+            forms={choices?.forms ?? data.forms} users={choices?.users ?? data.users} snapshot={availability} canManage={canPlan} canPlan={canPlanCurrent && !closed}
+            destination={scheduleHref(projectId, current.id, tab)} current={availabilityCurrent} />
         </div></section>
         {tabs.length ? <nav className="tabs" aria-label="Registros da célula">{tabs.map(item => <a key={item.id} href={scheduleHref(projectId, current.id, item.id)} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav> : <p className="notice">Seu acesso permite consultar o planejamento. As demais áreas dependem das permissões de fotos, formulários ou aprovações.</p>}
         {tab === 'fotos' && photos && <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>Fotos previstas e registradas <span className="inline-count">{photos.total}</span></h2><p>Defina os títulos obrigatórios desta célula e acompanhe as capturas.</p></div><a className="text-link" href={`/projetos/${projectId}?tab=fotos`}>Abrir galeria<Icon name="arrow" size={14} /></a></div>
-          <OperationalPhotoEditor key={`${current.id}:${photos.photos_version}`} snapshot={photos} canManage={canPlan}
+          <OperationalPhotoEditor key={`${current.id}:${photos.photos_version}`} snapshot={photos} canManage={canPlanCurrent}
             destination={scheduleHref(projectId, current.id, 'fotos')} />
         </section>}
         {tab === 'formularios' && <section className="panel"><div className="panel-header"><div><h2>Formulários da célula <span className="inline-count">{reviewers?.total ?? formIds.length}</span></h2><p>Defina o avaliador dos próximos envios e consulte os registros da execução.</p></div></div>
           {reviewers && reviewers.complete && reviewers.records_complete && !reviewerRecordsCurrent && <p className="notice" role="status">Os registros mudaram durante a consulta. Recarregue os formulários da célula antes de atribuir um avaliador.</p>}
-          {reviewers ? <FormReviewerEditor key={`${current.id}:${reviewers.forms.map(form => form.context_version).join('|')}`} snapshot={reviewers} canManage={canPlan && reviewerRecordsCurrent}
+          {reviewers ? <FormReviewerEditor key={`${current.id}:${reviewers.forms.map(form => form.context_version).join('|')}`} snapshot={reviewers} canManage={canPlanCurrent && reviewerRecordsCurrent}
             destination={scheduleHref(projectId, current.id, 'formularios')} recordPanels={recordPanels} />
             : <><p className="notice" role="status">O contexto dos avaliadores não está mais disponível. Recarregue a célula antes de atribuir.</p>{Object.entries(recordPanels).map(([id, panel]) => <div className="panel-content" key={id}><h3 className={s.slotTitle}>{formNames.get(id) || 'Formulário não disponível'}</h3>{panel}</div>)}</>}
         </section>}
         {tab === 'etapas' && <>
           {stageRules ? <details className="panel"><summary className={s.orderSummary}><span>{canPlan ? 'Configurar regras de etapas' : 'Consultar regras de etapas'}</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary>
-            {stageRules.complete && stageRules.allocations_complete && !stageRulesCurrent && <div className="panel-content"><p className="notice" role="status">As etapas ou a célula mudaram durante a consulta. <a className="text-link" href={scheduleHref(projectId, current.id, 'etapas')}>Recarregar regras e decisões</a> antes de configurar.</p></div>}
-            <OperationalStageRuleEditor key={`${current.id}:${stageRules.rules_version}`} snapshot={stageRules} canManage={canPlan && stageRulesCurrent}
+            {stageRules.complete && stageRules.allocations_complete && !stageRulesCurrent && current.retirada !== true && <div className="panel-content"><p className="notice" role="status">As etapas ou a célula mudaram durante a consulta. <a className="text-link" href={scheduleHref(projectId, current.id, 'etapas')}>Recarregar regras e decisões</a> antes de configurar.</p></div>}
+            <OperationalStageRuleEditor key={`${current.id}:${stageRules.rules_version}`} snapshot={stageRules} canManage={canPlanCurrent && stageRulesCurrent}
               destination={scheduleHref(projectId, current.id, 'etapas')} />
           </details> : <p className="notice" role="status">O contexto de configuração não está disponível. Recarregue a célula antes de alterar regras.</p>}
-          {stages && <section className="panel"><div className="panel-header"><h2>Decisões da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
+          {stages && <section className="panel"><div className="panel-header"><h2>Decisões da célula <span className="inline-count">{stages.total}</span></h2></div><StageApprovalTable items={current.retirada ? stages.items.map(item => ({ ...item, available_actions: [], action_reason: 'Célula retirada do planejamento: somente consulta.' })) : stages.items} canProjects hideProject /><Pagination {...stages} base="/cronograma" filters={{ view: 'project', project: projectId, allocation: current.id, tab: 'etapas' }} /></section>}
         </>}
       </> : <section className="panel"><Empty title="Selecione uma célula" detail="Escolha uma célula do roteiro para consultar datas, planejamento, fotos, formulários e aprovações." icon="board" /></section>}
     </div></div>

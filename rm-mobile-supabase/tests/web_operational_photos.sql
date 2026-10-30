@@ -72,7 +72,15 @@ insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,cadastro_f
   case when n=5 then 'Operational title 5' when n=13 then 'Slot 1' else 'Slot '||n end,n*3,
   case when n in(2,6) then 'https://example.invalid/main.jpg' when n=12 then '   ' end,
   case when n in(3,14) then array['','https://example.invalid/list.jpg'] when n=12 then array['','   '] else '{}' end,
-  n in(5,13,14),n=4,'existing tag','preserved legend' from generate_series(1,14) n;
+  n in(5,13,14),n=4,'existing tag','preserved legend' from generate_series(1,14) n where n<>9;
+-- Pre028 malformed-slot consultation remains covered in the availability
+-- upgrade. New incoherent writes are now forbidden without partial insertion.
+do $$ begin
+ begin insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,categoria_foto,titulo)
+  values(pg_temp.op_key('c',9),pg_temp.op_key('5',1),pg_temp.op_key('4',1),pg_temp.op_key('6',6),'obrigat_ria','New incoherent slot');
+  raise exception 'FAIL: mismatched new photo context accepted'; exception when invalid_parameter_value then null; end;
+ perform pg_temp.op_check(not exists(select 1 from public.rm_fotos where id=pg_temp.op_key('c',9)),'incoherent rejected slot creates no partial photo');
+end $$;
 insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
  values(extensions.digest('operational-offline-fixture','sha256'),pg_temp.op_key('1',1),pg_temp.op_key('2',1),pg_temp.op_key('2',1),clock_timestamp()+interval '1 day');
 select pg_temp.op_actor(1);
@@ -329,21 +337,8 @@ exception when others then
  if 'operational_b'=any(dblink_get_connections()) then perform dblink_disconnect('operational_b'); end if; raise;
 end $$;
 select 'PASS: 12 real races cover mobile capture/tag/retirement, add and restore same UUID, stale batches, raw title updates, project closure and blocked late tag' as result;
+-- Concurrent fixtures remain intact only in this disposable local cluster.
+-- The runner destroys the cluster; cleanup must not bypass protected DELETE.
 begin;
-delete from rm_private.mobile_mutation_receipts where auth_user_id=rm_test_operational.key('1',1);
-delete from rm_private.web_mutation_receipts where auth_user_id=rm_test_operational.key('1',1);
-delete from rm_private.sso_action_permits where session_hash=repeat('b6',32);
-delete from rm_private.operator_delegations where auth_user_id=rm_test_operational.key('1',1);
-delete from rm_private.sso_sessions where hash=repeat('b6',32);
-delete from rm_private.sso_identity_bindings where id=rm_test_operational.key('8',1);
-delete from public.rm_fotos where projeto_id in(select rm_test_operational.key('5',n) from generate_series(1,12) n);
-delete from public.rm_celulas_projeto where projeto_id in(select rm_test_operational.key('5',n) from generate_series(1,12) n);
-delete from public.rm_projetos where id in(select rm_test_operational.key('5',n) from generate_series(1,12) n);
-delete from public.rm_cadastro_fotos where id in(select rm_test_operational.key('a',n) from generate_series(1,12) n);
-delete from public.rm_celulas where id in(select rm_test_operational.key('4',n) from generate_series(1,12) n);
-delete from public.rm_users where id=rm_test_operational.key('2',1);
-delete from auth.sessions where user_id=rm_test_operational.key('1',1);
-delete from auth.users where id=rm_test_operational.key('1',1);
-drop schema rm_test_operational cascade;
 update rm_private.sso_settings set require_sso=false;
 commit;

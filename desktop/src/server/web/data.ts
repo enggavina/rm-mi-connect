@@ -20,7 +20,7 @@ const USER = 'id,nome,matricula,cargo,perfil,status,foto_url';
 const CLIENT = 'id,codigo,nome,descricao';
 const CELL = 'id,codigo,nome,indice,ordem';
 const FORM = 'id,titulo,title,descricao,tipo,ativo,usa_aprovacao,updated_at';
-const ALLOCATION = 'id,projeto_id,celula_id,numero_projeto,cliente_nome_export,tipo_equipamento_nome_export,status,bloqueada,motivo_bloqueio,motivo_atraso,observacao,visibilidade,prioridade,indice,posicao,horas_previstas,horas_realizadas,data_inicio,data_limite,data_fim_real,responsavel_id,forms_ids,updated_at';
+const ALLOCATION = 'id,projeto_id,celula_id,numero_projeto,cliente_nome_export,tipo_equipamento_nome_export,status,bloqueada,motivo_bloqueio,motivo_atraso,observacao,visibilidade,retirada,prioridade,indice,posicao,horas_previstas,horas_realizadas,data_inicio,data_limite,data_fim_real,responsavel_id,forms_ids,updated_at';
 const RECORD = 'id,projeto_id,numero_projeto_rm,celula_id,form_id,codigo,codigo_text,descricao,status,preenchido,revisado,parecer,data_conclusao,data_revisao,created_by_user_id,identidade_user_id,responsavel_user_id,avaliador_user_id,aprovadores_ids,user_revisao_id,created_at,updated_at';
 const ANSWER = 'id,registro_formulario_id,questao_id,titulo_form,indice,enunciado,tag,tipo,dimensoes,resposta,itens,itens_questoes_ids,fotos_urls,assinatura_url,date_inicio,data_fim,hora,revisar,updated_at';
 const QUESTION = 'id,form_id,indice,enunciado,subtitulo,tag,tipo,subtipo,dimensoes,obrigatorio';
@@ -103,11 +103,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const [projects, activeProjects, awaitingReview, overdueCells, reportCount, attachmentCount, recent, records, overdue] = await Promise.all([
       access.projects ? count('rm_projetos') : null, access.projects ? count('rm_projetos', q => q.is('data_real_de_entrega', null).or(ACTIVE)) : null,
       access.forms ? count('rm_registros_formulario', q => q.eq('status', 'em_an_lise')) : null,
-      access.planning ? count('rm_celulas_projeto', q => q.lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true)) : null,
+      access.planning ? count('rm_celulas_projeto', q => q.eq('retirada', false).lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true)) : null,
       access.documents ? count('rm_documentos') : null, access.documents ? count('rm_docs') : null,
       access.projects ? client.from('rm_projetos').select(projectColumns).order('updated_at', { ascending: false }).order('id').limit(8) : none,
       access.forms ? client.from('rm_registros_formulario').select(RECORD).eq('status', 'em_an_lise').order('updated_at', { ascending: false }).order('id').limit(8) : none,
-      access.planning ? client.from('rm_celulas_projeto').select(ALLOCATION).lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true).order('data_limite').order('id').limit(8) : none,
+      access.planning ? client.from('rm_celulas_projeto').select(ALLOCATION).eq('retirada', false).lt('data_limite', new Date().toISOString()).neq('status', 'finalizado').eq('visibilidade', true).order('data_limite').order('id').limit(8) : none,
     ]);
     const recentRows = (checked(recent) as any).data as WebRow[];
     const recentClients = await byIds('rm_clientes', CLIENT, recentRows.map(row => row.cliente_id));
@@ -122,11 +122,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function listProjects(filters: ProjectFilters = {}) {
     requireCapability('em.projects.read');
     if (filters.cell) requireCapability('em.planning.read');
-    let query: any = client.from('rm_projetos').select(projectColumns + (filters.cell ? ',allocations:rm_celulas_projeto!inner(celula_id)' : ''), { count: 'exact' });
+    let query: any = client.from('rm_projetos').select(projectColumns + (filters.cell ? ',allocations:rm_celulas_projeto!inner(celula_id,retirada)' : ''), { count: 'exact' });
     query = applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao', 'descricao_equipamento']);
     if (filters.status) query = query.eq('status_pcp', filters.status);
     if (filters.client) query = query.eq('cliente_id', uuid.parse(filters.client));
-    if (filters.cell) query = query.eq('allocations.celula_id', uuid.parse(filters.cell));
+    if (filters.cell) query = query.eq('allocations.celula_id', uuid.parse(filters.cell)).eq('allocations.retirada', false);
     const [result, clients, cells, statuses] = await Promise.all([
       page(query.order('updated_at', { ascending: false }).order('id'), filters.page, 25),
       all('rm_clientes', 'id,nome', undefined, 'nome'), allowed('em.planning.read') ? all('rm_celulas', CELL, undefined, 'nome') : [], options('status_pcp'),
@@ -187,7 +187,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function listPlanning(filters: PlanningFilters = {}) {
     requireCapability('em.planning.read');
-    let query: any = client.from('rm_celulas_projeto').select(ALLOCATION + (allowed('em.projects.read') ? ',project:rm_projetos!inner(id,numero,nome,status_pcp,data_real_de_entrega,cliente_nome_exportacao)' : ''), { count: 'exact' });
+    let query: any = client.from('rm_celulas_projeto').select(ALLOCATION + (allowed('em.projects.read') ? ',project:rm_projetos!inner(id,numero,nome,status_pcp,data_real_de_entrega,cliente_nome_exportacao)' : ''), { count: 'exact' }).eq('retirada', false);
     if (filters.cell) query = query.eq('celula_id', uuid.parse(filters.cell));
     if (filters.status) query = query.eq('status', filters.status);
     query = allowed('em.projects.read') ? applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao'], 'project') : applySearch(query, filters.q, ['numero_projeto', 'cliente_nome_export']);

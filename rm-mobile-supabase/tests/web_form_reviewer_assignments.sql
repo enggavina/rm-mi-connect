@@ -168,8 +168,10 @@ do $$ declare p jsonb; r jsonb; original jsonb; state text; begin
  p:=pg_temp.fa_import(1,3); set local role service_role; r:=public.rm_bootstrap_form_reviewer_assignment_v1(p); reset role;
  perform pg_temp.fa_check(r->>'status'='inserted' and (select not(x->'assignment'->>'eligible')::boolean and not(x->>'can_assign')::boolean from jsonb_array_elements(public.rm_web_form_reviewer_assignments_snapshot_v1(pg_temp.fa_key('5',3),pg_temp.fa_key('6',3),true)->'forms') x where x->>'id'=pg_temp.fa_key('a',1)::text),'closed/inactive real history grants no eligibility');
  update public.rm_users set status='ativo' where id=pg_temp.fa_key('2',5);
- begin update public.rm_celulas_projeto set celula_id=pg_temp.fa_key('4',2) where id=pg_temp.fa_key('6',3); raise exception 'FAIL: silently moved contextual assignment'; exception when integrity_constraint_violation then null; end;
- begin delete from public.rm_celulas_projeto where id=pg_temp.fa_key('6',3); raise exception 'FAIL: cascading assignment delete'; exception when integrity_constraint_violation then null; end;
+ begin update public.rm_celulas_projeto set celula_id=pg_temp.fa_key('4',2) where id=pg_temp.fa_key('6',3); raise exception 'FAIL: silently moved contextual assignment'; exception when invalid_parameter_value then null; end;
+ begin delete from public.rm_celulas_projeto where id=pg_temp.fa_key('6',3); raise exception 'FAIL: cascading assignment delete'; exception when invalid_parameter_value then null; end;
+ perform pg_temp.fa_check(exists(select 1 from pg_constraint where conrelid='public.rm_form_reviewer_assignments'::regclass and confrelid='public.rm_celulas_projeto'::regclass
+  and contype='f' and cardinality(conkey)=3 and confdeltype='r' and confupdtype='r'),'composite historical FK still forbids cascade/movement in addition to the new allocation guard');
  p:=pg_temp.fa_import(3); begin set local role service_role; perform public.rm_bootstrap_form_reviewer_assignment_v1(p); raise exception 'FAIL: bootstrap overwrote local designation'; exception when sqlstate 'PT409' then reset role; end;
 end $$;
 do $$ declare p jsonb:=pg_temp.fa_payload(); rid uuid:=gen_random_uuid(); begin
@@ -357,27 +359,8 @@ exception when others then
  if 'reviewer_b'=any(dblink_get_connections()) then perform dblink_disconnect('reviewer_b'); end if; raise;
 end $$;
 select 'PASS:20 real reviewer races cover approval, creation, correction, exact retry, revocation, bootstrap, raw approval/insertion and cell rename' as result;
+-- Concurrent fixtures remain intact only in this disposable local cluster.
+-- The runner destroys the cluster; cleanup must not bypass protected DELETE.
 begin;
-delete from rm_private.mobile_mutation_receipts where auth_user_id=rm_test_reviewer.key('1',1);
-delete from rm_private.web_mutation_receipts where auth_user_id=rm_test_reviewer.key('1',1);
-delete from rm_private.sso_action_permits where session_hash=repeat('c7',32);
-delete from rm_private.operator_delegations where auth_user_id=rm_test_reviewer.key('1',1);
-delete from rm_private.sso_sessions where hash=repeat('c7',32);
-delete from rm_private.sso_identity_bindings where id=rm_test_reviewer.key('8',1);
-delete from public.rm_form_reviewer_assignments where projeto_id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n);
-delete from public.rm_aprovacoes_registro where projeto_id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n);
-delete from public.rm_respostas where registro_formulario_id in(select id from public.rm_registros_formulario where projeto_id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n));
-delete from public.rm_registros_formulario where projeto_id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n);
-delete from public.rm_celulas_projeto where projeto_id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n);
-delete from public.rm_projetos where id in(select rm_test_reviewer.key('5',n) from generate_series(1,20) n);
-delete from public.rm_numeracoes where form_id in(select rm_test_reviewer.key('a',n) from generate_series(1,20) n);
-delete from public.rm_questoes where form_id in(select rm_test_reviewer.key('a',n) from generate_series(1,20) n);
-delete from public.rm_forms where id in(select rm_test_reviewer.key('a',n) from generate_series(1,20) n);
-delete from public.rm_tablet_celula_users where celula_id in(select rm_test_reviewer.key('4',n) from generate_series(1,20) n);
-delete from public.rm_celulas where id in(select rm_test_reviewer.key('4',n) from generate_series(1,20) n);
-delete from public.rm_users where id=rm_test_reviewer.key('2',1) or id in(select rm_test_reviewer.key('2',n+100) from generate_series(1,20) n);
-delete from auth.sessions where user_id=rm_test_reviewer.key('1',1);
-delete from auth.users where id=rm_test_reviewer.key('1',1);
-drop schema rm_test_reviewer cascade;
 update rm_private.sso_settings set require_sso=false;
 commit;

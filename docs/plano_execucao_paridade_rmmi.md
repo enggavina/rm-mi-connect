@@ -105,3 +105,11 @@ Pós-aplicação 027: 69 tabelas RM/privadas no total, 57 públicas com RLS; 102
 **Próxima prioridade objetiva:** exclusão/retirada protegida de alocação e reconciliação da visibilidade com a fila, preservando histórico, arquivos e trabalhos offline.
 
 Provas locais ignoradas: `stage-rules-027-{rehearse,apply}-proof.json`, `stage-rules-postflight.json`, `stage-rules-ci-proof.json`, `stage-rules-deployment.json`, `stage-rules-public-qa.json`, `public-sso-qa.json` e `operational-stage-rule-qa-summary.json`.
+
+## Planejamento do incremento 028: disponibilidade e retirada de alocações
+
+Próxima prioridade iniciada após a 027: separar a disponibilidade no mobile da retirada da alocação no projeto. A fila 021 inclui trabalhos abertos visíveis e ocultos; mudar a visibilidade não renumera posições, não altera prioridade nem muda o roteiro. A sequência continua sendo uma decisão explícita no editor da fila completa. O comportamento Bubble que conta somente visíveis e decrementa posições posteriores não será aplicado sobre esse contrato.
+
+A retirada será lógica, reversível e distinta de ocultar. Manter a linha, a unicidade projeto/célula, IDs de filhos, registros e configuração; nunca recriar a alocação nem rematerializar modelos para restaurá-la. Fora da operação e da carga enquanto retirada, mas consultável no contexto do projeto. A restauração conserva a posição histórica e começa oculta, exigindo disponibilização explícita. Evidência de execução/histórico deve bloquear a retirada, sem confundir ausência de registros no banco com ausência de rascunhos desconectados.
+
+Toda nova escrita operacional deve recusar um contexto retirado, incluindo formulários que identificam apenas projeto/célula e efeitos de avanço/retorno de outras etapas. Recibos concluídos continuam permitindo replay exato antes dessa guarda; intenções pendentes mantêm autor, UUID, conteúdo, arquivo e ordem da fila para reconciliação ou restauração explícita. Ocultar por si só não revoga esses envios. Materialização e edição antiga de planejamento não podem restaurar uma alocação retirada silenciosamente. Definir snapshot, autorização, versões e locks antes de implementar a migração 028; preservar 001–027, o Supabase EM e a ponte desativada.

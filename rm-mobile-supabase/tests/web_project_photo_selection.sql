@@ -51,12 +51,13 @@ insert into public.rm_projetos(id,numero,status_pcp,data_real_de_entrega) values
  (pg_temp.photo_key('5',1),'PHOTO-22-CLOSED','cancelado','2026-10-29T10:00:00Z'),
  (pg_temp.photo_key('5',2),'PHOTO-22-OTHER','finalizando_para_faturar',null);
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status)
- values(pg_temp.photo_key('7',1),pg_temp.photo_key('5',1),pg_temp.photo_key('4',1),'finalizado');
+ values(pg_temp.photo_key('7',1),pg_temp.photo_key('5',1),pg_temp.photo_key('4',1),'finalizado'),
+ (pg_temp.photo_key('7',2),pg_temp.photo_key('5',2),pg_temp.photo_key('4',1),'finalizado');
 insert into public.rm_fotos(id,bubble_id,projeto_id,celula_id,celula_projeto_id,categoria_foto,titulo,descricao,legenda,tag,
  foto_url,fotos_arquivos_urls,numero,numero_foto_complementar,lixeira,selecao_relatorio,created_by_user_id,sync_source)
  select pg_temp.photo_key('6',n),'photo-local-22-'||n,
   case when n=6 then null when n=3 then pg_temp.photo_key('5',2) else pg_temp.photo_key('5',1) end,
-  pg_temp.photo_key('4',1),case when n<>6 then pg_temp.photo_key('7',1) end,'obrigat_ria','Photo '||n,'Description','Caption','FRONTAL',
+  pg_temp.photo_key('4',1),case when n=3 then pg_temp.photo_key('7',2) when n<>6 then pg_temp.photo_key('7',1) end,'obrigat_ria','Photo '||n,'Description','Caption','FRONTAL',
   case when n=5 then '   ' when n=7 then null else 'https://example.invalid/photo-'||n||'.jpg' end,
   array['https://example.invalid/attachment.pdf'],17,3,n=4,false,pg_temp.photo_key('2',2),'bubble'
  from generate_series(1,7) n;

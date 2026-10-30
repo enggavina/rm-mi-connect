@@ -34,7 +34,7 @@ const receivingItemSchema = z.object({
   id: uuid, numero: text, nome: text, cliente_id: nullableId, cliente_nome_exportacao: text, cliente_nome: text,
   descricao_equipamento: text, chegada_do_equipamento: timestamp.nullable(), nota_fiscal: text,
   tipo_equipamento_id: nullableId, tipo_equipamento_nome: text, status_pcp: text, updated_at: timestamp,
-  allocation_count: count, reasons: z.array(z.enum(receivingReasons)).min(1),
+  allocation_count: count, historical_allocation_count: count, reasons: z.array(z.enum(receivingReasons)).min(1),
 });
 const summarySchema = z.object({
   without_number: count, without_type: count, without_allocation: count, awaiting_arrival: count, legacy_type_locked: count,
@@ -116,6 +116,7 @@ export function createPcpData(client: SupabaseClient, capabilities?: readonly Co
 
 function validReceivingItem(item: ReceivingItem): boolean {
   if (['cancelado', 'finalizando_para_faturar'].includes(item.status_pcp ?? '')) return false;
+  if (item.historical_allocation_count < item.allocation_count) return false;
   const withoutNumber = !item.numero?.trim(), withoutType = item.tipo_equipamento_id === null, withoutAllocation = item.allocation_count === 0;
   if (!withoutNumber && !withoutType && !withoutAllocation) return false;
   const expected: typeof receivingReasons[number][] = [];
@@ -123,7 +124,7 @@ function validReceivingItem(item: ReceivingItem): boolean {
   if (withoutType) expected.push('without_type');
   if (withoutAllocation) expected.push('without_allocation');
   if (item.chegada_do_equipamento === null) expected.push('awaiting_arrival');
-  if (withoutType && !withoutAllocation) expected.push('legacy_type_locked');
+  if (withoutType && item.historical_allocation_count > 0) expected.push('legacy_type_locked');
   return item.reasons.length === expected.length && new Set(item.reasons).size === expected.length && expected.every(reason => item.reasons.includes(reason));
 }
 

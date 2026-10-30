@@ -22,7 +22,7 @@ function load() {
 function receiving() {
   return { items: [{ id: id(3), numero: 'OS1', nome: 'Motor', cliente_id: null, cliente_nome_exportacao: 'Cliente exportado', cliente_nome: null,
     descricao_equipamento: 'Descrição', chegada_do_equipamento: null, nota_fiscal: 'NF1', tipo_equipamento_id: null, tipo_equipamento_nome: null,
-    status_pcp: 'equipamento_em_inspe__o', updated_at: version, allocation_count: 1,
+    status_pcp: 'equipamento_em_inspe__o', updated_at: version, allocation_count: 1, historical_allocation_count: 1,
     reasons: ['without_type', 'awaiting_arrival', 'legacy_type_locked'], arquivo_nota_fiscal_url: 'https://private.invalid', auth_user_id: 'private' }],
     total: 1, page: 1, page_size: 25, summary: { without_number: 0, without_type: 4, without_allocation: 3, awaiting_arrival: 2, legacy_type_locked: 3 } };
 }
@@ -114,6 +114,23 @@ test('receiving cannot relabel arrived, classified or allocated projects, broade
     { ...receiving(), items: [...receiving().items, ...receiving().items], total: 2 },
   ]) { f.receiving(corrupt); await assert.rejects(f.data.listReceiving(), /Não foi possível/); }
   f.receiving(receiving()); await assert.rejects(f.data.listReceiving({ reason: 'without_number' }), /Não foi possível/);
+});
+
+test('receiving distinguishes absence of active cells from the allocation history that protects equipment type', async () => {
+  const f = fixture(), raw = receiving();
+  raw.items[0].allocation_count = 0;
+  raw.items[0].reasons = ['without_type', 'without_allocation', 'awaiting_arrival', 'legacy_type_locked'];
+  f.receiving(raw);
+  const historical = await f.data.listReceiving({ reason: 'without_allocation' });
+  assert.equal(historical.items[0].allocation_count, 0); assert.equal(historical.items[0].historical_allocation_count, 1);
+  assert.ok(historical.items[0].reasons.includes('legacy_type_locked'));
+  const fresh = receiving(); fresh.items[0].allocation_count = 0; fresh.items[0].historical_allocation_count = 0;
+  fresh.items[0].reasons = ['without_type', 'without_allocation', 'awaiting_arrival']; f.receiving(fresh);
+  assert.ok(!(await f.data.listReceiving()).items[0].reasons.includes('legacy_type_locked'));
+  for (const patch of [{ historical_allocation_count: 0 }, { historical_allocation_count: -1 }, { historical_allocation_count: undefined }]) {
+    const malformed = receiving(); Object.assign(malformed.items[0], patch); f.receiving(malformed);
+    await assert.rejects(f.data.listReceiving(), /Não foi possível/);
+  }
 });
 
 test('PCP reference choices are minimal and complete past one server page, and upstream errors stay sanitized', async () => {

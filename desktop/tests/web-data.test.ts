@@ -40,6 +40,45 @@ class Query {
 }
 function setup(capabilities?: readonly CorporateCapability[]) { const db = new Fixture(); return { db, data: createWebData(db as unknown as SupabaseClient, capabilities) }; }
 
+test('active planning keeps hidden work in place while excluding withdrawn allocations from totals and rows', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.planning.read']);
+  const base = { projeto_id: id(9), celula_id: id(8), status: 'pendente', retirada: false, indice: 7, prioridade: 'alta' };
+  db.tables.set('rm_celulas_projeto', [{ ...base, id: id(1), posicao: null, visibilidade: true },
+    { ...base, id: id(2), posicao: 3, visibilidade: false }, { ...base, id: id(3), posicao: 4, visibilidade: false, retirada: true }]);
+  const result = await data.listPlanning();
+  assert.equal(result.total, 2); assert.deepEqual(result.rows.map(row => row.id), [id(1), id(2)]);
+  assert.deepEqual(result.rows.map(row => [row.posicao, row.indice, row.prioridade]), [[null, 7, 'alta'], [3, 7, 'alta']]);
+  assert.equal(result.rows[1].visibilidade, false);
+});
+
+test('withdrawn allocation history remains readable and protects equipment type even without planning scope', async () => {
+  for (const planning of [false, true]) {
+    const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.projects.manage', ...(planning ? ['em.planning.read' as const] : [])]);
+    db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS', tipo_equipamento_id: id(8) }]);
+    db.tables.set('rm_celulas_projeto', [{ id: id(2), projeto_id: id(1), celula_id: id(3), retirada: true, visibilidade: false,
+      forms_ids: [], posicao: 19, indice: 5, prioridade: 'baixa' }]);
+    const result = await data.getProject(id(1));
+    assert.equal(result?.hasAllocations, true);
+    if (planning) {
+      assert.equal(result?.allocations.length, 1); assert.equal(result?.allocations[0].retirada, true);
+      assert.equal(result?.allocations[0].id, id(2)); assert.equal(result?.allocations[0].posicao, 19);
+    } else assert.deepEqual(result?.allocations, []);
+    const queries = db.calls.filter(call => call.table === 'rm_celulas_projeto');
+    assert.ok(queries.length > 0); assert.ok(queries.every(call => !call.filters.some(filter => filter[1] === 'retirada')));
+    if (!planning) assert.ok(queries.every(call => call.head && call.columns === 'id'));
+  }
+});
+
+test('overdue planning counts and task rows are active-only without loading withdrawn operational history', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.planning.read']);
+  db.tables.set('rm_celulas_projeto', [{ id: id(1), retirada: false, visibilidade: true, status: 'pendente', data_limite: '2000-01-01T00:00:00Z' },
+    { id: id(2), retirada: true, visibilidade: false, status: 'pendente', data_limite: '2000-01-01T00:00:00Z' }]);
+  const result = await data.getOverview();
+  assert.equal(result.counts.overdueCells, 1); assert.deepEqual(result.tasks.map(row => row.id), [id(1)]);
+  assert.ok(db.calls.filter(call => call.table === 'rm_celulas_projeto').every(call => call.filters.some(([operation, key, value]) => operation === 'eq' && key === 'retirada' && value === false)));
+  assert.ok(!db.calls.some(call => ['rm_registros_formulario', 'rm_respostas', 'rm_fotos', 'rm_private'].includes(call.table)));
+});
+
 test('project listing uses a real page/count and paginates reference catalogs beyond 1000 rows', async () => {
   const { db, data } = setup();
   db.tables.set('rm_projetos', Array.from({ length: 63 }, (_, i) => ({ id: id(i + 1), numero: `OS${i}`, cliente_id: id(1000) })));
@@ -167,7 +206,7 @@ test('explicit photos capability preserves submitted media for permitted form co
 
 test('planning without project capability does not join or load the project table', async () => {
   const { db, data } = setup(['em.portal.read', 'em.planning.read']);
-  db.tables.set('rm_celulas_projeto', [{ id: id(1), projeto_id: id(2), numero_projeto: 'OS' }]);
+  db.tables.set('rm_celulas_projeto', [{ id: id(1), projeto_id: id(2), numero_projeto: 'OS', retirada: false }]);
   const result = await data.listPlanning({ q: 'OS' });
   assert.equal(result.rows[0].numero_projeto, 'OS'); assert.deepEqual(result.projects, []);
   assert.ok(!db.calls.some(call => call.table === 'rm_projetos' || call.columns.includes('project:')));

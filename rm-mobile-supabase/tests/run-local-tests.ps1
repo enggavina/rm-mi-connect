@@ -46,6 +46,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_operational_photos.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_reviewer_assignments.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_stage_rules.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_cell_availability.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -76,7 +77,11 @@ try {
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '027_rm_web_stage_rules.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_stage_rules_upgrade.sql'
     }
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $executionFile
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '028_rm_web_cell_availability.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_cell_availability_upgrade.sql'
+    }
+    $migration028Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\028_rm_web_cell_availability.sql'))
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit

@@ -44,7 +44,7 @@ insert into public.rm_celulas(id,nome) select pg_temp.sr_key('4',n*10+k),'Rule c
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade,indice,posicao,observacao)
  select pg_temp.sr_key('6',n*10+k),pg_temp.sr_key('5',n),pg_temp.sr_key('4',n*10+k),
   case when k=1 and n=10 then 'finalizado'::public.rm_status_cel_proj_enum when k=1 and n=11 then 'n_a' else 'em_dia' end,true,9,17,'Preserve work'
- from generate_series(1,12) n cross join generate_series(1,2) k;
+ from generate_series(1,12) n cross join generate_series(1,2) k where not(n=9 and k=2);
 insert into public.rm_tablet_celula_users(id,celula_id,identidade_id,usuario_id)
  select pg_temp.sr_key('7',n*10+k),pg_temp.sr_key('4',n*10+k),pg_temp.sr_key('2',case when k=1 then 5 else 6 end),pg_temp.sr_key('2',7)
  from generate_series(1,12) n cross join generate_series(1,2) k;
@@ -153,7 +153,8 @@ do $$ declare s jsonb; begin
  update public.rm_celulas_projeto set status='pendente' where id=pg_temp.sr_key('6',82);
  perform pg_temp.sr_call(gen_random_uuid(),pg_temp.sr_payload('restore',8));
  perform pg_temp.sr_call(gen_random_uuid(),pg_temp.sr_payload('retire',9));
- delete from public.rm_celulas_projeto where id=pg_temp.sr_key('6',92);
+ perform pg_temp.sr_check(not exists(select 1 from public.rm_celulas_projeto where id=pg_temp.sr_key('6',92)),
+  'legacy destination was never allocated; no hard-delete is needed to construct absence');
  perform pg_temp.sr_reject(pg_temp.sr_payload('restore',9),'22023');
  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status) values(pg_temp.sr_key('6',92),pg_temp.sr_key('5',9),pg_temp.sr_key('4',92),'pendente');
  perform pg_temp.sr_call(gen_random_uuid(),pg_temp.sr_payload('restore',9));
