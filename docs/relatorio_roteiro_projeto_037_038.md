@@ -75,4 +75,11 @@ Depois da publicação, o health respondeu 200; 82 acessos a 41 caminhos e 16 ve
 
 A leitura do catálogo real encontrou **sete regras em quatro tipos** cujo destino não pertence ao roteiro ativo. Os cadastros foram preservados. A criação com esses modelos é recusada atomicamente, com orientação para revisar células e destinos na Engenharia; ativar células por suposição alteraria o modelo de trabalho.
 
+| Tipo encontrado | Regras que exigem revisão |
+| --- | --- |
+| Motor elétrico de média tensão corrente alternada | Desmontagem → Peritagem Mecânica e Peritagem Elétrica (duas). |
+| Motor elétrico de média tensão corrente contínua | Desmontagem → Peritagem Mecânica e Peritagem Elétrica (duas). |
+| TIPO PARA TESTE | Peritagem Elétrica e Peritagem Mecânica → Double-check Peritagem (duas). |
+| MOTOR FAST - AC-BT - STANDARD | Testes Finais → Relatórios De Reparo (uma). |
+
 Eventos antigos sem comprovante detalhado não ganham histórico fictício. Nomes auxiliares são os cadastros atuais, não snapshots históricos dos nomes. Não foi executado CRUD artificial em produção nem homologação humana de todos os fluxos. A busca web por descrição armazenada somente no equipamento e as demais funcionalidades fora deste anexo continuam no plano de paridade.
