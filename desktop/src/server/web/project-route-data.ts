@@ -9,6 +9,7 @@ const projectRouteSchema = z.object({
   project: z.object({ id: uuid, numero: text, nome: text, status_pcp: text, data_real_de_entrega: timestamp.nullable(), updated_at: timestamp, closed: z.boolean() }),
   items: z.array(z.object({ id: uuid, celula_id: uuid.nullable(), celula_nome: text, status: text, visibilidade: z.boolean(), indice: z.number().int().nullable(), updated_at: timestamp })).max(2000),
   route_version: z.string().regex(/^[0-9a-f]{64}$/), total: z.number().int().nonnegative(), complete: z.boolean(),
+  initialized_from_type: z.boolean().optional(), source_type_id: uuid.nullable().optional(),
 });
 export type ProjectRouteSnapshot = z.infer<typeof projectRouteSchema>;
 export type ProjectRouteItem = ProjectRouteSnapshot['items'][number];
@@ -28,6 +29,7 @@ export function createProjectRouteData(client: SupabaseClient, capabilities?: re
     const snapshot = parsed.data;
     const closed = snapshot.project.data_real_de_entrega !== null || ['cancelado', 'finalizando_para_faturar'].includes(snapshot.project.status_pcp ?? '');
     if (snapshot.project.id !== projectId || snapshot.project.closed !== closed
+      || snapshot.initialized_from_type === true && !snapshot.source_type_id
       || new Set(snapshot.items.map(item => item.id)).size !== snapshot.items.length
       || (snapshot.complete ? snapshot.total > 2000 || snapshot.items.length !== snapshot.total : snapshot.total <= 2000 || snapshot.items.length !== 0)
       || snapshot.items.some((item, index, items) => {

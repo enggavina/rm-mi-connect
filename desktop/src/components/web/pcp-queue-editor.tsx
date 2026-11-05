@@ -7,6 +7,7 @@ import { catalogFailureState } from './catalog-model';
 import { estimatedHours, freezeCellQueueRequest, moveQueueItem, planningPriorities, planningPriorityLabels, priorityLabel, queueOrderChanged, queuePrioritiesChanged, type CellQueueRequest, type PlanningPriority } from './pcp-model';
 import { Empty, Status, date } from './ui';
 import { Icon } from './icons';
+import { queueAllocationHref } from './queue-allocation-model';
 import s from './pcp.module.css';
 
 function QueuePosition({ index, total, label, disabled, move }: { index: number; total: number; label: string; disabled: boolean; move: (target: number) => void }) {
@@ -34,6 +35,16 @@ export function CellQueueEditor({ snapshot, canEdit, canProjects }: { snapshot: 
     if (!changed && !busy && !uncertain) return;
     const protect = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', protect); return () => window.removeEventListener('beforeunload', protect);
+  }, [changed, busy, uncertain]);
+  useEffect(() => {
+    if (!changed && !busy && !uncertain) return;
+    const navigate = (event: MouseEvent) => {
+      if (leaving.current || event.defaultPrevented || !(event.target instanceof Element)) return;
+      const link = event.target.closest('a[href]'); if (!link || link.getAttribute('target') === '_blank') return;
+      if (!window.confirm(uncertain ? 'O envio da fila ainda não foi confirmado. Sair desta tela?' : 'Há alterações não salvas na fila. Sair sem salvar?')) { event.preventDefault(); event.stopPropagation(); }
+      else leaving.current = true;
+    };
+    document.addEventListener('click', navigate, true); return () => document.removeEventListener('click', navigate, true);
   }, [changed, busy, uncertain]);
   function move(id: string, target: number) { setItems(current => moveQueueItem(current, id, target)); setConfirmed(false); setError(''); }
   function priority(id: string, value: string) { setItems(current => current.map(item => item.id === id ? { ...item, prioridade: (value || null) as PlanningPriority | null } : item)); setConfirmed(false); setError(''); }
@@ -67,7 +78,7 @@ export function CellQueueEditor({ snapshot, canEdit, canProjects }: { snapshot: 
         <span className={s.position} aria-label={`Posição ${index + 1}`}>{index + 1}</span>
         <div>{canProjects ? <a href={`/projetos/${item.projeto_id}?tab=planejamento`} className={s.title}>{label}</a> : <span className={s.title}>{label}</span>}<p className={s.description}>{item.cliente_nome_export || 'Cliente não informado'}{item.tipo_equipamento_nome_export ? ` · ${item.tipo_equipamento_nome_export}` : ''}</p><div className={s.meta}><Status value={item.status} /><Status value={item.visibilidade ? 'ativo' : 'pendente'} label={item.visibilidade ? 'Visível no mobile' : 'Oculta no mobile'} />{item.bloqueada === 'sim' && <Status value="inativo" label="Bloqueada" />}</div><p className={s.description}>Prazo: {date(item.data_limite)} · {item.responsavel_nome || 'Responsável não definido'} · {estimatedHours(item.horas_previstas == null ? null : Number(item.horas_previstas))}</p>{item.bloqueada === 'sim' && item.motivo_bloqueio && <p className={s.description}>{item.motivo_bloqueio}</p>}</div>
         <div className={s.priority}>{canEdit ? <><label htmlFor={`queue-priority-${item.id}`}>Prioridade</label><select id={`queue-priority-${item.id}`} aria-label={`Prioridade de ${label}`} value={item.prioridade || ''} disabled={locked} onChange={event => priority(item.id, event.target.value)}><option value="">Sem prioridade</option>{planningPriorities.map(value => <option key={value} value={value}>{planningPriorityLabels[value]}</option>)}</select></> : <span className={s.note}>{priorityLabel(item.prioridade)}</span>}</div>
-        {canEdit && <QueuePosition index={index} total={items.length} label={label} disabled={locked} move={target => move(item.id, target)} />}
+        <div className={s.controls}>{canEdit && <QueuePosition index={index} total={items.length} label={label} disabled={locked} move={target => move(item.id, target)} />}{canProjects && <a className="button small secondary" href={queueAllocationHref(snapshot.cell.id, item.id)} aria-label={`Consultar ou editar a alocação de ${label}`}><Icon name="edit" size={13} />Dados da alocação</a>}</div>
       </article>;
     })}</div>
     {canEdit && <div className={s.saveBar}>

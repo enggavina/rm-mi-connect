@@ -18,9 +18,9 @@ export function ProjectEquipmentPanel({ snapshot: suppliedSnapshot, project, can
       : !linked ? <div className={s.body}><p className="notice" role="status">{snapshot.reason || 'O vínculo do equipamento precisa ser conferido antes da edição. Os dados do projeto permanecem disponíveis para consulta.'}</p></div>
         : <><div className={s.body}>
           {!current && <p className="notice" role="status">O projeto mudou durante a consulta. <EngineeringReloadLink href={`/projetos/${project.id}?tab=informacoes#dados-equipamento`}>Recarregar dados</EngineeringReloadLink> antes de editar o equipamento.</p>}
-          {snapshot.type_mismatch && <p className="notice" role="status">{snapshot.equipment?.tipo_equipamento_id === null && snapshot.project.tipo_equipamento_id !== null
-            ? 'O roteiro usa a classificação definida no planejamento; o tipo técnico do equipamento não foi informado.'
-            : 'O tipo cadastrado no equipamento difere do projeto. Confira os cadastros; os dados técnicos podem ser consultados sem alterar essa classificação.'}</p>}
+          {snapshot.type_mismatch && snapshot.project.tipo_equipamento_id !== null && <p className="notice" role="status">{snapshot.equipment?.tipo_equipamento_id === null
+            ? 'O equipamento ainda não possui tipo. A classificação legada permanece em consulta, preservando o roteiro existente.'
+            : 'O tipo do equipamento é a classificação atual. A classificação legada do projeto foi preservada para compatibilidade, sem substituir seu roteiro.'}</p>}
           <div className={s.groups}>{equipmentFieldGroups.map(group => <section key={group.id} className={s.group} aria-label={group.title}><h3>{group.title}</h3><dl className={s.values}>{group.fields.map(field => <div key={field.key} className={'multiline' in field ? s.spanAll : undefined}><dt>{field.label}</dt><dd>{equipmentDisplayValue(field.key, snapshot.equipment?.[field.key])}</dd></div>)}</dl></section>)}</div>
         </div>
           {editable ? <ProjectEquipmentEditor key={snapshot.context_version} snapshot={snapshot} /> : <div className={s.readonly}><p className="form-note">{snapshot.project.closed ? 'Projeto encerrado. Os dados técnicos permanecem disponíveis para consulta.' : current ? snapshot.reason || 'Dados técnicos disponíveis para consulta conforme seu perfil de acesso.' : 'A edição ficará disponível após conferir a versão atual do projeto.'}</p></div>}

@@ -44,3 +44,15 @@ test('route read rejects crossed, duplicated, unordered, partial and falsely ope
   f.set(null); assert.equal(await f.data.getProjectRoute(id(1)), null);
   f.fail({ message: 'private upstream error' }); await assert.rejects(f.data.getProjectRoute(id(1)), error => error instanceof Error && !error.message.includes('private'));
 });
+
+test('route provenance is bounded and cannot claim a cloned route without its source type', async () => {
+  const f = fixture();
+  f.set({ ...route(), initialized_from_type: true, source_type_id: id(10), origin_snapshot: { private: 'never serialize' } });
+  const result = await f.data.getProjectRoute(id(1));
+  assert.equal(result?.initialized_from_type, true); assert.equal(result?.source_type_id, id(10));
+  assert.equal('origin_snapshot' in result!, false);
+  f.set({ ...route(), initialized_from_type: true, source_type_id: null });
+  await assert.rejects(f.data.getProjectRoute(id(1)), /Não foi possível/);
+  f.set({ ...route(), initialized_from_type: false, source_type_id: null });
+  assert.equal((await f.data.getProjectRoute(id(1)))?.initialized_from_type, false);
+});

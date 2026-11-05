@@ -9,6 +9,14 @@ insert into public.rm_users(id,auth_user_id,nome,perfil,status) values
 update rm_private.sso_settings set require_sso=false;
 select set_config('request.jwt.claim.sub','1fe36000-0000-4000-8000-000000000001',true);
 select set_config('request.jwt.claims','{"aal":"aal1"}',true);
+insert into public.rm_tipos_equipamento(id,nome) values('7fe36000-0000-4000-8000-000000000001','Empty bundle model');
+insert into public.rm_projetos(id,nome) values('5fe36000-0000-4000-8000-000000000003','Legacy');
+-- Preserve the actual 036 receipt contract as a pre-upgrade fixture. Current
+-- public replay must not reconstruct or classify this already completed bundle.
+select rm_private.web_mutate_before_route_instance_v1('afe36000-0000-4000-8000-000000000001','save_project_with_equipment',jsonb_build_object(
+ 'id','5fe36000-0000-4000-8000-000000000001','expected_updated_at',null,'changes',jsonb_build_object('nome','Bundle fixture'),
+ 'equipment',jsonb_build_object('id','6fe36000-0000-4000-8000-000000000001','expected_updated_at',null,'expected_context_version',null,
+ 'changes',jsonb_build_object('fabricante','Fabricante teste','descricao','Motor teste'))));
 set local role authenticated;
 do $$ declare pid uuid:='5fe36000-0000-4000-8000-000000000001'; eid uuid:='6fe36000-0000-4000-8000-000000000001';
  payload jsonb; result jsonb; snap jsonb; v text; begin
@@ -42,12 +50,13 @@ do $$ declare pid uuid:='5fe36000-0000-4000-8000-000000000001'; eid uuid:='6fe36
  perform pg_temp.check_bundle((select modelo='Modelo teste' from public.rm_equipamentos where id=eid),'project-only preserves equipment');
  -- A failing equipment edit rolls back the project inserted in the same action.
  payload:=jsonb_build_object('id','5fe36000-0000-4000-8000-000000000002','expected_updated_at',null,'changes',jsonb_build_object('nome','Must rollback'),
-  'equipment',jsonb_build_object('id','6fe36000-0000-4000-8000-000000000002','expected_updated_at',null,'expected_context_version',null,'changes',jsonb_build_object('potencia',jsonb_build_array('bad'))));
+  'equipment',jsonb_build_object('id','6fe36000-0000-4000-8000-000000000002','tipo_equipamento_id','7fe36000-0000-4000-8000-000000000001','expected_updated_at',null,'expected_context_version',null,'changes',jsonb_build_object('potencia',jsonb_build_array('bad'))));
  begin perform public.rm_web_mutate_v1(gen_random_uuid(),'save_project_with_equipment',payload); raise exception 'FAIL: invalid equipment accepted';
  exception when invalid_parameter_value then null; end;
  perform pg_temp.check_bundle(not exists(select 1 from public.rm_projetos where id='5fe36000-0000-4000-8000-000000000002'),'failed equipment rolls back project');
  -- Existing legacy project with no equipment gets one linked record.
- result:=public.rm_web_mutate_v1('afe36000-0000-4000-8000-000000000004','save_project',jsonb_build_object('id','5fe36000-0000-4000-8000-000000000003','expected_updated_at',null,'changes',jsonb_build_object('nome','Legacy')));
+ -- The legacy project was seeded without an equipment, rather than created
+ -- through a fresh public request whose old contract is now refused.
  snap:=public.rm_web_project_equipment_snapshot_v1('5fe36000-0000-4000-8000-000000000003');
  payload:=jsonb_build_object('id','5fe36000-0000-4000-8000-000000000003','expected_updated_at',snap->'project'->>'updated_at','changes','{}'::jsonb,
   'equipment',jsonb_build_object('id','6fe36000-0000-4000-8000-000000000003','expected_updated_at',null,'expected_context_version',snap->>'context_version','changes',jsonb_build_object('numero_serie','SERIE')));
@@ -82,7 +91,7 @@ select set_config('request.jwt.claim.sub','1fe36000-0000-4000-8000-000000000001'
 select set_config('request.jwt.claims','{"session_id":"3fe36000-0000-4000-8000-000000000001","aal":"aal1"}',true);
 do $$ declare p jsonb:=jsonb_build_object('id','5fe36000-0000-4000-8000-000000000004','expected_updated_at',null,
  'changes',jsonb_build_object('nome','SSO fixture'),'equipment',jsonb_build_object('id','6fe36000-0000-4000-8000-000000000004',
- 'expected_updated_at',null,'expected_context_version',null,'changes',jsonb_build_object('fabricante','Fixture')));
+ 'tipo_equipamento_id','7fe36000-0000-4000-8000-000000000001','expected_updated_at',null,'expected_context_version',null,'changes',jsonb_build_object('fabricante','Fixture')));
  rid uuid:='afe36000-0000-4000-8000-000000000006'; result jsonb; begin
  set local role authenticated;
  begin perform public.rm_web_mutate_v1(rid,'save_project_with_equipment',p); raise exception 'FAIL: missing SSO permit accepted';

@@ -9,11 +9,14 @@ const initial = { submissionId: submission, id: project, expected_updated_at: nu
   changes: { nome: 'Projeto' }, equipment: { id: equipment, expected_updated_at: null, expected_context_version: null,
     changes: { descricao: 'Motor', fabricante: 'Fabricante', potencia: '55 kW', placa_motor: 'c___placa' } } };
 
-test('project/equipment bundle accepts technical values separately and never duplicates description or classification', () => {
+test('project/equipment bundle classifies equipment by ID and never duplicates classification in project changes', () => {
   assert.equal(saveProjectWithEquipmentSchema.safeParse(initial).success, true);
   assert.equal(saveProjectWithEquipmentSchema.safeParse({ ...initial, changes: { ...initial.changes, descricao_equipamento: 'Duplicado' } }).success, false);
   assert.equal(saveProjectWithEquipmentSchema.safeParse({ ...initial, changes: { ...initial.changes, tipo_equipamento_id: project } }).success, false);
   assert.equal(saveProjectSchema.safeParse({ submissionId: submission, id: project, expected_updated_at: null, changes: { tipo_equipamento_id: equipment } }).success, true);
+  assert.equal(saveProjectWithEquipmentSchema.safeParse({ ...initial, equipment: { ...initial.equipment, tipo_equipamento_id: project } }).success, true);
+  assert.equal(saveProjectWithEquipmentSchema.safeParse({ ...initial, equipment: { ...initial.equipment, tipo_equipamento_id: 'Motor' } }).success, false);
+  assert.equal(saveProjectWithEquipmentSchema.safeParse({ ...initial, equipment: { ...initial.equipment, changes: { tipo_equipamento_id: project } } }).success, false);
 });
 
 test('project-only and equipment-only edits preserve omitted fields and reject unknown equipment', () => {

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { getProject, type WebRow } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
-import type { CorporateCapability } from '@/server/web/sso-policy';
 import { editorChoices } from '@/server/web/choices';
 import { PageHeading, Status, Details, Empty, Pagination, date, calendarDate, display } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
@@ -13,7 +12,7 @@ import { getCellAvailability } from '@/server/web/cell-availability-data';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { availabilityMatchesContext } from '@/components/web/cell-availability-model';
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
-import { ProjectDocumentsPanel, ProjectHistoryPanel } from '@/components/web/project-dossier-panels';
+import { ProjectDocumentsPanel, ProjectCommentsPanel } from '@/components/web/project-dossier-panels';
 import { readDossierSearchQuery } from '@/components/web/project-dossier-search-model';
 import { getProjectComments, getProjectDocuments } from '@/server/web/project-dossier-search-data';
 import type { ProjectCommentPage, ProjectDocumentPage } from '@/server/web/project-dossier-search-policy';
@@ -21,16 +20,24 @@ import { getProjectEquipment } from '@/server/web/project-equipment-data';
 import type { ProjectEquipmentSnapshot } from '@/server/web/project-equipment-policy';
 import { ProjectEquipmentPanel } from '@/components/web/project-equipment-panel';
 import { projectEquipmentDisplayFromSnapshot } from '@/components/web/project-equipment-display';
-import { ProjectTypePlanning } from '@/components/web/project-type-planning';
+import { projectTabs, selectedProjectTab } from '@/components/web/project-tabs';
+import { getProjectRoute } from '@/server/web/project-route-data';
+import { ProjectRouteEditor } from '@/components/web/project-route-editor';
+import { projectRouteMatchesContext } from '@/components/web/project-route-model';
+import { getOperationalPhotos } from '@/server/web/operational-photo-data';
+import { getOperationalStageRules } from '@/server/web/operational-stage-rule-data';
+import { OperationalPhotoEditor } from '@/components/web/operational-photo-editor';
+import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
+import { getProjectAudit } from '@/server/web/project-audit-data';
+import { ProjectAuditPanel } from '@/components/web/project-audit-panel';
 
-const allTabs: { id: string; label: string; capability: CorporateCapability }[] = [{ id: 'informacoes', label: 'Informações', capability: 'em.projects.read' }, { id: 'planejamento', label: 'Células e planejamento', capability: 'em.planning.read' }, { id: 'formularios', label: 'Formulários', capability: 'em.forms.read' }, { id: 'fotos', label: 'Galeria de fotos', capability: 'em.photos.read' }, { id: 'documentos', label: 'Documentos', capability: 'em.documents.read' }, { id: 'historico', label: 'Histórico', capability: 'em.history.read' }];
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id: rawId } = await params; const id = rawId.toLowerCase(); const query = await searchParams;
   const selection = query.selection === 'selected' ? 'selected' : 'all';
   const photoOrder = query.photo_order === 'selected' ? 'selected' : 'sequence';
   const [data, session] = await Promise.all([getProject(id, { photoPage: typeof query.page === 'string' ? query.page : undefined, selection, photoOrder, includeDossier: false, includeEquipment: false }), requireWebUser('em.projects.read')]); if (!data) notFound();
-  const tabs = allTabs.filter(item => hasWebCapability(session, item.capability));
-  const tab = tabs.some(item => item.id === query.tab) ? String(query.tab) : 'informacoes';
+  const tabs = projectTabs.filter(item => hasWebCapability(session, item.capability));
+  const tab = selectedProjectTab(query, tabs.map(item => item.id));
   const commentQuery = readDossierSearchQuery('comments', query), documentQuery = readDossierSearchQuery('documents', query);
   let commentPage: ProjectCommentPage | null = null, documentPage: ProjectDocumentPage | null = null;
   let commentError = commentQuery.errors.join(' '), documentError = documentQuery.errors.join(' ');
@@ -39,7 +46,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
     try { equipmentSnapshot = await getProjectEquipment(id); }
     catch { /* Keep the dossier readable without trusting an unchecked equipment binding. */ }
   }
-  if (tab === 'historico' && !commentError) {
+  if (tab === 'comentarios' && !commentError) {
     try { commentPage = await getProjectComments(id, commentQuery.filters); }
     catch { commentError = 'Não foi possível consultar os comentários agora. Confira os filtros ou recarregue a página.'; }
   }
@@ -53,7 +60,6 @@ export default async function Projeto({ params, searchParams }: { params: Promis
   const canEdit = manager && hasWebCapability(session, 'em.projects.manage');
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
   const choices = tab === 'planejamento' && canPlan && !closed ? await editorChoices('planning') : null;
-  const typeChoices = tab === 'planejamento' && canPlan && canEdit && !closed && !data.hasAllocations ? await editorChoices('project') : null;
   const activeAllocations = data.allocations.filter(allocation => allocation.retirada !== true), retiredAllocations = data.allocations.filter(allocation => allocation.retirada === true);
   const selectedAllocationId = tab === 'planejamento' ? scheduleId(query.allocation) : undefined;
   const selectedAllocation = selectedAllocationId ? data.allocations.find(allocation => allocation.id === selectedAllocationId && allocation.projeto_id === id) : undefined;
@@ -68,7 +74,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       <div className="panel-header"><div><h2>{cellNames.get(allocation.celula_id) || 'Célula'}</h2><p>{allocation.forms_ids?.length || 0} formulários vinculados · {allocation.retirada ? 'Retirada do planejamento · consulta histórica' : allocation.visibilidade ? 'Disponível no mobile' : 'Oculta no mobile'}</p></div><Status value={allocation.status} /></div>
       <div className="panel-content"><Details values={[
         ['Início previsto', date(allocation.data_inicio)], ['Prazo', date(allocation.data_limite)], ['Responsável', userNames.get(allocation.responsavel_id)], ['Horas previstas', allocation.horas_previstas],
-        ['Execução', allocation.bloqueada === 'sim' ? `Bloqueada · ${allocation.motivo_bloqueio || 'Motivo não informado'}` : 'Sem bloqueio'], ['Observação', allocation.observacao],
+        ['Fim realizado', date(allocation.data_fim_real)], ['Motivo do atraso', allocation.motivo_atraso], ['Execução', allocation.bloqueada === 'sim' ? `Bloqueada · ${allocation.motivo_bloqueio || 'Motivo não informado'}` : 'Sem bloqueio'], ['Observação', allocation.observacao],
       ]} />{!!allocation.forms_ids?.length && <p className="form-note" style={{ margin: '22px 0 0' }}>{allocation.forms_ids.map((formId: string) => formNames.get(formId) || 'Modelo indisponível').join(' · ')}</p>}
         {selected ? <><div className="form-actions"><a className="button small secondary" href={`/projetos/${id}?tab=planejamento#celula-${allocation.id}`}>Fechar disponibilidade</a></div>
           <AllocationPlanningPanel key={`${allocation.id}:${availability?.context_version ?? allocation.updated_at}`} projectId={id} allocation={allocation} cells={projectData.cells}
@@ -81,6 +87,17 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       </div>
     </section>;
   }
+  const route = tab === 'roteiro' ? await getProjectRoute(id).catch(() => null) : null;
+  const routeCurrent = projectRouteMatchesContext(route, project, data.allocations);
+  const routeSelection = scheduleId(query.route_allocation);
+  const routeAllocation = tab === 'roteiro' && routeCurrent ? activeAllocations.find(allocation => allocation.id === routeSelection) ?? (!routeSelection ? activeAllocations.find(allocation => route?.items[0]?.id === allocation.id) : undefined) : undefined;
+  const routeDestination = `/projetos/${id}?tab=roteiro${routeAllocation ? `&route_allocation=${routeAllocation.id}` : ''}`;
+  const [routePhotos, routeRules, cellAudit, operationalAudit] = await Promise.all([
+    routeAllocation && hasWebCapability(session, 'em.photos.read') ? getOperationalPhotos(id, routeAllocation.id).catch(() => null) : null,
+    routeAllocation && hasWebCapability(session, 'em.approvals.read') ? getOperationalStageRules(id, routeAllocation.id).catch(() => null) : null,
+    tab === 'planejamento' && hasWebCapability(session, 'em.history.read') ? getProjectAudit(id, 'cells', typeof query.cellAuditPage === 'string' ? query.cellAuditPage : undefined).catch(() => null) : null,
+    tab === 'historico' ? getProjectAudit(id, 'operations', typeof query.auditPage === 'string' ? query.auditPage : undefined).catch(() => null) : null,
+  ]);
   const title = project.numero ? `OS ${project.numero.trim()}` : 'Projeto em recebimento';
   return <><Link className="back-link" href="/projetos"><Icon name="back" size={15} />Todos os projetos</Link><PageHeading eyebrow="ACOMPANHAMENTO DO PROJETO" title={title} description={equipmentDescription || project.nome || 'Informações e registros do equipamento em uma mesma jornada.'} actions={<>{['administrador', 'padr_o', 'auditor'].includes(session.profile.perfil) && <a className="button secondary" href={`/projetos/${id}/qr`}><Icon name="image" size={15} />Identificação por QR</a>}{canEdit && <Link className="button secondary" href={`/projetos/${id}/editar`}><Icon name="edit" size={15} />Editar projeto</Link>}</>} />
     <section className="panel"><div className="panel-content project-summary"><div><h2>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</h2><div className="summary-meta"><span>Chegada: {date(project.chegada_do_equipamento)}</span><span>Entrega prevista: {date(project.data_prevista_final)}</span>{hasWebCapability(session, 'em.planning.read') && <span>{activeAllocations.length} células no planejamento{retiredAllocations.length ? ` · ${retiredAllocations.length} retiradas` : ''}</span>}</div></div><Status value={project.status_pcp} /></div></section>
@@ -92,14 +109,24 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       <ProjectEquipmentPanel snapshot={equipmentSnapshot} project={{ id: project.id, updated_at: project.updated_at, equipamento_id: project.equipamento_id,
         tipo_equipamento_id: project.tipo_equipamento_id, status_pcp: project.status_pcp, data_real_de_entrega: project.data_real_de_entrega }} canManage={canEdit} />
     </>}
+    {tab === 'roteiro' && <section className="panel" data-project-route><div className="panel-header"><div><h2>Roteiro deste projeto</h2><p>As células e suas configurações pertencem a este projeto. Alterações no modelo do tipo de equipamento não substituem este roteiro.</p></div></div><div className="panel-content">
+      {route?.initialized_from_type === false && <p className="notice">Projeto legado: o planejamento existente foi preservado. Nenhum roteiro modelo foi aplicado automaticamente.</p>}
+      {!route || !routeCurrent ? <p className="notice" role="status">O roteiro mudou durante a consulta ou não está disponível. Recarregue a página para conferir a sequência completa.</p> : <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={routeDestination} itemDetails={Object.fromEntries(route.items.map(item => { const allocation = data.allocations.find(row => row.id === item.id); return [item.id, <><span>{hasWebCapability(session, 'em.forms.read') ? `${allocation?.forms_ids?.length || 0} formulários vinculados` : 'Configuração da célula'} · Início: {date(allocation?.data_inicio)} · Prazo: {date(allocation?.data_limite)}</span><a className="text-link" href={`/projetos/${id}?tab=roteiro&route_allocation=${item.id}#configuracao-roteiro`}>Consultar configuração</a></>]; }))} />}
+      {query.route_allocation && !routeAllocation && <p className="notice" role="status">A célula solicitada não está disponível neste roteiro. Escolha uma célula da sequência.</p>}
+      {routeAllocation && <section id="configuracao-roteiro" style={{ marginTop: 28 }}><div className="panel-header"><div><h2>{cellNames.get(routeAllocation.celula_id) || 'Célula do roteiro'}</h2><p>Configuração própria da alocação selecionada.</p></div><a className="button small secondary" href={`/cronograma?project=${id}&allocation=${routeAllocation.id}`}>{canPlan ? 'Configurar célula' : 'Consultar célula'}</a></div>
+        {hasWebCapability(session, 'em.forms.read') && <div className="panel-content"><h3>Formulários vinculados</h3><p className="form-note">{routeAllocation.forms_ids?.map((formId: string) => formNames.get(formId) || 'Formulário histórico').join(' · ') || 'Nenhum formulário vinculado.'}</p></div>}
+        {hasWebCapability(session, 'em.photos.read') && <details open><summary className="back-link">Fotos e configurações</summary>{routePhotos && routePhotos.project.updated_at === project.updated_at && routePhotos.allocation.updated_at === routeAllocation.updated_at ? <OperationalPhotoEditor snapshot={routePhotos} canManage={false} destination={routeDestination} /> : <p className="notice">Não foi possível consultar as fotos desta alocação. Recarregue o roteiro.</p>}</details>}
+        {hasWebCapability(session, 'em.approvals.read') && <details open><summary className="back-link">Origem, destino e aprovadores</summary>{routeRules && routeRules.project.updated_at === project.updated_at && routeRules.allocation.updated_at === routeAllocation.updated_at ? <OperationalStageRuleEditor snapshot={routeRules} canManage={false} destination={routeDestination} /> : <p className="notice">Não foi possível consultar as regras desta alocação. Recarregue o roteiro.</p>}</details>}
+      </section>}
+    </div></section>}
     {tab === 'planejamento' && <>
       {closed && <div className="notice">Este projeto está encerrado. O planejamento permanece disponível para consulta.</div>}
-      {canPlan && <ProjectTypePlanning key={`${project.id}:${project.updated_at}`} project={project} types={typeChoices?.types ?? []} hasAllocations={data.hasAllocations} closed={closed} canManage={canEdit} destination={`/projetos/${id}?tab=planejamento`} />}
       {query.allocation && !selectedAllocation && <p className="notice" role="status">A célula solicitada não pertence a este projeto ou não está disponível. Escolha uma alocação abaixo.</p>}
       {activeAllocations.map(allocationPanel)}
       {!activeAllocations.length && <section className="panel"><Empty title="Nenhuma célula ativa no planejamento" detail="Aloque uma nova célula ou consulte as retiradas preservadas. Formulários, fotos e regras existentes não serão copiados novamente ao restaurar." icon="board" /></section>}
       {retiredAllocations.length > 0 && <details open={selectedAllocation?.retirada === true}><summary className="back-link">Células retiradas ({retiredAllocations.length})</summary>{retiredAllocations.map(allocationPanel)}</details>}
       {choices && newCells.length > 0 && <CellEditor projectId={id} cells={newCells} forms={choices.forms} users={choices.users} destination={`/projetos/${id}?tab=planejamento`} />}
+      {hasWebCapability(session, 'em.history.read') && <ProjectAuditPanel projectId={id} kind="cells" data={cellAudit} names={{ cells: data.cells, users: data.users, forms: data.forms }} />}
     </>}
     {tab === 'formularios' && <section className="panel"><div className="panel-header"><h2>Registros do projeto <span className="inline-count">{data.records.length}</span></h2></div>{data.records.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Formulário</th><th>Célula</th><th>Operador</th><th>Status</th><th>Enviado em</th><th className="table-action">Abrir</th></tr></thead><tbody>{data.records.map(record => <tr key={record.id}><td><Link className="table-title" href={`/formularios/${record.id}`}>{formNames.get(record.form_id) || 'Formulário'}</Link><span className="table-subtitle">Registro {record.codigo_text || record.codigo || 'sem código'}</span></td><td>{cellNames.get(record.celula_id) || 'Projeto'}</td><td>{userNames.get(record.identidade_user_id) || userNames.get(record.created_by_user_id) || 'Não informado'}</td><td><Status value={record.status} /></td><td>{date(record.created_at)}</td><td className="table-action"><Link href={`/formularios/${record.id}`} aria-label="Consultar respostas"><Icon name="arrow" size={15} /></Link></td></tr>)}</tbody></table></div> : <Empty title="Nenhum formulário enviado" detail="Os registros enviados pelos operadores aparecerão aqui após a sincronização." icon="clipboard" />}</section>}
     {tab === 'fotos' && <>
@@ -117,6 +144,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       <Pagination page={data.photoPage} pageSize={data.photoPageSize} total={data.photoTotal} base={`/projetos/${id}`} filters={{ tab: 'fotos', selection, photo_order: photoOrder }} />
     </>}
     {tab === 'documentos' && <ProjectDocumentsPanel projectId={id} projectVersion={project.updated_at} data={documentPage} filters={documentQuery.filters} error={documentError || undefined} canAdd={canEdit} closed={closed} />}
-    {tab === 'historico' && <ProjectHistoryPanel projectId={id} projectVersion={project.updated_at} data={commentPage} filters={commentQuery.filters} error={commentError || undefined} stages={data.stages} cells={data.cells} users={data.users} allocations={data.allocations} canAdd={canEdit && hasWebCapability(session, 'em.planning.read')} closed={closed} />}
+    {tab === 'historico' && <ProjectAuditPanel projectId={id} kind="operations" data={operationalAudit} names={{ cells: data.cells, users: data.users, forms: data.forms }} />}
+    {tab === 'comentarios' && <ProjectCommentsPanel projectId={id} projectVersion={project.updated_at} data={commentPage} filters={commentQuery.filters} error={commentError || undefined} cells={data.cells} allocations={data.allocations} canAdd={canEdit && hasWebCapability(session, 'em.planning.read')} closed={closed} />}
   </>;
 }

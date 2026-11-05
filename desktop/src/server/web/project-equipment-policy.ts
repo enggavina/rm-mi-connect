@@ -29,6 +29,7 @@ export const projectEquipmentSnapshotSchema = z.object({
     ...textFields, placa_motor: z.enum(['c___placa', 's___placa']).nullable(), fp: text, fs: text, numero_cabos: z.number().int().nullable() }).strict().nullable(),
   binding_state: z.enum(['linked', 'missing', 'unlinked', 'conflicting', 'orphaned', 'shared']),
   can_edit: z.boolean(), reason: text, context_version: hash, type_mismatch: z.boolean(),
+  has_project_route: z.boolean().optional(), can_change_type: z.boolean().optional(),
 }).strict();
 export type ProjectEquipmentSnapshot = z.infer<typeof projectEquipmentSnapshotSchema>;
 export const projectEquipmentResultSchema = z.object({ projeto_id: uuid, equipamento_id: uuid, project_updated_at: timestamp,

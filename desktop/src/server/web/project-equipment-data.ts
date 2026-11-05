@@ -22,6 +22,7 @@ export function createProjectEquipmentData(client: SupabaseClient, capabilities?
       || data.binding_state !== 'linked' && (data.equipment !== null || data.can_edit)
       || data.can_edit !== (data.binding_state === 'linked' && !closed)
       || data.equipment !== null && data.type_mismatch !== (data.equipment.tipo_equipamento_id !== data.project.tipo_equipamento_id)
+      || data.can_change_type === true && (closed || !['linked', 'missing'].includes(data.binding_state) || data.has_project_route === true)
       || data.binding_state !== 'linked' && data.type_mismatch) throw unavailable();
     return data;
   }

@@ -18,8 +18,11 @@ insert into auth.sessions(id,user_id) values
 insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at) values
  ('46000000-0000-4000-8000-000000000001','https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1','56000000-0000-4000-8000-000000000001',
  '26000000-0000-4000-8000-000000000001','16000000-0000-4000-8000-000000000001',true,'26000000-0000-4000-8000-000000000002',clock_timestamp());
+-- Existing legacy projects keep the old save_project update boundary. New
+-- creation now uses the typed bundle; all SSO permit/body/MFA checks remain public.
+insert into public.rm_projetos(id,nome) values('66000000-0000-4000-8000-000000000001','Existing SSO fixture'),('66000000-0000-4000-8000-000000000002','Existing staging fixture');
 select set_config('rm.test.sso_payload',jsonb_build_object('id','66000000-0000-4000-8000-000000000001',
-  'expected_updated_at',null,'changes',jsonb_build_object('nome','SSO project fixture'))::text,true);
+  'expected_updated_at',(select updated_at from public.rm_projetos where id='66000000-0000-4000-8000-000000000001'),'changes',jsonb_build_object('nome','SSO project fixture'))::text,true);
 select pg_temp.check(not (select require_sso from rm_private.sso_settings),'staged enforcement defaults false');
 set local role service_role;
 do $$ declare result jsonb; begin
@@ -121,7 +124,7 @@ select pg_temp.deny_web(gen_random_uuid(),'save_project',jsonb_set(current_setti
 -- Native accounts without ANY binding retain staging access, not bound/disabled users.
 select set_config('request.jwt.claim.sub','16000000-0000-4000-8000-000000000002',true);
 select public.rm_web_mutate_v1('76000000-0000-4000-8000-000000000002','save_project',
-  jsonb_build_object('id','66000000-0000-4000-8000-000000000002','expected_updated_at',null,'changes',jsonb_build_object('nome','Legacy fixture project')));
+  jsonb_build_object('id','66000000-0000-4000-8000-000000000002','expected_updated_at',(select updated_at from public.rm_projetos where id='66000000-0000-4000-8000-000000000002'),'changes',jsonb_build_object('nome','Legacy fixture project')));
 reset role;
 update rm_private.sso_settings set require_sso=true;
 set local role authenticated;

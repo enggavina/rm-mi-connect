@@ -14,7 +14,7 @@ export function ProjectDossierFilters({ projectId, kind, filters, facets, error 
   return <div className={s.searchArea} data-dossier-filters={kind}>
     {error && <p className="notice error" role="alert">{error}</p>}
     <form action={`/projetos/${projectId}`} method="get" className={s.searchForm}>
-      <input type="hidden" name="tab" value={comment ? 'historico' : 'documentos'} />
+      <input type="hidden" name="tab" value={comment ? 'comentarios' : 'documentos'} />
       <div className={`field ${s.searchWide}`}><label htmlFor={`${kind}-query`}>{comment ? 'Buscar nos comentários' : 'Buscar nos documentos'}<input id={`${kind}-query`} name={names.search} type="search" defaultValue={typed.search ?? ''} maxLength={200} placeholder={comment ? 'Texto do comentário' : 'Título ou observação'} /></label></div>
       <div className="field"><label htmlFor={`${kind}-author`}>Autor<select id={`${kind}-author`} name={names.author_id} defaultValue={author}><option value="">Todos os autores</option>{author && !facets.authors.some(item => item.id === author) && <option value={author}>Autor não localizado neste projeto</option>}{facets.authors.map(item => <option value={item.id} key={item.id}>{authorLabel(item)}</option>)}</select></label></div>
       {comment ? <div className="field"><label htmlFor="comments-cell">Célula destinatária<select id="comments-cell" name={dossierSearchNames('comments').cell_id} defaultValue={cell}><option value="">Todas as células</option>{cell && !cells.some(item => item.id === cell) && <option value={cell}>Célula não localizada neste projeto</option>}{cells.map(item => <option value={item.id} key={item.id}>{item.nome || 'Célula histórica'}</option>)}</select></label></div> : <>

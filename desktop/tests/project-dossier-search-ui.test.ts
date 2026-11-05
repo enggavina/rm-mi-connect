@@ -30,7 +30,7 @@ test('invalid and repeated filters remain explicit errors instead of silently qu
 
 test('native pagination keeps the project, active tab and every active filter without mixing gallery or other dossier pages', () => {
   const href = dossierSearchHref(id(1), 'comments', comments, 4), url = new URL(href, 'https://em.example.invalid');
-  assert.equal(url.pathname, `/projetos/${id(1)}`); assert.equal(url.searchParams.get('tab'), 'historico');
+  assert.equal(url.pathname, `/projetos/${id(1)}`); assert.equal(url.searchParams.get('tab'), 'comentarios');
   assert.equal(url.searchParams.get('comment_q'), comments.search); assert.equal(url.searchParams.get('comment_author'), comments.author_id);
   assert.equal(url.searchParams.get('comment_cell'), comments.cell_id); assert.equal(url.searchParams.get('comment_from'), comments.from_date);
   assert.equal(url.searchParams.get('comment_to'), comments.to_date); assert.equal(url.searchParams.get('comment_page'), '4');
@@ -45,7 +45,7 @@ test('native pagination keeps the project, active tab and every active filter wi
 test('clearing filters keeps the authorized project tab and a page alone does not imply filtered absence', () => {
   const cleanComments = { search: '', author_id: null, cell_id: null, from_date: null, to_date: null, page: 4 };
   const cleanDocuments = { search: '', author_id: null, source: 'all' as const, status: 'all' as const, from_date: null, to_date: null, page: 2 };
-  assert.equal(dossierSearchHref(id(1), 'comments', cleanComments), `/projetos/${id(1)}?tab=historico`);
+  assert.equal(dossierSearchHref(id(1), 'comments', cleanComments), `/projetos/${id(1)}?tab=comentarios`);
   assert.equal(dossierSearchHref(id(1), 'documents', cleanDocuments), `/projetos/${id(1)}?tab=documentos`);
   assert.equal(dossierSearchActive(cleanComments), false); assert.equal(dossierSearchActive(cleanDocuments), false);
   assert.equal(dossierSearchActive({ ...cleanComments, cell_id: id(3) }), true);

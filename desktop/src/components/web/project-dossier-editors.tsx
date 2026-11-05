@@ -33,7 +33,7 @@ export function ProjectCommentEditor({ projectId, projectVersion, allocations }:
 }) {
   const [open, setOpen] = useState(false), [text, setText] = useState(''), [allocationId, setAllocationId] = useState(''), [saved, setSaved] = useState(false);
   const leaving = useRef(false), heading = useRef<HTMLHeadingElement>(null);
-  const save = useEngineeringSave<DossierCommentRequest>(async input => { const result = await addProjectComment(input); if (result.ok) { leaving.current = true; setSaved(true); } return result; }, `/projetos/${projectId}?tab=historico`);
+  const save = useEngineeringSave<DossierCommentRequest>(async input => { const result = await addProjectComment(input); if (result.ok) { leaving.current = true; setSaved(true); } return result; }, `/projetos/${projectId}?tab=comentarios`);
   const choices = allocations.filter(allocation => allocation.projeto_id === projectId && !allocation.retirada);
   const locked = save.locked || saved;
   useDossierExitGuard(open && !!(text || allocationId), save.busy || save.uncertain, save.stale, leaving);
@@ -44,12 +44,12 @@ export function ProjectCommentEditor({ projectId, projectVersion, allocations }:
     try { void save.send(dossierCommentRequest(projectId, projectVersion, choices.find(allocation => allocation.id === allocationId), text, crypto.randomUUID())); }
     catch (error) { save.setError(error instanceof Error ? error.message : 'Confira os dados do comentário.'); }
   }
-  if (!choices.length) return <div className={s.readonly}><p className="form-note">Aloque uma célula ativa para registrar comentários neste projeto. O histórico permanece disponível.</p></div>;
+  if (!choices.length) return <div className={s.readonly}><p className="form-note">Aloque uma célula ativa para registrar comentários neste projeto. Os comentários permanecem disponíveis.</p></div>;
   if (!open) return <div className={s.editor} data-project-comment-editor><button type="button" className="button secondary" onClick={() => setOpen(true)}><Icon name="plus" size={14} />Adicionar comentário</button></div>;
   return <div className={s.editor} data-project-comment-editor><form className={s.form} onSubmit={event => { event.preventDefault(); submit(); }}>
     <h3 tabIndex={-1} ref={heading}>Novo comentário do projeto</h3><p>Escolha a célula destinatária. O comentário será identificado com seu nome e a data de registro.</p>
-    <EngineeringSaveNotice state={save} reload={`/projetos/${projectId}?tab=historico`} />
-    {save.busy && <p role="status" className="notice">Registrando comentário…</p>}{saved && <p role="status" className="notice success">Comentário registrado. Atualizando o histórico…</p>}
+    <EngineeringSaveNotice state={save} reload={`/projetos/${projectId}?tab=comentarios`} />
+    {save.busy && <p role="status" className="notice">Registrando comentário…</p>}{saved && <p role="status" className="notice success">Comentário registrado. Atualizando os comentários…</p>}
     <fieldset className={s.fields} disabled={locked}><div className="form-grid">
       <div className="field span-all"><label htmlFor="dossier-comment-cell">Célula destinatária *</label><select id="dossier-comment-cell" value={allocationId} onChange={event => setAllocationId(event.target.value)} required><option value="">Selecione a célula</option>{choices.map(allocation => <option key={allocation.id} value={allocation.id}>{allocation.name}{allocation.visibilidade === false ? ' · Oculta no mobile' : ''}</option>)}</select></div>
       <div className="field span-all"><label htmlFor="dossier-comment-text">Comentário *</label><textarea id="dossier-comment-text" rows={5} value={text} onChange={event => setText(event.target.value)} maxLength={10_000} required /><p className={s.counter}>{text.length.toLocaleString('pt-BR')} / 10.000 caracteres</p></div>

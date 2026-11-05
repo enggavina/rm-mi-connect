@@ -25,7 +25,7 @@ export function readDossierSearchQuery(kind: DossierSearchKind, query: DossierSe
 }
 
 export function dossierSearchHref(projectId: string, kind: DossierSearchKind, filters: Omit<ProjectCommentFilters, 'page'> | Omit<ProjectDocumentFilters, 'page'>, page = 1) {
-  const fields = names[kind], params = new URLSearchParams({ tab: kind === 'comments' ? 'historico' : 'documentos' });
+  const fields = names[kind], params = new URLSearchParams({ tab: kind === 'comments' ? 'comentarios' : 'documentos' });
   for (const [key, name] of Object.entries(fields)) {
     if (key === 'page') continue;
     const value = (filters as Record<string, unknown>)[key];

@@ -19,7 +19,7 @@ export default async function ComentarioProjeto({ params, searchParams }: {
   let snapshot: ProjectCommentSnapshot | null = null, unavailable = false;
   try { snapshot = await getProjectComment(projectId, commentId, page); } catch { unavailable = true; }
   if (!snapshot && !unavailable) notFound();
-  const back = <a className="back-link" href={`/projetos/${projectId}?tab=historico`}><Icon name="back" size={15} />Voltar ao histórico do projeto</a>;
+  const back = <a className="back-link" href={`/projetos/${projectId}?tab=comentarios`}><Icon name="back" size={15} />Voltar aos comentários do projeto</a>;
   if (!snapshot) return <>{back}<PageHeading eyebrow="HISTÓRICO DO PROJETO" title="Comentário indisponível" description="Não foi possível conferir o comentário e suas versões agora." /><section className="panel"><div className={s.unavailable}><p className="notice" role="status">A consulta não foi concluída. <EngineeringReloadLink href={`${base}?page=${page}`}>Recarregar comentário</EngineeringReloadLink> para tentar novamente.</p></div></section></>;
   const { project, comment, history } = snapshot;
   const manager = hasWebCapability(session, 'em.projects.manage') && (session.profile.perfil === 'administrador' || session.profile.perfil === 'padr_o' && session.profile.id === comment.cadastrado_por_id);

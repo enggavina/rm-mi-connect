@@ -32,9 +32,10 @@ export const saveProjectSchema = z.object({
 
 export const saveProjectWithEquipmentSchema = saveProjectSchema.extend({
   changes: projectChangesSchema.refine(value => !Object.hasOwn(value, 'tipo_equipamento_id') && !Object.hasOwn(value, 'descricao_equipamento'),
-    'Classificação e dados técnicos usam seus próprios fluxos.'),
+    'O tipo e a descrição técnica pertencem ao equipamento.'),
   equipment: z.object({ id: uuid, expected_updated_at: timestamp.nullable(),
     expected_context_version: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+    tipo_equipamento_id: uuid.nullable().optional(),
     changes: z.union([projectEquipmentChangesSchema, z.object({}).strict()]),
   }).strict(),
 }).strict();
@@ -43,7 +44,7 @@ export const planCellSchema = z.object({
   submissionId: uuid, projeto_id: uuid, celula_id: uuid, expected_updated_at: version,
   changes: z.object({
     data_inicio: nullableDate, data_limite: nullableDate, bloqueada: z.enum(['sim', 'n_o']).optional(),
-    motivo_bloqueio: nullableText(5000), visibilidade: z.boolean().optional(), prioridade: option,
+    motivo_bloqueio: nullableText(5000), motivo_atraso: nullableText(5000), visibilidade: z.boolean().optional(), prioridade: option,
     indice: z.number().int().min(0).max(1_000_000).nullable().optional(),
     posicao: z.number().int().min(0).max(1_000_000).nullable().optional(),
     horas_previstas: z.number().min(0).max(1_000_000).nullable().optional(),
@@ -77,6 +78,8 @@ export function mutationError(code?: string): { code: string; error: string } {
     case '23505': return { code, error: 'Este protocolo já foi usado com outros dados. Atualize a tela antes de enviar novamente.' };
     case 'P0002': return { code, error: 'O registro não está mais disponível.' };
     case '23503': return { code, error: 'Um dos vínculos selecionados não está mais disponível.' };
+    case 'PT422': return { code, error: 'O roteiro modelo possui uma aprovação que aponta para célula fora do roteiro ativo. Revise as células e os destinos na Engenharia antes de salvar.' };
+    case 'PT423': return { code, error: 'Para criar o projeto, selecione o tipo na aba de cadastro e salve o equipamento junto com o projeto. Recarregue a página se ela foi aberta antes desta atualização.' };
     case '22023': case '22007': case '22008': case '22P02': case '23514': return { code, error: 'Os dados não atendem às regras desta operação. Confira os campos e a situação do registro.' };
     default: return { code: 'UNAVAILABLE', error: 'Não foi possível confirmar a alteração. Tente novamente com o mesmo protocolo.' };
   }

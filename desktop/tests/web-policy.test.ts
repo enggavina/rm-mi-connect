@@ -46,5 +46,8 @@ test('filter syntax and pagination cannot be supplied through the search field',
   assert.equal(mutationError('40001').code, '40001');
   assert.equal(mutationError('PT409').code, 'PT409');
   assert.equal(mutationError('PT409').error, mutationError('40001').error);
+  assert.match(mutationError('PT422').error, /Engenharia/);
+  assert.match(mutationError('PT423').error, /tipo/);
+  assert.equal(mutationError('PT423').code, 'PT423');
   assert.equal(mutationError('SENSITIVE_DATABASE_ERROR').code, 'UNAVAILABLE');
 });

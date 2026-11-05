@@ -24,7 +24,6 @@ import { availabilityMatchesContext } from '@/components/web/cell-availability-m
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
 import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
-import { ProjectTypePlanning } from '@/components/web/project-type-planning';
 import s from '@/components/web/project-schedule.module.css';
 
 export default async function Cronograma({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -87,7 +86,6 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const canEditProject = manager && hasWebCapability(session, 'em.projects.manage');
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
   const choices = canPlan && !closed && (!current || currentWritable) ? await editorChoices('planning') : null;
-  const typeChoices = canEditProject && canPlan && !closed && !data.allocations.length ? await editorChoices('project') : null;
   const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
@@ -127,7 +125,6 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
       <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento_exibicao || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
     </section>
     {closed && <p className="notice" role="status">Este projeto está encerrado. O planejamento permanece disponível para consulta.</p>}
-    {canPlan && <ProjectTypePlanning key={`${project.id}:${project.updated_at}`} project={project} types={typeChoices?.types ?? []} hasAllocations={data.allocations.length > 0} closed={closed} canManage={canEditProject} destination={scheduleHref(projectId)} />}
     {route && route.total > 0 && canPlan && !closed && (!current || currentWritable) && <details className="panel"><summary className={s.orderSummary}><span>Organizar sequência de execução</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary><div className="panel-content">
       <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={scheduleHref(projectId, current?.id, tab)} />
     </div></details>}

@@ -10,6 +10,8 @@ import { projectMilestoneChanges, projectMilestoneFields } from './project-miles
 import { equipmentDisplayValue, equipmentFieldGroups, equipmentFieldLabels, projectEquipmentChanges, projectEquipmentDraft, projectEquipmentMatches, type ProjectEquipmentField } from './project-equipment-model';
 import type { ProjectEquipmentSnapshot } from '@/server/web/project-equipment-policy';
 import equipmentStyles from './project-equipment.module.css';
+import { equipmentTypeLabel } from './engineering-model';
+import { canChangeProjectEquipmentType, canUseProjectEquipmentBundle, projectEquipmentType } from './project-equipment-type-model';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -38,15 +40,19 @@ const nullable = (form: FormData, name: string) => String(form.get(name) ?? '').
 const day = (value: FormDataEntryValue | null) => value ? `${String(value)}T12:00:00-03:00` : null;
 const inputDay = (value: unknown) => value ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(String(value))) : '';
 
-export function ProjectEditor({ project, clients, users, statuses, equipmentSnapshot }: { project?: WebRow; clients: WebRow[]; types: WebRow[]; users: WebRow[]; statuses: WebRow[]; hasAllocations?: boolean; equipmentSnapshot?: ProjectEquipmentSnapshot | null }) {
+export function ProjectEditor({ project, clients, types, users, statuses, hasAllocations = false, equipmentSnapshot }: { project?: WebRow; clients: WebRow[]; types: WebRow[]; users: WebRow[]; statuses: WebRow[]; hasAllocations?: boolean; equipmentSnapshot?: ProjectEquipmentSnapshot | null }) {
   const [id] = useState(() => project?.id || crypto.randomUUID());
   const [equipmentId] = useState(() => equipmentSnapshot?.equipment?.id || crypto.randomUUID());
   const [tab, setTab] = useState<'project' | 'equipment'>('project');
   const [equipment, setEquipment] = useState(() => projectEquipmentDraft(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot));
   const [confirmEquipment, setConfirmEquipment] = useState(false);
+  const currentType = projectEquipmentType(equipmentSnapshot);
+  const [equipmentType, setEquipmentType] = useState(currentType);
+  const canChangeType = !project || canChangeProjectEquipmentType(equipmentSnapshot, hasAllocations);
+  const typeChanged = equipmentType !== currentType;
   const [dateError, setDateError] = useState('');
   const usableEquipment = !project || !!equipmentSnapshot && projectEquipmentMatches(equipmentSnapshot, project as any)
-    && ['linked', 'missing'].includes(equipmentSnapshot.binding_state) && !equipmentSnapshot.project.closed;
+    && canUseProjectEquipmentBundle(equipmentSnapshot, hasAllocations);
   let proposedEquipment: ReturnType<typeof projectEquipmentChanges> = {};
   try { proposedEquipment = projectEquipmentChanges(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot, equipment); } catch { /* Validation is shown when submitting. */ }
   const changedEquipmentFields = Object.keys(proposedEquipment) as ProjectEquipmentField[];
@@ -67,12 +73,14 @@ export function ProjectEditor({ project, clients, users, statuses, equipmentSnap
     Object.assign(changes, milestones.changes);
     setDateError('');
     if (!usableEquipment) { if (!Object.keys(changes).length) { setDateError('Não há alterações para salvar.'); return; } void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes }); return; }
+    if ((!project || equipmentSnapshot?.binding_state === 'missing') && !equipmentType) { setDateError('Selecione o tipo de equipamento para criar o equipamento e seu roteiro.'); setTab('project'); return; }
     try {
       const equipmentChanges = projectEquipmentChanges(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot, equipment);
-      if (project && equipmentSnapshot?.binding_state === 'linked' && !Object.keys(changes).length && !Object.keys(equipmentChanges).length) { setDateError('Não há alterações para salvar.'); return; }
+      if (project && equipmentSnapshot?.binding_state === 'linked' && !Object.keys(changes).length && !Object.keys(equipmentChanges).length && !typeChanged) { setDateError('Não há alterações para salvar.'); return; }
       if (project && equipmentSnapshot?.binding_state === 'linked' && Object.keys(equipmentChanges).length && !confirmEquipment) { setDateError('Confirme as alterações dos dados do equipamento.'); setTab('equipment'); return; }
       void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes,
         equipment: { id: equipmentId, expected_updated_at: equipmentSnapshot?.equipment?.updated_at ?? null,
+          tipo_equipamento_id: equipmentType || null,
           expected_context_version: equipmentSnapshot?.context_version ?? null, changes: equipmentChanges } });
     } catch (error) { setDateError(error instanceof Error ? error.message : 'Confira os dados do equipamento.'); setTab('equipment'); }
   };
@@ -85,6 +93,9 @@ export function ProjectEditor({ project, clients, users, statuses, equipmentSnap
       <div className="field"><label htmlFor="numero">Número da OS / projeto</label><input id="numero" name="numero" defaultValue={project?.numero || ''} maxLength={100} placeholder="Atribuído pelo planejamento" /></div>
       <div className="field"><label htmlFor="nome">Nome do projeto</label><input id="nome" name="nome" defaultValue={project?.nome || ''} maxLength={500} placeholder="Identificação do projeto" /></div>
       <div className="field"><label htmlFor="cliente_id">Cliente</label><select id="cliente_id" name="cliente_id" defaultValue={project?.cliente_id || ''}><option value="">Selecione o cliente</option>{clients.map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select></div>
+      <div className="field"><label htmlFor="equipment-type">Tipo de equipamento{!project || equipmentSnapshot?.binding_state === 'missing' ? ' *' : ''}</label><select id="equipment-type" value={equipmentType} required={!project || equipmentSnapshot?.binding_state === 'missing'} disabled={!usableEquipment || !canChangeType} onChange={event => setEquipmentType(event.target.value)}>
+        <option value="">Não informado</option>{equipmentType && !types.some(type => type.id === equipmentType) && <option value={equipmentType} disabled>Tipo atual indisponível</option>}{types.map(type => <option key={type.id} value={type.id}>{equipmentTypeLabel(type)}</option>)}
+      </select><p className="form-note">{!usableEquipment ? 'O vínculo precisa ser confirmado antes de alterar o tipo.' : !canChangeType ? 'O tipo permanece preservado porque já existe roteiro ou trabalho operacional.' : 'O tipo é vinculado ao equipamento. O roteiro inicial é copiado para este projeto e pode ser planejado independentemente.'}</p></div>
       <div className="field"><label htmlFor="status_pcp">Status PCP</label><select id="status_pcp" name="status_pcp" defaultValue={project ? project.status_pcp || '' : 'aguardando_recebimento_equipamento'}><option value="">Sem status definido</option>{statuses.map(row => <option key={row.id} value={row.option_key}>{row.bubble_display}</option>)}</select></div>
       <div className="field"><label htmlFor="gestor_responsavel_id">Gestor responsável</label><select id="gestor_responsavel_id" name="gestor_responsavel_id" defaultValue={project?.gestor_responsavel_id || ''}><option value="">Não definido</option>{users.filter(row => row.status === 'ativo' || row.id === project?.gestor_responsavel_id).map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select></div>
       <div className="field"><label htmlFor="data_prevista_inicio">Início previsto</label><input id="data_prevista_inicio" name="data_prevista_inicio" type="date" defaultValue={inputDay(project?.data_prevista_inicio)} /></div>
@@ -165,7 +176,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users, destina
   const submit = (form: HTMLFormElement) => {
     if (save.uncertain) { save.retry(); return; }
     if (disabled || locked) return;
-    const data = new FormData(form); const changes: Record<string, unknown> = { bloqueada: data.get('bloqueada'), motivo_bloqueio: nullable(data, 'motivo_bloqueio'), observacao: nullable(data, 'observacao'), responsavel_id: nullable(data, 'responsavel_id') };
+    const data = new FormData(form); const changes: Record<string, unknown> = { bloqueada: data.get('bloqueada'), motivo_bloqueio: nullable(data, 'motivo_bloqueio'), motivo_atraso: nullable(data, 'motivo_atraso'), observacao: nullable(data, 'observacao'), responsavel_id: nullable(data, 'responsavel_id') };
     if (!allocation) changes.visibilidade = data.get('visibilidade') === 'on';
     for (const key of ['data_inicio', 'data_limite']) if (!allocation || String(data.get(key) || '') !== inputDay(allocation[key])) changes[key] = day(data.get(key));
     const hours = data.get('horas_previstas'); changes.horas_previstas = hours ? Number(hours) : null;
@@ -185,6 +196,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users, destina
       <div className="field"><label>Prioridade<select aria-label="Prioridade da célula" name="prioridade" defaultValue={allocation?.prioridade || ''}><option value="">Sem prioridade</option>{planningPriorities.map(priority => <option key={priority} value={priority}>{planningPriorityLabels[priority]}</option>)}</select></label></div>
       <div className="field"><label>Bloqueio de execução<select aria-label="Bloqueio de execução" name="bloqueada" defaultValue={allocation?.bloqueada || 'n_o'}><option value="n_o">Sem bloqueio</option><option value="sim">Bloqueada</option></select></label></div>
       <div className="field"><label>Motivo do bloqueio<input aria-label="Motivo do bloqueio" name="motivo_bloqueio" maxLength={5000} defaultValue={allocation?.motivo_bloqueio || ''} /></label></div>
+      <div className="field"><label>Motivo do atraso<input aria-label="Motivo do atraso" name="motivo_atraso" maxLength={5000} defaultValue={allocation?.motivo_atraso || ''} /></label></div>
       {!allocation && <label className="check-label span-all"><input type="checkbox" name="visibilidade" defaultChecked />Disponibilizar esta célula no aplicativo dos operadores autorizados</label>}
       <div className="field span-all"><label>Observação<textarea aria-label="Observação do planejamento" name="observacao" maxLength={10000} defaultValue={allocation?.observacao || ''} /></label></div>
       <div className="span-all"><p className="field-label">Formulários da célula</p>{allocation ? <div style={{ display: 'grid', gap: 10, maxHeight: 240, overflow: 'auto' }}>{forms.map(form => <label className="check-label" key={form.id}><input type="checkbox" name="forms_ids" value={form.id} defaultChecked={allocation.forms_ids?.includes(form.id)} />{form.titulo}</label>)}</div> : <p className="form-note">Os formulários, fotos obrigatórias e aprovações serão copiados do roteiro cadastrado para o tipo de equipamento.</p>}</div>

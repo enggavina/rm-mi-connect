@@ -27,6 +27,13 @@ insert into public.rm_fotos(celula_tipo_equipamento_id,titulo,categoria_foto) va
  ('84000000-0000-4000-8000-000000000001','Required template photo','obrigat_ria');
 insert into public.rm_aprovacoes_etapas(celula_tipo_equipamento_id,celula_origem_id,celula_destino_id,status_cel_proj) values
  ('84000000-0000-4000-8000-000000000001','34000000-0000-4000-8000-000000000001','34000000-0000-4000-8000-000000000002','em_dia');
+-- Simulate a completed pre-037 creation through the retained private core.
+-- The public tests below must still replay its exact receipt and preserve its
+-- legacy per-allocation materialization; fresh public creation is tested in 037.
+select set_config('request.jwt.claim.sub','14000000-0000-4000-8000-000000000001',true);
+select rm_private.web_mutate_before_route_instance_v1('a4000000-0000-4000-8000-000000000001','save_project',jsonb_build_object(
+ 'id','94000000-0000-4000-8000-000000000001','expected_updated_at',null,'changes',jsonb_build_object('numero','QA-014','nome','Fixture project',
+ 'cliente_id','44000000-0000-4000-8000-000000000001','tipo_equipamento_id','54000000-0000-4000-8000-000000000001')));
 set local role authenticated;
 select set_config('request.jwt.claim.sub','14000000-0000-4000-8000-000000000001',true);
 do $$ declare payload jsonb; r jsonb; v timestamptz; begin
@@ -35,7 +42,7 @@ do $$ declare payload jsonb; r jsonb; v timestamptz; begin
     'tipo_equipamento_id','54000000-0000-4000-8000-000000000001'));
   r := public.rm_web_mutate_v1('a4000000-0000-4000-8000-000000000001','save_project',payload);
   perform pg_temp.check(r->'record'->>'created_by_user_id'='24000000-0000-4000-8000-000000000001','actor derives Auth');
-  perform pg_temp.check(not (r->>'idempotent_replay')::boolean,'initial result');
+  perform pg_temp.check((r->>'idempotent_replay')::boolean,'completed legacy create replays through the current public boundary');
   perform pg_temp.check((public.rm_web_mutate_v1('a4000000-0000-4000-8000-000000000001','save_project',payload)->>'idempotent_replay')::boolean,'replay ignores now-stale create version');
   begin
     perform public.rm_web_mutate_v1('a4000000-0000-4000-8000-000000000001','save_project',jsonb_set(payload,'{changes,nome}','"Other"'));
@@ -188,11 +195,12 @@ do $$ begin
   perform pg_temp.check((select eventualidades='Operational update' from public.rm_projetos where id='94000000-0000-4000-8000-000000000001'),'operational write retained');
 end $$;
 reset role;
+insert into public.rm_projetos(id,nome) values('94000000-0000-4000-8000-000000000002','Existing MFA fixture');
 insert into auth.mfa_factors(user_id,factor_type,status) values
  ('14000000-0000-4000-8000-000000000001','totp','verified');
 set local role authenticated;
 do $$ declare p jsonb; r jsonb; begin
-  p:=jsonb_build_object('id','94000000-0000-4000-8000-000000000002','expected_updated_at',null,
+  p:=jsonb_build_object('id','94000000-0000-4000-8000-000000000002','expected_updated_at',(select updated_at from public.rm_projetos where id='94000000-0000-4000-8000-000000000002'),
     'changes',jsonb_build_object('nome','MFA fixture'));
   perform set_config('request.jwt.claims','{"aal":"aal1"}',true);
   begin

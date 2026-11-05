@@ -30,23 +30,23 @@ export function ProjectDocumentsPanel({ projectId, projectVersion, data, filters
   </section>;
 }
 
-export function ProjectHistoryPanel({ projectId, projectVersion, data, filters, error, stages, cells, users, allocations, canAdd, closed }: {
-  projectId: string; projectVersion: string; data: ProjectCommentPage | null; filters: ProjectCommentFilters; error?: string; stages: WebRow[]; cells: WebRow[]; users: WebRow[];
+export function ProjectCommentsPanel({ projectId, projectVersion, data, filters, error, cells, allocations, canAdd, closed }: {
+  projectId: string; projectVersion: string; data: ProjectCommentPage | null; filters: ProjectCommentFilters; error?: string; cells: WebRow[];
   allocations: WebRow[]; canAdd: boolean; closed: boolean;
 }) {
-  const cellNames = new Map(cells.map(cell => [cell.id, cell.nome])), userNames = new Map(users.map(user => [user.id, user.nome]));
+  const cellNames = new Map(cells.map(cell => [cell.id, cell.nome]));
   const currentFilters = data?.filters ?? filters, filtered = dossierSearchActive(currentFilters);
   const choices: DossierCommentAllocation[] = allocations.filter(allocation => allocation.projeto_id === projectId && !allocation.retirada).map(allocation => ({
     id: allocation.id, projeto_id: allocation.projeto_id, celula_id: allocation.celula_id, updated_at: allocation.updated_at,
     retirada: allocation.retirada, visibilidade: allocation.visibilidade, name: cellNames.get(allocation.celula_id) || 'Célula do projeto',
   }));
-  return <div className="two-columns"><section className="panel" data-project-comments><div className="panel-header"><h2>Comentários do projeto {data && <span className="inline-count">{data.unfiltered_total}</span>}</h2></div>
+  return <section className="panel" data-project-comments><div className="panel-header"><h2>Comentários do projeto {data && <span className="inline-count">{data.unfiltered_total}</span>}</h2></div>
     {closed && <div className={s.readonly}><p className="notice">Este projeto está encerrado. Os comentários permanecem disponíveis para consulta.</p></div>}
     {canAdd && !closed && <ProjectCommentEditor projectId={projectId} projectVersion={projectVersion} allocations={choices} />}
     <ProjectDossierFilters projectId={projectId} kind="comments" filters={currentFilters} facets={data?.facets ?? { authors: [], cells: [] }} error={error} />
     {!data ? <div className={s.readonly}><p className="notice" role="status">Não foi possível carregar a consulta de comentários. Confira os filtros ou recarregue a página para tentar novamente.</p></div>
-      : !data.items.length ? <Empty title={filtered ? 'Nenhum comentário encontrado com esses filtros' : 'Sem comentários'} detail={filtered ? 'Altere ou limpe os filtros para consultar o histórico preservado no projeto.' : 'Os comentários registrados pela equipe serão reunidos aqui.'} icon="users" />
+      : !data.items.length ? <Empty title={filtered ? 'Nenhum comentário encontrado com esses filtros' : 'Sem comentários'} detail={filtered ? 'Altere ou limpe os filtros para consultar os comentários preservados no projeto.' : 'Os comentários registrados pela equipe serão reunidos aqui.'} icon="users" />
       : <div className="activity-list">{data.items.map(comment => <div className="activity-item" key={comment.id} data-project-comment={comment.id}><span className="activity-icon"><Icon name="users" size={16} /></span><div><h3>{comment.author_name || 'Autor registrado'}{comment.author_registration ? ` · ${comment.author_registration}` : ''} · {comment.cell_name || (comment.celula_id ? 'Célula histórica' : 'Projeto')}</h3><p className={s.commentText}>{comment.evento}</p><p>{date(comment.created_at, true)}</p><a className="text-link" href={`/projetos/${projectId}/comentarios/${comment.id}`} aria-label={`Consultar comentário de ${comment.author_name || 'autor registrado'}`}>Consultar comentário</a></div></div>)}</div>}
     {data && <ProjectDossierPagination projectId={projectId} kind="comments" page={data.page} pageSize={data.page_size} total={data.total} unfilteredTotal={data.unfiltered_total} filters={data.filters} />}
-  </section><section className="panel"><div className="panel-header"><h2>Aprovações das etapas</h2></div>{stages.length ? <div className="activity-list">{stages.map(stage => <div className="activity-item" key={stage.id}><span className="activity-icon"><Icon name="check" size={16} /></span><div><h3>{cellNames.get(stage.celula_origem_id) || 'Etapa da célula'}</h3><Status value={stage.status} /><p style={{ marginTop: 7 }}>{userNames.get(stage.aprovado_por_id) || userNames.get(stage.aprovador_id) || 'Aprovador não definido'}{stage.data_aprovacao ? ` · ${date(stage.data_aprovacao)}` : ''}</p></div></div>)}</div> : <Empty title="Nenhuma etapa definida" detail="As aprovações são definidas nos modelos do roteiro de execução." icon="check" />}</section></div>;
+  </section>;
 }

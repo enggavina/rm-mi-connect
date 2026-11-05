@@ -11,6 +11,11 @@ insert into public.rm_users(id,auth_user_id,nome,perfil,status) values
 update rm_private.sso_settings set require_sso=false;
 select set_config('request.jwt.claim.sub','1fe35000-0000-4000-8000-000000000001',true);
 select set_config('request.jwt.claims','{"aal":"aal1"}',true);
+-- Frozen legacy creation receipt: verify 035's old create/date contract and
+-- current public replay without reopening fresh untyped web creation.
+select rm_private.web_mutate_before_route_instance_v1('afe35000-0000-4000-8000-000000000001','save_project',jsonb_build_object(
+ 'id','5fe35000-0000-4000-8000-000000000001','expected_updated_at',null,'changes',jsonb_build_object('nome','Milestone fixture',
+ 'data_inicio_peritagem','2026-11-01','data_fim_peritagem','2026-11-02','data_inicio_reparo','2026-10-01','data_fim_reparo','2026-10-02')));
 set local role authenticated;
 do $$
 declare payload jsonb; result jsonb; initial_result jsonb; project_id uuid:='5fe35000-0000-4000-8000-000000000001';

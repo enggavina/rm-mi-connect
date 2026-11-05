@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { saveProjectRoute } from '@/server/web/project-route-actions';
 import type { ProjectRouteSnapshot } from '@/server/web/project-route-data';
 import type { SaveProjectRouteInput } from '@/server/web/project-route-policy';
@@ -10,7 +11,7 @@ import { Empty, Status } from './ui';
 import { Icon } from './icons';
 import s from './project-route.module.css';
 
-export function ProjectRouteEditor({ snapshot, canEdit, destination }: { snapshot: ProjectRouteSnapshot; canEdit: boolean; destination: string }) {
+export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails }: { snapshot: ProjectRouteSnapshot; canEdit: boolean; destination: string; itemDetails?: Record<string, ReactNode> }) {
   const [items, setItems] = useState(snapshot.items), [normalize, setNormalize] = useState(false), [confirmed, setConfirmed] = useState(false), [saved, setSaved] = useState(false);
   const leaving = useRef(false);
   const target = projectRouteDestination(destination, snapshot.project.id);
@@ -54,6 +55,7 @@ export function ProjectRouteEditor({ snapshot, canEdit, destination }: { snapsho
         <span className={s.position} aria-label={`Posição proposta ${index + 1}`}>{index + 1}</span>
         <div><h3 className={s.title}>{label}</h3><div className={s.meta}><Status value={item.status} /><Status value={item.visibilidade ? 'ativo' : 'pendente'} label={item.visibilidade ? 'Visível no mobile' : 'Oculta no mobile'} /><span className={s.note}>{item.indice === null ? 'Sem ordem salva' : `Ordem salva: ${item.indice}`}</span></div></div>
         {editable && <div className={s.controls}><button type="button" className="button small secondary" disabled={locked || index === 0} aria-label={`Mover ${label} para cima`} onClick={() => move(item.id, index - 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(-90deg)' }} />Subir</button><button type="button" className="button small secondary" disabled={locked || index === items.length - 1} aria-label={`Mover ${label} para baixo`} onClick={() => move(item.id, index + 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(90deg)' }} />Descer</button></div>}
+        {itemDetails?.[item.id] && <div className={s.itemDetails}>{itemDetails[item.id]}</div>}
       </article>;
     })}</div>
     {editable && <div className={s.save}>

@@ -4,6 +4,7 @@
 .item { display:grid; grid-template-columns:36px minmax(0,1fr) auto; align-items:center; gap:16px; padding:18px; border:1px solid #e8ebf0; border-radius:8px; }
 .position { display:grid; place-items:center; width:32px; height:32px; border-radius:50%; color:#a32b31; background:#f8eeee; font-weight:700; }
 .title { font-size:14px; margin:0 0 8px; }
+.itemDetails { grid-column:2/-1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; font-size:12px; line-height:1.7; color:#59687a; }
 .meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .controls,.actions { display:flex; flex-wrap:wrap; gap:8px; }
 .save { display:grid; gap:16px; margin-top:22px; padding-top:22px; border-top:1px solid #e8ebf0; }
