@@ -5,6 +5,7 @@ const timestamp = z.string().datetime({ offset: true });
 const nullableText = (max = 1000) => z.string().max(max).nullable().optional();
 const nullableId = uuid.nullable().optional();
 const nullableDate = timestamp.nullable().optional();
+const nullableCalendarDate = z.iso.date().refine(value => !value.startsWith('0000-'), 'Informe um ano válido.').nullable().optional();
 const option = z.string().min(1).max(100).regex(/^[a-z0-9_]+$/).nullable().optional();
 const version = timestamp.nullable();
 
@@ -16,8 +17,15 @@ export const saveProjectSchema = z.object({
     escopo_abreviado: nullableText(5000), eventualidades: nullableText(10_000), gestor_responsavel_id: nullableId,
     status: option, status_pcp: option, chegada_do_equipamento: nullableDate, data_prevista_inicio: nullableDate,
     data_prevista_final: nullableDate, data_contratual: nullableDate, data_renegociada: nullableDate,
+    data_inicio_peritagem: nullableCalendarDate, data_fim_peritagem: nullableCalendarDate,
+    data_inicio_reparo: nullableCalendarDate, data_fim_reparo: nullableCalendarDate,
     replanejamento_motivo: nullableText(5000),
-  }).strict().refine(value => Object.keys(value).length > 0, 'Informe uma alteração.'),
+  }).strict().refine(value => Object.keys(value).length > 0, 'Informe uma alteração.').superRefine((value, context) => {
+    if (value.data_inicio_peritagem && value.data_fim_peritagem && value.data_inicio_peritagem > value.data_fim_peritagem)
+      context.addIssue({ code: 'custom', path: ['data_fim_peritagem'], message: 'O fim da peritagem não pode ser anterior ao início.' });
+    if (value.data_inicio_reparo && value.data_fim_reparo && value.data_inicio_reparo > value.data_fim_reparo)
+      context.addIssue({ code: 'custom', path: ['data_fim_reparo'], message: 'O fim do reparo não pode ser anterior ao início.' });
+  }),
 }).strict();
 
 export const planCellSchema = z.object({
@@ -58,7 +66,7 @@ export function mutationError(code?: string): { code: string; error: string } {
     case '23505': return { code, error: 'Este protocolo já foi usado com outros dados. Atualize a tela antes de enviar novamente.' };
     case 'P0002': return { code, error: 'O registro não está mais disponível.' };
     case '23503': return { code, error: 'Um dos vínculos selecionados não está mais disponível.' };
-    case '22023': case '22P02': case '23514': return { code, error: 'Os dados não atendem às regras desta operação. Confira os campos e a situação do registro.' };
+    case '22023': case '22007': case '22008': case '22P02': case '23514': return { code, error: 'Os dados não atendem às regras desta operação. Confira os campos e a situação do registro.' };
     default: return { code: 'UNAVAILABLE', error: 'Não foi possível confirmar a alteração. Tente novamente com o mesmo protocolo.' };
   }
 }

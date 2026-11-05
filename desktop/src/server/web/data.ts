@@ -15,7 +15,7 @@ export type FormFilters = { q?: string; status?: string; page?: number | string 
 export type CatalogKind = 'users' | 'cells' | 'types' | 'clients' | 'forms';
 export const catalogKinds: CatalogKind[] = ['users', 'cells', 'types', 'clients', 'forms'];
 
-const PROJECT = 'id,numero,nome,cliente_id,cliente_nome_exportacao,tipo_equipamento_id,equipamento_id,descricao_equipamento,contato,proprietario,escopo_abreviado,eventualidades,gestor_responsavel_id,status,status_pcp,nota_fiscal,arquivo_nota_fiscal_url,documento_proposta_url,chegada_do_equipamento,data_prevista_inicio,data_prevista_final,data_contratual,data_renegociada,data_real_de_entrega,replanejamento_motivo,created_at,updated_at';
+const PROJECT = 'id,numero,nome,cliente_id,cliente_nome_exportacao,tipo_equipamento_id,equipamento_id,descricao_equipamento,contato,proprietario,escopo_abreviado,eventualidades,gestor_responsavel_id,status,status_pcp,nota_fiscal,arquivo_nota_fiscal_url,documento_proposta_url,chegada_do_equipamento,data_prevista_inicio,data_prevista_final,data_contratual,data_renegociada,data_inicio_peritagem,data_fim_peritagem,data_inicio_reparo,data_fim_reparo,data_real_de_entrega,replanejamento_motivo,created_at,updated_at';
 const USER = 'id,nome,matricula,cargo,perfil,status,foto_url';
 const CLIENT = 'id,codigo,nome,descricao';
 const CELL = 'id,codigo,nome,indice,ordem';

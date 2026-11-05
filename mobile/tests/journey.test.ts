@@ -25,6 +25,30 @@ test('cell project list excludes invisible, delivered, cancelled and billing-rea
   assert.deepEqual(cellAllocations(operator, 'c2', catalog, rows), []);
 });
 
+test('returned projects appear first within the cell while preserving the established queue order', () => {
+  const catalog: Row[] = [
+    { id: 'normal-earlier' }, { id: 'normal-later' }, { id: 'returned-later' },
+    { id: 'returned-earlier' }, { id: 'returned-tie' }, { id: 'hidden' },
+    { id: 'other-cell' }, { id: 'closed', status_pcp: 'cancelado' },
+  ];
+  const rows: Row[] = [
+    { ...allocation, id: 'normal-earlier', projeto_id: 'normal-earlier', status: 'pendente', posicao: 1 },
+    { ...allocation, id: 'returned-later', projeto_id: 'returned-later', status: 'retornado', posicao: 20 },
+    { ...allocation, id: 'normal-later', projeto_id: 'normal-later', status: null, indice: 3 },
+    { ...allocation, id: 'returned-earlier', projeto_id: 'returned-earlier', status: 'retornado', indice: 2 },
+    { ...allocation, id: 'returned-tie', projeto_id: 'returned-tie', status: 'retornado', posicao: 2 },
+    { ...allocation, id: 'hidden', projeto_id: 'hidden', status: 'retornado', visibilidade: false },
+    { ...allocation, id: 'other-cell', projeto_id: 'other-cell', status: 'retornado', celula_id: 'c2' },
+    { ...allocation, id: 'closed', projeto_id: 'closed', status: 'retornado' },
+  ];
+  const originalOrder = rows.map(row => row.id);
+  assert.deepEqual(cellAllocations(operator, 'c1', catalog, rows).map(row => row.id), [
+    'returned-earlier', 'returned-tie', 'returned-later', 'normal-earlier', 'normal-later',
+  ]);
+  assert.deepEqual(rows.map(row => row.id), originalOrder);
+  assert.deepEqual(cellAllocations(operator, 'c2', catalog, rows), []);
+});
+
 test('deep links require a permitted cell and a visible allocation of the selected active project', () => {
   assert.equal(context().ok, true);
   assert.equal(resolveJourneyContext(operator, undefined, 'p1', cells, projects, [allocation]).ok, false);

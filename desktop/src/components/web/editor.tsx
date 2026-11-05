@@ -6,6 +6,7 @@ import { Icon } from './icons';
 import { planningPriorities, planningPriorityLabels } from './pcp-model';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
 import { projectRouteDestination } from './project-route-model';
+import { projectMilestoneChanges, projectMilestoneFields } from './project-milestone-model';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -36,6 +37,7 @@ const inputDay = (value: unknown) => value ? new Intl.DateTimeFormat('en-CA', { 
 
 export function ProjectEditor({ project, clients, types, users, statuses, hasAllocations = false }: { project?: WebRow; clients: WebRow[]; types: WebRow[]; users: WebRow[]; statuses: WebRow[]; hasAllocations?: boolean }) {
   const [id] = useState(() => project?.id || crypto.randomUUID());
+  const [dateError, setDateError] = useState('');
   const save = useSave(saveProject, result => { window.location.assign(`/projetos/${result.data.id}`); });
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form); const changes: Record<string, unknown> = {};
@@ -46,9 +48,15 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
       // Unchanged dates retain their original instant and precision.
       if (!project || String(data.get(key) || '') !== inputDay(project[key])) changes[key] = day(data.get(key));
     }
+    const milestoneValues = Object.fromEntries(projectMilestoneFields.map(field => [field, nullable(data, field)])) as Record<typeof projectMilestoneFields[number], string | null>;
+    const milestones = projectMilestoneChanges(milestoneValues, project);
+    if (milestones.error) { setDateError(milestones.error); return; }
+    Object.assign(changes, milestones.changes);
+    setDateError('');
     void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes });
   };
   return <form onSubmit={event => { event.preventDefault(); submit(event.currentTarget); }}>
+    {dateError && <div role="alert" className="notice error">{dateError}</div>}
     {save.error && <div role="alert" className="notice error">{save.error}</div>}
     {save.uncertain && <div className="notice">Os campos permanecem protegidos até confirmar o resultado deste envio.</div>}
     <fieldset disabled={save.busy || save.uncertain} style={{ margin: 0, padding: 0, border: 0 }}><div className="form-grid">
@@ -63,6 +71,10 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
       <div className="field"><label htmlFor="data_prevista_final">Entrega prevista</label><input id="data_prevista_final" name="data_prevista_final" type="date" defaultValue={inputDay(project?.data_prevista_final)} /></div>
       <div className="field"><label htmlFor="data_contratual">Data contratual</label><input id="data_contratual" name="data_contratual" type="date" defaultValue={inputDay(project?.data_contratual)} /></div>
       <div className="field"><label htmlFor="data_renegociada">Data renegociada</label><input id="data_renegociada" name="data_renegociada" type="date" defaultValue={inputDay(project?.data_renegociada)} /></div>
+      <div className="field"><label htmlFor="data_inicio_peritagem">Início da peritagem</label><input id="data_inicio_peritagem" name="data_inicio_peritagem" type="date" defaultValue={project?.data_inicio_peritagem || ''} /></div>
+      <div className="field"><label htmlFor="data_fim_peritagem">Fim da peritagem</label><input id="data_fim_peritagem" name="data_fim_peritagem" type="date" defaultValue={project?.data_fim_peritagem || ''} /></div>
+      <div className="field"><label htmlFor="data_inicio_reparo">Início do reparo</label><input id="data_inicio_reparo" name="data_inicio_reparo" type="date" defaultValue={project?.data_inicio_reparo || ''} /></div>
+      <div className="field"><label htmlFor="data_fim_reparo">Fim do reparo</label><input id="data_fim_reparo" name="data_fim_reparo" type="date" defaultValue={project?.data_fim_reparo || ''} /></div>
       <div className="field"><label htmlFor="contato">Contato</label><input id="contato" name="contato" defaultValue={project?.contato || ''} maxLength={500} /></div>
       <div className="field"><label htmlFor="proprietario">Proprietário</label><input id="proprietario" name="proprietario" defaultValue={project?.proprietario || ''} maxLength={500} /></div>
       <div className="field span-all"><label htmlFor="escopo_abreviado">Escopo do serviço</label><textarea id="escopo_abreviado" name="escopo_abreviado" defaultValue={project?.escopo_abreviado || ''} maxLength={5000} /></div>

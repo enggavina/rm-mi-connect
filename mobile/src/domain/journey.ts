@@ -16,7 +16,8 @@ export function cellAllocations(operator: Operator | null, cellId: string | unde
   if (!canAccessCell(operator, cellId)) return [];
   const active = new Set(projects.filter(isActiveProject).map(project => project.id));
   return allocations.filter(a => a.celula_id === cellId && a.visibilidade === true && active.has(a.projeto_id))
-    .sort((a, b) => (a.posicao ?? a.indice ?? 0) - (b.posicao ?? b.indice ?? 0));
+    .sort((a, b) => Number(b.status === 'retornado') - Number(a.status === 'retornado')
+      || (a.posicao ?? a.indice ?? 0) - (b.posicao ?? b.indice ?? 0));
 }
 
 export type JourneyContext = { ok: false; reason: string; loading?: boolean } | { ok: true; cell: Row; project: Row; allocation: Row; canEdit: boolean };

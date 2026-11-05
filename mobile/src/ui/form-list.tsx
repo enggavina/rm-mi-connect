@@ -24,7 +24,7 @@ export function FormList({ peritagem = false, projectId, cellId }: { peritagem?:
     {(forms.error || records.error) && <Notice error>{forms.error || records.error}</Notice>}
     <Text style={s.h2}>Formulários vinculados</Text>
     {!available.length && <Notice>{assigned.length ? 'Nenhum formulário corresponde à busca.' : 'Nenhum formulário disponível neste vínculo de projeto e célula. Sincronize para receber as definições do planejamento.'}</Notice>}
-    {available.map(form => <Card key={form.id}><Text style={s.h2}>{form.titulo}</Text>{!!form.descricao && <Text style={s.muted}>{form.descricao}</Text>}<View style={s.row}><Badge text={form.tipo === 'peritagem' ? 'Peritagem' : 'Inspeção'} />{!form.ativo && <Badge text="Modelo inativo" alert />}</View><Button title="Abrir preenchimento" disabled={!context.canEdit || !form.ativo} onPress={() => router.push({ pathname: '/registro-form', params: { projeto: context.project.id, celula: context.cell.id, form: form.id } })} /></Card>)}
+    {available.map(form => <Card key={form.id}><Text style={s.h2}>{form.titulo}</Text>{!!form.descricao && <Text style={s.muted}>{form.descricao}</Text>}<View style={s.row}>{!!form.tipo && <Badge text={form.tipo === 'peritagem' ? 'Peritagem' : 'Inspeção'} />}{!form.ativo && <Badge text="Modelo inativo" alert />}</View><Button title="Abrir preenchimento" disabled={!context.canEdit || !form.ativo} onPress={() => router.push({ pathname: '/registro-form', params: { projeto: context.project.id, celula: context.cell.id, form: form.id } })} /></Card>)}
     <Text style={s.h2}>Registros enviados</Text>
     {!submitted.length && <Notice>Nenhum registro encontrado para estes formulários no catálogo local.</Notice>}
     {submitted.map(record => <Card key={record.id}>

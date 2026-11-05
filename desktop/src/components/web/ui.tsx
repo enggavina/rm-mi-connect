@@ -20,6 +20,12 @@ export const date = (value: unknown, withTime = false): string => {
   if (!value) return '—'; const parsed = new Date(String(value)); if (Number.isNaN(parsed.getTime())) return '—';
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}), timeZone: 'America/Sao_Paulo' }).format(parsed);
 };
+// SQL DATE is a calendar day; parsing it as UTC would show the previous day in Brazil.
+export const calendarDate = (value: unknown): string => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '—';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+};
 export function Empty({ title, detail, icon = 'folder', children }: { title: string; detail?: string; icon?: IconName; children?: React.ReactNode }) {
   return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={26} /></span><h3>{title}</h3>{detail && <p>{detail}</p>}{children}</div>;
 }
