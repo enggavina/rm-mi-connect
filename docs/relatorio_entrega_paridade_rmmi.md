@@ -1,10 +1,10 @@
 # Relatório de execução — revisão de paridade RMMI
 
-Revisão iniciada em 29/10/2026; atualização de entrega em 30/10/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
+Revisão iniciada em 29/10/2026; atualização de entrega em 05/11/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
 
 ## Situação
 
-**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): identificação por QR do projeto, em 30/10/2026.** Consumidor **`3a1367cf398e8bc3c3f97ab3191b8c8555098909`**, Railway **`33c646e4-4b9a-4c25-a84a-8583f187379a`** com `SUCCESS`; [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/41135639324) e [EM web](https://em-web-production.up.railway.app) com health 200. Incremento 034 sem migração SQL; 001–033 mantidas, novo APK 1.2.4/código 7 verificado com mesmo pacote/certificado e dispositivos preservados. A paridade global continua em andamento; 033 e entregas anteriores permanecem no histórico.
+**Último incremento publicado em [EM web](https://em-web-production.up.railway.app): roteiro próprio, histórico e fila do projeto (037–038), em 05/11/2026.** Tipo no equipamento, cópia persistente e independente do roteiro, novas abas e edição contextual das alocações. Consumidor **`501137b32d7e9ed79f4f7e7c5dae11a3b823cef0`**, Railway **`d1ff5dc5-f3cd-490f-97a4-ed0659b6140d`** com `SUCCESS`; [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/42098449477). Migrações aplicadas após ensaio, com dados e permissões preservados. 422 testes web, 103 mobile e 28 suítes SQL aprovados. [Relatório completo, discovery, modelo, arquivos e limites](relatorio_roteiro_projeto_037_038.md). Sete regras em quatro modelos exigem revisão do destino na Engenharia. O [plano geral](../plano_paridade_rmmi_web.md) conserva também o histórico das entregas 035 e 036. A paridade global continua em andamento; as entregas anteriores permanecem abaixo.
 
 ## Incremento 034 publicado: identificação por QR do projeto
 

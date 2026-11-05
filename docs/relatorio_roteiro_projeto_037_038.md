@@ -1,6 +1,6 @@
 # Roteiro independente, histórico e fila do projeto
 
-Solicitação do anexo `541c8159-217f-4325-8e3a-3d123ad27859`, em 05/11/2026. Implementação no portal EM existente, com o mesmo Supabase `oficina-em-mi-off`. A validação consolidada e a publicação estão em andamento; este documento será atualizado com as provas da entrega.
+Solicitação do anexo `541c8159-217f-4325-8e3a-3d123ad27859`, entregue em 05/11/2026 no [portal EM](https://em-web-production.up.railway.app), com o mesmo Supabase `oficina-em-mi-off`. Consumidor **`501137b32d7e9ed79f4f7e7c5dae11a3b823cef0`**, Railway **`d1ff5dc5-f3cd-490f-97a4-ed0659b6140d`** com `SUCCESS` e [CI web/mobile aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/42098449477).
 
 ## Discovery e modelo final
 
@@ -56,7 +56,20 @@ Contratos detalhados: [roteiro e equipamento](../rm-mobile-supabase/WEB_PROJECT_
 
 ## Validação e publicação
 
-Em consolidação: testes web e mobile, integração PostgreSQL, upgrades, disputas reais de concorrência, interface em Chromium, checagem de tipos, build e smokes. O repositório não possui script/configuração de lint independente; a validação de compilação e tipos não será apresentada como uma execução de ESLint.
+**422 testes web e 103 mobile aprovados**, além de tipos, build web e smokes de runtime/SSO. O CI também aprovou o contrato integrado de QR e a compatibilidade de dependências do Expo. O repositório não possui script/configuração de lint independente; a validação de compilação e tipos não é uma execução de ESLint.
+
+O PostgreSQL isolado executou 66 scripts: bootstrap, 37 migrações e 28 suítes, com upgrades que aquecem chamadas anteriores, permits SSO e recibos mobile. As cinco disputas reais novas cobrem reenvio simultâneo, duas inicializações, mudança do modelo, referência inversa concorrente e um escritor externo que já segura a linha do projeto. Os hashes das fontes permaneceram iguais durante a execução final.
+
+QA em Chromium verificou a seleção relacional, campo obrigatório, edição isolada, vínculo legado ausente com trabalho existente, retentativa congelada, abas, contexto exato da fila, motivo de atraso e apresentação do histórico. As capturas com CSS real foram conferidas em desktop e 375/390 px; as ações desse ensaio usaram dados locais simulados. O build local de referência foi `z3M6wz5143_Gn4L-SnXKd`; 79 JavaScripts do navegador foram confrontados com dez segredos locais conhecidos, sem ocorrências.
+
+037 e 038 foram aplicadas em uma transação, após ensaio com rollback. Ambos confrontaram os estados anteriores e preservaram integralmente 74 tabelas RM/privadas e duas de Storage, 76 estruturas/ACLs/RLS, 105 OIDs/proprietários/ACLs de funções, 46 políticas, 425 constraints, 756 triggers e 237 índices anteriores. As 113 funções finais foram verificadas contra o manifesto local, preservando as concessões de produção dos OIDs existentes. O marcador novo ficou vazio; não houve backfill de roteiros ou alteração das identidades, respostas, fotos, comentários e recibos anteriores. SSO e os dois administradores do EM foram mantidos; a ponte Bubble continua desativada.
+
+As fontes aplicadas têm SHA256:
+
+- 037: `2b2a13efb6bf92f494541722153b2c8cc6b1ec080c9dd2d3343a2396634e7bfc`.
+- 038: `25f1297b1e238b473f13df732cc5ec138438385a377c4efa5708cd1196497491`.
+
+Depois da publicação, o health respondeu 200; 82 acessos a 41 caminhos e 16 verificações de API recusaram acessos sem sessão ou com cookie forjado. O POST nativo SSO chegou à Microsoft, sem login humano. Doze DTOs foram validados em três projetos reais, em transação somente leitura sob o papel autenticado: roteiros com 16, 19 e 17 células e 78 eventos operacionais existentes ao todo. Essa amostragem verifica consultas reais e seus contratos; não representa execução humana de todos os fluxos nem CRUD artificial em produção.
 
 ## Pendências e limites
 
