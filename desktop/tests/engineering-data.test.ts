@@ -71,11 +71,12 @@ test('snapshot uses one atomic RPC and strips operational and media columns whil
 test('choices preserve selected inactive/missing records but offer only linked active operators and no credentials', async () => {
   const { db, data } = setup();
   db.tables.rm_forms = [{ id: id(1), ativo: true, titulo: 'Active' }, { id: id(2), ativo: false, titulo: 'Retired' }];
-  db.tables.rm_users = [{ id: id(4), status: 'ativo', nome: 'Linked', email: 'secret' }, { id: id(5), status: 'ativo', nome: 'Unlinked' }, { id: id(6), status: 'inativo', nome: 'Legacy' }];
+  db.tables.rm_users = [{ id: id(4), status: 'ativo', nome: 'Linked', matricula: '123', email: 'secret' }, { id: id(5), status: 'ativo', nome: 'Unlinked' }, { id: id(6), status: 'inativo', nome: 'Legacy' }];
   db.tables.rm_tablet_celula_users = [{ id: id(8), celula_id: id(9), identidade_id: id(4), usuario_id: 'private-auth' }];
   const result = await data.getEngineeringChoices({ matrix: { id: id(10) }, form_ids: [id(2), id(3)], photos: [], stages: [{ id: id(11), aprovadores_ids: [id(6), id(7)], aprovadores_retorno_ids: [] }] });
   assert.deepEqual(result.forms.map(row => row.id), [id(1), id(2), id(3)]); assert.equal(result.forms[2].missing, true);
   assert.deepEqual(result.users.map(row => row.id), [id(4), id(6), id(7)]); assert.equal(result.users[2].missing, true);
+  assert.equal(result.users[0].matricula, '123');
   assert.ok(!JSON.stringify(result).includes('secret')); assert.ok(!JSON.stringify(result).includes('private-auth'));
 });
 test('photo-title list has true pagination/count and legacy unknown or ambiguous scope never becomes global', async () => {

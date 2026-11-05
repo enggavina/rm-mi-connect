@@ -1,12 +1,15 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { saveProject, planCell, type WebActionResult } from '@/server/web/actions';
+import { saveProject, saveProjectWithEquipment, planCell, type WebActionResult } from '@/server/web/actions';
 import type { WebRow } from '@/server/web/data';
 import { Icon } from './icons';
 import { planningPriorities, planningPriorityLabels } from './pcp-model';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
 import { projectRouteDestination } from './project-route-model';
 import { projectMilestoneChanges, projectMilestoneFields } from './project-milestone-model';
+import { equipmentDisplayValue, equipmentFieldGroups, equipmentFieldLabels, projectEquipmentChanges, projectEquipmentDraft, projectEquipmentMatches, type ProjectEquipmentField } from './project-equipment-model';
+import type { ProjectEquipmentSnapshot } from '@/server/web/project-equipment-policy';
+import equipmentStyles from './project-equipment.module.css';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -35,15 +38,25 @@ const nullable = (form: FormData, name: string) => String(form.get(name) ?? '').
 const day = (value: FormDataEntryValue | null) => value ? `${String(value)}T12:00:00-03:00` : null;
 const inputDay = (value: unknown) => value ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(String(value))) : '';
 
-export function ProjectEditor({ project, clients, types, users, statuses, hasAllocations = false }: { project?: WebRow; clients: WebRow[]; types: WebRow[]; users: WebRow[]; statuses: WebRow[]; hasAllocations?: boolean }) {
+export function ProjectEditor({ project, clients, users, statuses, equipmentSnapshot }: { project?: WebRow; clients: WebRow[]; types: WebRow[]; users: WebRow[]; statuses: WebRow[]; hasAllocations?: boolean; equipmentSnapshot?: ProjectEquipmentSnapshot | null }) {
   const [id] = useState(() => project?.id || crypto.randomUUID());
+  const [equipmentId] = useState(() => equipmentSnapshot?.equipment?.id || crypto.randomUUID());
+  const [tab, setTab] = useState<'project' | 'equipment'>('project');
+  const [equipment, setEquipment] = useState(() => projectEquipmentDraft(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot));
+  const [confirmEquipment, setConfirmEquipment] = useState(false);
   const [dateError, setDateError] = useState('');
-  const save = useSave(saveProject, result => { window.location.assign(`/projetos/${result.data.id}`); });
+  const usableEquipment = !project || !!equipmentSnapshot && projectEquipmentMatches(equipmentSnapshot, project as any)
+    && ['linked', 'missing'].includes(equipmentSnapshot.binding_state) && !equipmentSnapshot.project.closed;
+  let proposedEquipment: ReturnType<typeof projectEquipmentChanges> = {};
+  try { proposedEquipment = projectEquipmentChanges(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot, equipment); } catch { /* Validation is shown when submitting. */ }
+  const changedEquipmentFields = Object.keys(proposedEquipment) as ProjectEquipmentField[];
+  const save = useSave(usableEquipment ? saveProjectWithEquipment : saveProject, result => { window.location.assign(`/projetos/${result.data.id}`); });
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form); const changes: Record<string, unknown> = {};
-    for (const key of ['numero', 'nome', 'cliente_id', 'descricao_equipamento', 'escopo_abreviado', 'gestor_responsavel_id', 'contato', 'proprietario', 'eventualidades', 'replanejamento_motivo']) changes[key] = nullable(data, key);
-    if (!hasAllocations) changes.tipo_equipamento_id = nullable(data, 'tipo_equipamento_id');
-    changes.status_pcp = nullable(data, 'status_pcp');
+    for (const key of ['numero', 'nome', 'cliente_id', 'escopo_abreviado', 'gestor_responsavel_id', 'contato', 'proprietario', 'eventualidades', 'replanejamento_motivo', 'status_pcp']) {
+      const value = nullable(data, key);
+      if (!project || value !== (project[key] ?? null)) changes[key] = value;
+    }
     for (const key of ['data_prevista_inicio', 'data_prevista_final', 'data_contratual', 'data_renegociada']) {
       // Unchanged dates retain their original instant and precision.
       if (!project || String(data.get(key) || '') !== inputDay(project[key])) changes[key] = day(data.get(key));
@@ -53,18 +66,25 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
     if (milestones.error) { setDateError(milestones.error); return; }
     Object.assign(changes, milestones.changes);
     setDateError('');
-    void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes });
+    if (!usableEquipment) { if (!Object.keys(changes).length) { setDateError('Não há alterações para salvar.'); return; } void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes }); return; }
+    try {
+      const equipmentChanges = projectEquipmentChanges(equipmentSnapshot ?? { equipment: null } as ProjectEquipmentSnapshot, equipment);
+      if (project && equipmentSnapshot?.binding_state === 'linked' && !Object.keys(changes).length && !Object.keys(equipmentChanges).length) { setDateError('Não há alterações para salvar.'); return; }
+      if (project && equipmentSnapshot?.binding_state === 'linked' && Object.keys(equipmentChanges).length && !confirmEquipment) { setDateError('Confirme as alterações dos dados do equipamento.'); setTab('equipment'); return; }
+      void save.submit({ id, expected_updated_at: project?.updated_at ?? null, changes,
+        equipment: { id: equipmentId, expected_updated_at: equipmentSnapshot?.equipment?.updated_at ?? null,
+          expected_context_version: equipmentSnapshot?.context_version ?? null, changes: equipmentChanges } });
+    } catch (error) { setDateError(error instanceof Error ? error.message : 'Confira os dados do equipamento.'); setTab('equipment'); }
   };
   return <form onSubmit={event => { event.preventDefault(); submit(event.currentTarget); }}>
     {dateError && <div role="alert" className="notice error">{dateError}</div>}
     {save.error && <div role="alert" className="notice error">{save.error}</div>}
     {save.uncertain && <div className="notice">Os campos permanecem protegidos até confirmar o resultado deste envio.</div>}
-    <fieldset disabled={save.busy || save.uncertain} style={{ margin: 0, padding: 0, border: 0 }}><div className="form-grid">
+    <div className="tabs" aria-label="Cadastro do projeto"><button type="button" aria-pressed={tab === 'project'} onClick={() => setTab('project')}>Projeto</button><button type="button" aria-pressed={tab === 'equipment'} onClick={() => setTab('equipment')}>Equipamento</button></div>
+    <fieldset disabled={save.busy || save.uncertain} style={{ margin: 0, padding: 0, border: 0 }}><div className="form-grid" style={{ display: tab === 'project' ? undefined : 'none' }}>
       <div className="field"><label htmlFor="numero">Número da OS / projeto</label><input id="numero" name="numero" defaultValue={project?.numero || ''} maxLength={100} placeholder="Atribuído pelo planejamento" /></div>
       <div className="field"><label htmlFor="nome">Nome do projeto</label><input id="nome" name="nome" defaultValue={project?.nome || ''} maxLength={500} placeholder="Identificação do projeto" /></div>
       <div className="field"><label htmlFor="cliente_id">Cliente</label><select id="cliente_id" name="cliente_id" defaultValue={project?.cliente_id || ''}><option value="">Selecione o cliente</option>{clients.map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select></div>
-      <div className="field"><label htmlFor="tipo_equipamento_id">Tipo de equipamento</label><select id="tipo_equipamento_id" name="tipo_equipamento_id" defaultValue={project?.tipo_equipamento_id || ''} disabled={hasAllocations}><option value="">Selecione o tipo</option>{types.map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select>{hasAllocations && <span className="form-note">O tipo é preservado porque o projeto já possui células alocadas.</span>}</div>
-      <div className="field span-all"><label htmlFor="descricao_equipamento">Descrição do equipamento</label><textarea id="descricao_equipamento" name="descricao_equipamento" defaultValue={project?.descricao_equipamento || ''} maxLength={10000} /></div>
       <div className="field"><label htmlFor="status_pcp">Status PCP</label><select id="status_pcp" name="status_pcp" defaultValue={project ? project.status_pcp || '' : 'aguardando_recebimento_equipamento'}><option value="">Sem status definido</option>{statuses.map(row => <option key={row.id} value={row.option_key}>{row.bubble_display}</option>)}</select></div>
       <div className="field"><label htmlFor="gestor_responsavel_id">Gestor responsável</label><select id="gestor_responsavel_id" name="gestor_responsavel_id" defaultValue={project?.gestor_responsavel_id || ''}><option value="">Não definido</option>{users.filter(row => row.status === 'ativo' || row.id === project?.gestor_responsavel_id).map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select></div>
       <div className="field"><label htmlFor="data_prevista_inicio">Início previsto</label><input id="data_prevista_inicio" name="data_prevista_inicio" type="date" defaultValue={inputDay(project?.data_prevista_inicio)} /></div>
@@ -80,7 +100,26 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
       <div className="field span-all"><label htmlFor="escopo_abreviado">Escopo do serviço</label><textarea id="escopo_abreviado" name="escopo_abreviado" defaultValue={project?.escopo_abreviado || ''} maxLength={5000} /></div>
       <div className="field span-all"><label htmlFor="eventualidades">Eventualidades</label><textarea id="eventualidades" name="eventualidades" defaultValue={project?.eventualidades || ''} maxLength={10000} /></div>
       <div className="field span-all"><label htmlFor="replanejamento_motivo">Observação do replanejamento</label><textarea id="replanejamento_motivo" name="replanejamento_motivo" defaultValue={project?.replanejamento_motivo || ''} maxLength={5000} /></div>
-    </div></fieldset>
+    </div><div style={{ display: tab === 'equipment' ? undefined : 'none' }}>
+      {!usableEquipment ? <p className="notice">{!equipmentSnapshot ? 'Não foi possível confirmar o equipamento. Recarregue a página para tentar novamente; os dados do projeto podem ser salvos separadamente.'
+        : equipmentSnapshot.project.closed ? 'Projeto encerrado. Os dados técnicos permanecem somente para consulta.'
+        : !projectEquipmentMatches(equipmentSnapshot, project as any) ? 'O projeto mudou durante a consulta. Recarregue a página antes de editar o equipamento.'
+        : 'O vínculo do equipamento exige revisão antes de editar. Os dados do projeto podem ser salvos separadamente.'}</p> : <>
+        {equipmentFieldGroups.map(group => <fieldset key={group.id}><legend>{group.title}</legend><div className="form-grid">{group.fields.map(field => <div className={`field ${'multiline' in field ? 'span-all' : ''}`} key={field.key}>
+          <label htmlFor={`project-equipment-${field.key}`}>{field.label}</label>
+          {field.key === 'placa_motor' ? <select id={`project-equipment-${field.key}`} value={equipment[field.key]} onChange={event => { setEquipment(current => ({ ...current, [field.key]: event.target.value })); setConfirmEquipment(false); }}><option value="">Não informado</option><option value="c___placa">Com placa</option><option value="s___placa">Sem placa</option>{!!equipment[field.key] && !['c___placa','s___placa'].includes(equipment[field.key]) && <option value={equipment[field.key]}>Valor atual: {equipment[field.key]}</option>}</select>
+            : 'multiline' in field ? <textarea id={`project-equipment-${field.key}`} value={equipment[field.key]} onChange={event => { setEquipment(current => ({ ...current, [field.key]: event.target.value })); setConfirmEquipment(false); }} />
+            : <input id={`project-equipment-${field.key}`} value={equipment[field.key]} onChange={event => { setEquipment(current => ({ ...current, [field.key]: event.target.value })); setConfirmEquipment(false); }} />}
+        </div>)}</div></fieldset>)}
+        {project && equipmentSnapshot?.binding_state === 'linked' && !!changedEquipmentFields.length && <section className={equipmentStyles.summary} aria-label="Revisão das alterações técnicas">
+          <h4>{changedEquipmentFields.length} {changedEquipmentFields.length === 1 ? 'alteração para conferir' : 'alterações para conferir'}</h4>
+          <div className={equipmentStyles.tableHead} aria-hidden="true"><span>Campo</span><span>Atual</span><span>Após salvar</span></div>
+          <div className={equipmentStyles.changes}>{changedEquipmentFields.map(key => <div key={key} className={equipmentStyles.change} data-equipment-change={key}>
+            <strong>{equipmentFieldLabels[key]}</strong><span><small>Atual</small>{equipmentDisplayValue(key, equipmentSnapshot.equipment?.[key])}</span><span><small>Após salvar</small>{equipmentDisplayValue(key, proposedEquipment[key])}</span>
+          </div>)}</div>
+          <label className={equipmentStyles.confirmation}><input type="checkbox" checked={confirmEquipment} onChange={event => setConfirmEquipment(event.target.checked)} />Confirmo a alteração dos dados técnicos deste equipamento.</label>
+        </section>}
+      </>}</div></fieldset>
     <div className="form-actions"><span className="form-note">Informe ao menos o número ou o nome do projeto.</span><button type="button" className="button secondary" disabled={save.busy} onClick={() => window.location.assign(project ? `/projetos/${project.id}` : '/projetos')}>Voltar</button><button className="button" disabled={save.busy}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : <><Icon name="check" size={16} />Salvar projeto</>}</button></div>
   </form>;
 }

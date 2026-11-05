@@ -73,6 +73,10 @@ test('approvers are active identities of the specific cell; tablet accounts and 
   assert.equal(legacyStage(stage, choices, 'origin'), false);
   assert.equal(validateEngineering({ stages: [stage] }, choices, 'origin', snapshot), null);
   for (const patch of [{ celula_destino_id: 'origin' }, { status_cel_proj: 'retornado' }, { aprovadores_ids: [] }, { aprovadores_ids: ['tablet-user'] }, { aprovadores_retorno_ids: ['origin-user'] }]) assert.equal(legacyStage({ ...stage, ...patch }, choices, 'origin'), true);
+  assert.equal(legacyStage({ ...stage, aprovadores_ids: ['origin-user', 'origin-user'] }, choices, 'origin'), true);
+  assert.equal(legacyStage({ ...stage, aprovadores_retorno_ids: ['dest-user', 'dest-user'] }, choices, 'origin'), true);
+  const shared = { ...choices, cellUserLinks: [...choices.cellUserLinks, { id: 'both', celula_id: 'dest', identidade_id: 'origin-user' }] };
+  assert.equal(legacyStage({ ...stage, aprovadores_retorno_ids: ['origin-user'] }, shared, 'origin'), false, 'An identity linked to both cells may serve in each separate list.');
   assert.equal(validateEngineering({ stages: snapshot.stages.map(stageDraft) }, choices, 'origin', snapshot), null, 'Untouched legacy stage may be preserved when another stage changes.');
 });
 

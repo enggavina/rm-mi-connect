@@ -24,6 +24,7 @@ import { availabilityMatchesContext } from '@/components/web/cell-availability-m
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
 import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
 import { ProjectRouteEditor } from '@/components/web/project-route-editor';
+import { ProjectTypePlanning } from '@/components/web/project-type-planning';
 import s from '@/components/web/project-schedule.module.css';
 
 export default async function Cronograma({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -53,7 +54,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
         <button className="button secondary" type="submit">Pesquisar</button><Link className="button secondary" href="/planejamento">Voltar ao planejamento</Link>
       </form>
       {projects.rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Projeto / OS</th><th>Cliente</th><th>Status PCP</th><th className="table-action">Selecionar</th></tr></thead><tbody>{projects.rows.map(project => <tr key={project.id}>
-        <td><a className="table-title" href={scheduleHref(project.id)}>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</a><span className="table-subtitle">{project.descricao_equipamento || project.nome}</span></td>
+        <td><a className="table-title" href={scheduleHref(project.id)}>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</a><span className="table-subtitle">{project.descricao_equipamento_exibicao || project.nome}</span></td>
         <td>{project.cliente_nome || 'Cliente não informado'}</td><td><Status value={project.status_pcp} /></td>
         <td className="table-action"><a href={scheduleHref(project.id)} aria-label={`Selecionar ${project.numero || project.nome || 'projeto'}`}><Icon name="arrow" size={16} /></a></td>
       </tr>)}</tbody></table></div> : <Empty title="Nenhum projeto encontrado" detail="Ajuste a pesquisa ou o cliente selecionado." icon="search" />}
@@ -86,6 +87,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const canEditProject = manager && hasWebCapability(session, 'em.projects.manage');
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
   const choices = canPlan && !closed && (!current || currentWritable) ? await editorChoices('planning') : null;
+  const typeChoices = canEditProject && canPlan && !closed && !data.allocations.length ? await editorChoices('project') : null;
   const reader = createProjectScheduleData(session.client, session.sso?.capabilities);
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
@@ -122,9 +124,10 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
 
   return <>{heading}{viewNavigation}<a className="back-link" href={scheduleHref()}><Icon name="back" size={15} />Trocar projeto</a>
     <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</h2><p>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</p></div><div className="heading-actions"><Status value={project.status_pcp} /><Link className="button small secondary" href={`/projetos/${projectId}`}>Informações do projeto</Link>{canEditProject && <Link className="button small secondary" href={`/projetos/${projectId}/editar`}><Icon name="edit" size={14} />Editar projeto</Link>}</div></div>
-      <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
+      <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento_exibicao || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
     </section>
     {closed && <p className="notice" role="status">Este projeto está encerrado. O planejamento permanece disponível para consulta.</p>}
+    {canPlan && <ProjectTypePlanning key={`${project.id}:${project.updated_at}`} project={project} types={typeChoices?.types ?? []} hasAllocations={data.allocations.length > 0} closed={closed} canManage={canEditProject} destination={scheduleHref(projectId)} />}
     {route && route.total > 0 && canPlan && !closed && (!current || currentWritable) && <details className="panel"><summary className={s.orderSummary}><span>Organizar sequência de execução</span><span className={s.orderClosed}>Expandir</span><span className={s.orderOpen}>Recolher</span></summary><div className="panel-content">
       <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={scheduleHref(projectId, current?.id, tab)} />
     </div></details>}

@@ -33,7 +33,7 @@ export type ProjectReadFilters = ProjectPhotoFilters & { includeDossier?: boolea
 const catalogs = {
   users: { table: 'rm_users', columns: USER, order: 'nome', search: 'nome,matricula' },
   cells: { table: 'rm_celulas', columns: CELL + ',updated_at', order: 'nome', search: 'nome,codigo' },
-  types: { table: 'rm_tipos_equipamento', columns: 'id,nome,sigla,updated_at', order: 'nome', search: 'nome,sigla' },
+  types: { table: 'rm_tipos_equipamento', columns: 'id,nome,sigla,updated_at', order: 'created_at', search: 'nome,sigla' },
   clients: { table: 'rm_clientes', columns: CLIENT + ',updated_at', order: 'nome', search: 'nome,codigo' },
   forms: { table: 'rm_forms', columns: FORM, order: 'titulo', search: 'titulo,descricao' },
 } as const;
@@ -43,6 +43,12 @@ function checked<T extends { error: { message: string } | null }>(result: T): T 
   return result;
 }
 function ids(values: unknown[]): string[] { return [...new Set(values.filter((v): v is string => typeof v === 'string' && uuid.safeParse(v).success))]; }
+/** Read-only presentation: a canonical equipment must point back to this project. */
+export function projectEquipmentDisplay(project: WebRow, equipment?: WebRow | null): string | null {
+  if (typeof project.descricao_equipamento === 'string' && project.descricao_equipamento.length) return project.descricao_equipamento;
+  if (!project.equipamento_id || !equipment || equipment.id !== project.equipamento_id || equipment.projeto_id !== project.id) return null;
+  return typeof equipment.descricao === 'string' && equipment.descricao.length ? equipment.descricao : null;
+}
 const MEDIA_ANSWER_TYPES = new Set(['foto', 'foto_antes_depois', 'assinatura', 'imagem', 'imagens']);
 function hasMediaReference(value: unknown): boolean {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
@@ -133,7 +139,15 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       all('rm_clientes', 'id,nome', undefined, 'nome'), allowed('em.planning.read') ? all('rm_celulas', CELL, undefined, 'nome') : [], options('status_pcp'),
     ]);
     const names = new Map(clients.map(row => [row.id, row.nome]));
-    result.rows = result.rows.map(row => ({ ...row, cliente_nome: names.get(row.cliente_id) || row.cliente_nome_exportacao || null }));
+    const needingEquipment = result.rows.filter(row => !row.descricao_equipamento && row.equipamento_id);
+    const equipmentIds = ids(needingEquipment.map(row => row.equipamento_id));
+    const projectIds = ids(needingEquipment.map(row => row.id));
+    // At most one page (25) of referenced IDs; always restrict both sides before returning any metadata.
+    const equipment = equipmentIds.length && projectIds.length
+      ? await all('rm_equipamentos', 'id,projeto_id,descricao', q => q.in('id', equipmentIds).in('projeto_id', projectIds)) : [];
+    const equipmentById = new Map(equipment.map(row => [row.id, row]));
+    result.rows = result.rows.map(row => ({ ...row, cliente_nome: names.get(row.cliente_id) || row.cliente_nome_exportacao || null,
+      descricao_equipamento_exibicao: projectEquipmentDisplay(row, equipmentById.get(row.equipamento_id)) }));
     return { ...result, clients, cells, statuses };
   }
   async function getProject(id: string, filters: ProjectReadFilters = {}) {
@@ -163,7 +177,9 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       byIds('rm_users', userColumns, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...attachments.map(row => row.created_by), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
     ]);
     const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
-    return { project, client: customers[0] || null, equipment: equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null,
+    const equipment = equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null;
+    const displayProject: WebRow = { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) };
+    return { project: displayProject, client: customers[0] || null, equipment,
       allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {
@@ -222,7 +238,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     requireCapability(scope === 'project' ? 'em.projects.manage' : 'em.planning.manage');
     const [clients, types, users, forms, statuses] = await Promise.all([
       scope === 'project' ? all('rm_clientes', 'id,nome', undefined, 'nome') : [],
-      scope === 'project' ? all('rm_tipos_equipamento', 'id,nome', undefined, 'nome') : [],
+      scope === 'project' ? all('rm_tipos_equipamento', 'id,nome,sigla', undefined, 'nome') : [],
       all('rm_users', 'id,nome,status', undefined, 'nome'),
       scope === 'planning' ? all('rm_forms', 'id,titulo,ativo', undefined, 'titulo') : [],
       scope === 'project' ? options('status_pcp') : [],

@@ -16,6 +16,35 @@ export function projectClientName(project: Row | undefined, allocation: Row, cli
   return clients.find(client => client.id === project?.cliente_id)?.nome || project?.cliente_nome_exportacao || allocation.cliente_nome_export || 'Cliente não informado';
 }
 
+/** Indexing duplicate IDs as ambiguous fails closed even if a local catalog is damaged. */
+export function indexProjectEquipment(rows: readonly Row[]): Map<string, Row | null> {
+  const indexed = new Map<string, Row | null>();
+  for (const row of rows) if (typeof row.id === 'string' && row.id) indexed.set(row.id, indexed.has(row.id) ? null : row);
+  return indexed;
+}
+
+/** A canonical equipment must match the project in both directions. */
+export function linkedProjectEquipment(project: Row | undefined, indexed: ReadonlyMap<string, Row | null>): Row | undefined {
+  if (!project?.id || typeof project.equipamento_id !== 'string' || !project.equipamento_id) return undefined;
+  const equipment = indexed.get(project.equipamento_id);
+  return equipment && equipment.id === project.equipamento_id && equipment.projeto_id === project.id ? equipment : undefined;
+}
+
+/** Historical project descriptions remain authoritative when present. */
+export function projectEquipmentDescription(project: Row | undefined, indexed: ReadonlyMap<string, Row | null>): string | undefined {
+  if (!project) return undefined;
+  if (typeof project.descricao_equipamento === 'string' && project.descricao_equipamento) return project.descricao_equipamento;
+  const description = linkedProjectEquipment(project, indexed)?.descricao;
+  return typeof description === 'string' && description ? description : undefined;
+}
+
+export function projectMatchesSearch(search: string, project: Row | undefined, allocation: Row, clients: Row[], indexed: ReadonlyMap<string, Row | null>): boolean {
+  // Never consult a different project merely because it was present in a local catalog.
+  const ownProject = project?.id === allocation.projeto_id ? project : undefined;
+  return `${ownProject?.numero || allocation.numero_projeto || ''} ${projectClientName(ownProject, allocation, clients)} ${ownProject?.nome || ''} ${allocation.tipo_equipamento_nome_export || ''} ${projectEquipmentDescription(ownProject, indexed) || ''}`
+    .toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+}
+
 export function frontProjectPhoto(projectId: string, photos: Row[]): Row | undefined {
   // Receiving uses an enum; existing project inspection slots materialize their catalog title.
   const titles = new Set(['frontal', 'vistafrontal', 'vistadianteira', 'inspecaovisualdomotorvistafrontal', 'inspecaovisualdomotorvistadianteira']);

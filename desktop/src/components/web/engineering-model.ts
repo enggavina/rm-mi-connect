@@ -1,5 +1,13 @@
 import type { WebRow } from '@/server/web/data';
 
+/** Display the equipment abbreviation without changing the selected type ID. */
+export function equipmentTypeLabel(type: WebRow): string {
+  const name = typeof type.nome === 'string' ? type.nome.trim() : '';
+  const abbreviation = typeof type.sigla === 'string' ? type.sigla.trim() : '';
+  if (abbreviation && name) return `${abbreviation} - ${name}`;
+  return name || abbreviation || 'Tipo de equipamento sem nome';
+}
+
 export interface EngineeringPhoto { id: string; cadastro_foto_id: string | null; numero: number | null; descricao: string | null }
 export interface EngineeringStage { id: string; celula_destino_id: string | null; status_cel_proj: string | null; bloquear_avanco_sem_aprov: boolean; aprovadores_ids: string[]; aprovadores_retorno_ids: string[] }
 export interface EngineeringSnapshot { matrix: WebRow; form_ids: string[]; photos: WebRow[]; stages: WebRow[] }

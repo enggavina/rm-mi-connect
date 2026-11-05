@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { projectEquipmentChangesSchema } from './project-equipment-policy';
 
 export const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
@@ -9,9 +10,7 @@ const nullableCalendarDate = z.iso.date().refine(value => !value.startsWith('000
 const option = z.string().min(1).max(100).regex(/^[a-z0-9_]+$/).nullable().optional();
 const version = timestamp.nullable();
 
-export const saveProjectSchema = z.object({
-  submissionId: uuid, id: uuid, expected_updated_at: version,
-  changes: z.object({
+const projectChangesSchema = z.object({
     numero: nullableText(100), nome: nullableText(500), cliente_id: nullableId, tipo_equipamento_id: nullableId,
     descricao_equipamento: nullableText(10_000), contato: nullableText(500), proprietario: nullableText(500),
     escopo_abreviado: nullableText(5000), eventualidades: nullableText(10_000), gestor_responsavel_id: nullableId,
@@ -20,12 +19,24 @@ export const saveProjectSchema = z.object({
     data_inicio_peritagem: nullableCalendarDate, data_fim_peritagem: nullableCalendarDate,
     data_inicio_reparo: nullableCalendarDate, data_fim_reparo: nullableCalendarDate,
     replanejamento_motivo: nullableText(5000),
-  }).strict().refine(value => Object.keys(value).length > 0, 'Informe uma alteração.').superRefine((value, context) => {
+  }).strict().superRefine((value, context) => {
     if (value.data_inicio_peritagem && value.data_fim_peritagem && value.data_inicio_peritagem > value.data_fim_peritagem)
       context.addIssue({ code: 'custom', path: ['data_fim_peritagem'], message: 'O fim da peritagem não pode ser anterior ao início.' });
     if (value.data_inicio_reparo && value.data_fim_reparo && value.data_inicio_reparo > value.data_fim_reparo)
       context.addIssue({ code: 'custom', path: ['data_fim_reparo'], message: 'O fim do reparo não pode ser anterior ao início.' });
-  }),
+  });
+export const saveProjectSchema = z.object({
+  submissionId: uuid, id: uuid, expected_updated_at: version,
+  changes: projectChangesSchema.refine(value => Object.keys(value).length > 0, 'Informe uma alteração.'),
+}).strict();
+
+export const saveProjectWithEquipmentSchema = saveProjectSchema.extend({
+  changes: projectChangesSchema.refine(value => !Object.hasOwn(value, 'tipo_equipamento_id') && !Object.hasOwn(value, 'descricao_equipamento'),
+    'Classificação e dados técnicos usam seus próprios fluxos.'),
+  equipment: z.object({ id: uuid, expected_updated_at: timestamp.nullable(),
+    expected_context_version: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+    changes: z.union([projectEquipmentChangesSchema, z.object({}).strict()]),
+  }).strict(),
 }).strict();
 
 export const planCellSchema = z.object({

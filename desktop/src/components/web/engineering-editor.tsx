@@ -4,7 +4,8 @@ import { saveEngineering } from '@/server/web/engineering-actions';
 import type { WebRow } from '@/server/web/data';
 import { Icon } from './icons';
 import { display } from './ui';
-import { approversForCell, engineeringChanges, engineeringFutureNotice, legacyPhoto, legacyStage, nextPhotoNumber, photoDraft, stageDraft, titlesForCell, validateEngineering, type EngineeringChoices, type EngineeringPayload, type EngineeringSnapshot } from './engineering-model';
+import { approversForCell, engineeringChanges, engineeringFutureNotice, equipmentTypeLabel, legacyPhoto, legacyStage, nextPhotoNumber, photoDraft, stageDraft, titlesForCell, validateEngineering, type EngineeringChoices, type EngineeringPayload, type EngineeringSnapshot } from './engineering-model';
+import { EngineeringApproverPicker } from './engineering-approver-picker';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
 import s from './engineering.module.css';
 
@@ -40,7 +41,7 @@ export function EngineeringEditor({ snapshot, choices, initialTypeId = '' }: { s
   return <><div className="notice">{engineeringFutureNotice}</div><EngineeringSaveNotice state={save} reload={snapshot ? `/engenharia/${id}/editar` : `/engenharia/novo${typeId ? `?tipo=${typeId}` : ''}`} />
     <form onSubmit={event => { event.preventDefault(); submit(); }}><fieldset className={s.fieldSet} disabled={save.locked}>
       <section className={s.section} aria-labelledby="matrix-base"><h2 id="matrix-base">Célula no roteiro</h2><p>O roteiro segue a ordem de exibição do cadastro de células.</p><div className="form-grid">
-        <div className="field"><label htmlFor="matrix-type">Tipo de equipamento *</label><select id="matrix-type" value={typeId} onChange={event => setTypeId(event.target.value)} disabled={!!snapshot} required><option value="">Selecione o tipo</option>{choices.types.map(type => <option value={type.id} key={type.id}>{type.nome}</option>)}</select></div>
+        <div className="field"><label htmlFor="matrix-type">Tipo de equipamento *</label><select id="matrix-type" value={typeId} onChange={event => setTypeId(event.target.value)} disabled={!!snapshot} required><option value="">Selecione o tipo</option>{choices.types.map(type => <option value={type.id} key={type.id}>{equipmentTypeLabel(type)}</option>)}</select></div>
         <div className="field"><label htmlFor="matrix-cell">Célula *</label><select id="matrix-cell" value={cellId} onChange={event => setCellId(event.target.value)} disabled={!!snapshot} required><option value="">Selecione a célula</option>{choices.cells.map(cell => <option value={cell.id} key={cell.id}>{cell.nome}</option>)}</select></div>
         <label className="check-label span-all"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} />Modelo ativo para novas alocações</label>
         <label className="check-label span-all"><input type="checkbox" checked={visible} onChange={event => setVisible(event.target.checked)} />Visível para a operação ao alocar</label>
@@ -73,8 +74,8 @@ export function EngineeringEditor({ snapshot, choices, initialTypeId = '' }: { s
               <div className="field"><label htmlFor={`stage-target-${stage.id}`}>Célula de destino *</label><select id={`stage-target-${stage.id}`} value={stage.celula_destino_id ?? ''} onChange={event => change({ celula_destino_id: event.target.value || null })} required><option value="">Selecione o destino</option>{stage.celula_destino_id && (!destination || destination.id === cellId) && <option value={stage.celula_destino_id} disabled>Destino legado indisponível</option>}{choices.cells.filter(cell => cell.id !== cellId).map(cell => <option key={cell.id} value={cell.id}>{cell.nome}</option>)}</select></div>
               <div className="field"><label htmlFor={`stage-status-${stage.id}`}>Status para liberação *</label><select id={`stage-status-${stage.id}`} value={stage.status_cel_proj ?? ''} onChange={event => change({ status_cel_proj: event.target.value || null })} required><option value="">Selecione o status</option>{stage.status_cel_proj === 'retornado' && <option value="retornado" disabled>Retornado — legado</option>}{choices.statuses.filter(status => status.option_key !== 'retornado').map(status => <option value={status.option_key} key={status.option_key}>{status.bubble_display}</option>)}</select></div>
               <label className="check-label span-all"><input type="checkbox" checked={stage.bloquear_avanco_sem_aprov} onChange={event => change({ bloquear_avanco_sem_aprov: event.target.checked })} />Aguardar todas as aprovações bloqueadoras antes de liberar o destino</label>
-              <Checks label={`Aprovadores na origem — etapa ${index + 1}`} options={originApprovers} all={choices.users} selected={stage.aprovadores_ids} onChange={ids => change({ aprovadores_ids: ids })} field="nome" />
-              <Checks label={`Aprovadores de retorno no destino — etapa ${index + 1}`} options={approversForCell(choices, stage.celula_destino_id)} all={choices.users} selected={stage.aprovadores_retorno_ids} onChange={ids => change({ aprovadores_retorno_ids: ids })} field="nome" />
+              <EngineeringApproverPicker label={`Aprovadores na origem — etapa ${index + 1}`} options={originApprovers} all={choices.users} selected={stage.aprovadores_ids} onChange={ids => change({ aprovadores_ids: ids })} />
+              <EngineeringApproverPicker label={`Aprovadores de retorno no destino — etapa ${index + 1}`} options={approversForCell(choices, stage.celula_destino_id)} all={choices.users} selected={stage.aprovadores_retorno_ids} onChange={ids => change({ aprovadores_retorno_ids: ids })} destinationPending={!stage.celula_destino_id} />
             </div>}
           </article>;
         })}

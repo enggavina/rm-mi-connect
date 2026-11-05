@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import type { Row } from '../src/core';
 import { label } from '../src/domain/forms';
+import { indexProjectEquipment, linkedProjectEquipment, projectEquipmentDescription } from '../src/domain/project-actions';
 import { useRows } from '../src/ui/state';
 import { C, Card, Notice, Screen, s } from '../src/ui/components';
 import { JourneyUnavailable, journeyLabel, projectHref, useJourney } from '../src/ui/journey';
@@ -23,14 +24,15 @@ export default function InformacoesProjeto() {
   const { celula, projeto } = useLocalSearchParams<{ celula?: string; projeto?: string }>(); const { context, error } = useJourney(celula, projeto);
   const clients = useRows('rm_clientes'); const equipment = useRows('rm_equipamentos', { field: 'projeto_id', value: projeto }); const users = useRows('rm_users'); const types = useRows('rm_tipos_equipamento');
   if (!context.ok) return <JourneyUnavailable context={context} error={error} />;
-  const p = context.project, a = context.allocation; const e = equipment.rows.find(row => row.projeto_id === p.id); const customer = clients.rows.find(row => row.id === p.cliente_id);
+  const p = context.project, a = context.allocation; const equipmentIndex = indexProjectEquipment(equipment.loaded && !equipment.error ? equipment.rows : []);
+  const e = linkedProjectEquipment(p, equipmentIndex); const customer = clients.rows.find(row => row.id === p.cliente_id);
   const person = (id?: string) => users.rows.find(user => user.id === id)?.nome;
   const typeName = types.rows.find(type => type.id === (p.tipo_equipamento_id || e?.tipo_equipamento_id))?.nome || a.tipo_equipamento_nome_export;
   return <Screen title="Informações do projeto" eyebrow={journeyLabel(context)} backHref={projectHref(context)} backLabel="Detalhe do projeto" subtitle="Dados cadastrados do cliente, equipamento e execução.">
     {(clients.error || equipment.error || users.error || types.error) && <Notice error>{clients.error || equipment.error || users.error || types.error}</Notice>}
     <Details initiallyOpen title="Cliente e projeto" values={[
       ['Número / OS', p.numero || 'Aguardando numeração pelo planejamento'], ['Nome', p.nome], ['Cliente', customer?.nome || p.cliente_nome_exportacao || a.cliente_nome_export], ['Código do cliente', customer?.codigo], ['Sobre o cliente', customer?.descricao],
-      ['Contato', p.contato], ['Proprietário', p.proprietario], ['Parceiro', p.nome_parceiro], ['Tipo de equipamento', typeName], ['Descrição do equipamento', p.descricao_equipamento || e?.descricao], ['Escopo', p.escopo_abreviado], ['Descrição do escopo', p.descricao_cod_escopo],
+      ['Contato', p.contato], ['Proprietário', p.proprietario], ['Parceiro', p.nome_parceiro], ['Tipo de equipamento', typeName], ['Descrição do equipamento', projectEquipmentDescription(p, equipmentIndex)], ['Escopo', p.escopo_abreviado], ['Descrição do escopo', p.descricao_cod_escopo],
       ['Status do projeto', label(p.status)], ['Status do planejamento', label(p.status_pcp)], ['Gestor responsável', person(p.gestor_responsavel_id)], ['Cadastrado por', person(p.created_by_user_id)], ['Unidade de negócio', p.unidade_de_negocio_bu], ['Centro de resultado', p.centro_de_resultado], ['Número da nota fiscal', p.nota_fiscal], ['Eventualidades', p.eventualidades],
     ]} />
     <Details title="Prazos e datas" values={[

@@ -57,6 +57,45 @@ test('general project reader never substitutes the first equipment for a conflic
   assert.equal((await data.getProject(id(1)))?.equipment?.id, id(2));
 });
 
+test('project equipment description is presentation-only, uses legacy first, and requires both relationship directions', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  const project = { id: id(1), equipamento_id: id(2), descricao_equipamento: null };
+  db.tables.set('rm_projetos', [project]);
+  db.tables.set('rm_equipamentos', [{ id: id(2), projeto_id: id(1), descricao: 'Motor novo' }]);
+  let result = await data.getProject(id(1));
+  assert.equal(result?.project.descricao_equipamento, null);
+  assert.equal(result?.project.descricao_equipamento_exibicao, 'Motor novo');
+  db.tables.set('rm_projetos', [{ ...project, descricao_equipamento: 'Legado preservado' }]);
+  result = await data.getProject(id(1));
+  assert.equal(result?.project.descricao_equipamento_exibicao, 'Legado preservado');
+  db.tables.set('rm_projetos', [project]);
+  db.tables.set('rm_equipamentos', [{ id: id(2), projeto_id: id(3), descricao: 'Outro projeto' }]);
+  result = await data.getProject(id(1));
+  assert.equal(result?.project.descricao_equipamento_exibicao, null);
+  assert.equal(result?.equipment, null);
+});
+
+test('project list resolves equipment descriptions in one bounded batch without leaking crossed links', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.read']);
+  const projects: WebRow[] = Array.from({ length: 30 }, (_, n) => ({ id: id(n + 1), equipamento_id: id(n + 101), descricao_equipamento: null }));
+  projects[1].descricao_equipamento = 'Texto legado';
+  db.tables.set('rm_projetos', projects);
+  db.tables.set('rm_equipamentos', projects.map((row, n) => ({ id: row.equipamento_id, projeto_id: n === 2 ? id(999) : row.id, descricao: `Motor ${n + 1}` })));
+  const result = await data.listProjects();
+  assert.equal(result.rows.length, 25);
+  assert.equal(result.rows[0].descricao_equipamento_exibicao, 'Motor 1');
+  assert.equal(result.rows[0].descricao_equipamento, null);
+  assert.equal(result.rows[1].descricao_equipamento_exibicao, 'Texto legado');
+  assert.equal(result.rows[2].descricao_equipamento_exibicao, null);
+  const calls = db.calls.filter(call => call.table === 'rm_equipamentos');
+  assert.equal(calls.length, 1);
+  const selected = calls[0].filters.find(([op, key]) => op === 'in' && key === 'id')?.[2] as string[];
+  assert.equal(selected.length, 24); assert.ok(!selected.includes(id(102))); assert.ok(!selected.includes(id(130)));
+  const projectIds = calls[0].filters.find(([op, key]) => op === 'in' && key === 'projeto_id')?.[2] as string[];
+  assert.equal(projectIds.length, 24); assert.ok(!projectIds.includes(id(2))); assert.ok(!projectIds.includes(id(30)));
+  assert.deepEqual(db.calls.find(call => call.table === 'rm_projetos')?.range, [0, 24]);
+});
+
 test('paged dossier mode never loads the legacy unbounded tables or their author identities', async () => {
   const { db, data } = setup(['em.portal.read', 'em.projects.read', 'em.history.read', 'em.documents.read']);
   db.tables.set('rm_projetos', [{ id: id(1), numero: 'OS' }]);
@@ -276,6 +315,14 @@ test('editor reference choices require manage and expose only fields needed by t
   assert.deepEqual(choices.forms, [{ id: id(3), titulo: 'Modelo · v2', ativo: true, titulo_modelo: 'Modelo', versao_modelo: 2 }]);
   assert.ok(db.calls.every(call => ['rm_users', 'rm_forms', 'rm_form_template_versions'].includes(call.table)));
   assert.equal(db.calls.find(call => call.table === 'rm_form_template_versions')?.columns, 'form_id,version');
+});
+
+test('project editor type choices include abbreviation and retain the ID without exposing extra type fields', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.manage']);
+  db.tables.set('rm_tipos_equipamento', [{ id: id(1), nome: 'Motor', sigla: 'MTR', slug: 'not-needed', bubble_id: 'not-needed' }]);
+  const choices = await data.editorChoices('project');
+  assert.deepEqual(choices.types, [{ id: id(1), nome: 'Motor', sigla: 'MTR' }]);
+  assert.equal(db.calls.find(call => call.table === 'rm_tipos_equipamento')?.columns, 'id,nome,sigla');
 });
 
 test('catalog permission alone excludes user images, and every domain still requires portal permission', async () => {

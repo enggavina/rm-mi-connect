@@ -1,11 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import { service, type OutboxRow, type Row } from '../src/core';
 import { canAccessCell, cellAllocations } from '../src/domain/journey';
 import { projectQrContextCurrent, projectQrContextKey, readProjectQr, type ProjectQrContext } from '../src/domain/project-qr';
-import { cellProjectLogs, cellProjectStages, cellStatusOptions, frontProjectPhoto, projectClientName } from '../src/domain/project-actions';
+import { cellProjectLogs, cellProjectStages, cellStatusOptions, frontProjectPhoto, indexProjectEquipment, projectClientName, projectEquipmentDescription, projectMatchesSearch } from '../src/domain/project-actions';
 import { label } from '../src/domain/forms';
 import { pageItems } from '../src/domain/pagination';
 import { useApp, useRouteFocused, useRows } from '../src/ui/state';
@@ -15,16 +15,17 @@ import { CellStatusAction } from '../src/ui/cell-status-action';
 import { MediaImage, QrScanner } from '../src/ui/media';
 import { Badge, Button, C, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
 
-function ProjectCard({ allocation, project, clients, records, catalogsLoaded, stages, logs, users, queue, queueReady }: { allocation: Row; project?: Row; clients: Row[]; records: Row[]; catalogsLoaded: boolean; stages: Row[]; logs: Row[]; users: Row[]; queue: OutboxRow[]; queueReady: boolean }) {
+function ProjectCard({ allocation, project, clients, equipmentIndex, records, catalogsLoaded, stages, logs, users, queue, queueReady }: { allocation: Row; project?: Row; clients: Row[]; equipmentIndex: ReadonlyMap<string, Row | null>; records: Row[]; catalogsLoaded: boolean; stages: Row[]; logs: Row[]; users: Row[]; queue: OutboxRow[]; queueReady: boolean }) {
   const [history, setHistory] = useState(false);
   const photos = useRows('rm_fotos', { field: 'projeto_id', value: allocation.projeto_id });
   const front = frontProjectPhoto(allocation.projeto_id, photos.rows); const ownStages = cellProjectStages(allocation, stages); const ownLogs = cellProjectLogs(allocation, logs);
   const number = project?.numero || allocation.numero_projeto; const title = number ? `OS ${number}` : 'Projeto em recebimento';
+  const description = project?.id === allocation.projeto_id ? projectEquipmentDescription(project, equipmentIndex) : undefined;
   const params = { celula: allocation.celula_id, projeto: allocation.projeto_id };
   const approved = ownStages.filter(stage => stage.status === 'aprovado').length;
   return <Card>
     <View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Comentários · ${title}`} onPress={() => router.push({ pathname: '/comentarios', params })} style={{ minHeight: 46, minWidth: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.soft }}><Feather name="message-square" size={22} color={C.primary} /></Pressable></View>
-    <Text style={s.body}>{projectClientName(project, allocation, clients)}</Text><Text style={s.muted}>{project?.nome || allocation.tipo_equipamento_nome_export || allocation.escopo_abreviado}</Text>
+    <Text style={s.body}>{projectClientName(project, allocation, clients)}</Text><Text style={s.muted}>{project?.nome || allocation.tipo_equipamento_nome_export || allocation.escopo_abreviado}</Text>{!!description && description !== project?.nome && <Text style={s.body}>{description}</Text>}
     {front ? <View style={{ gap: 6 }}><MediaImage expand uri={front.foto_url} height={190} label={`Vista frontal · ${title}`} /><Text style={s.muted}>Toque na foto frontal para ampliar.</Text></View> : <Text style={s.muted}>{photos.loaded ? 'Foto frontal não disponível neste projeto.' : 'Carregando foto frontal…'}</Text>}
     {!!photos.error && <Notice error>{photos.error}</Notice>}
     <CellStatusAction allocation={allocation} queue={queue} ready={queueReady} records={records} photos={photos.rows} catalogsLoaded={catalogsLoaded && photos.loaded && !photos.error} />
@@ -43,6 +44,8 @@ export default function Projetos() {
   useFocusEffect(useCallback(() => { active.current = true; return () => { active.current = false; }; }, []));
   const cells = useRows('rm_celulas'); const projects = useRows('rm_projetos'); const allocations = useRows('rm_celulas_projeto'); const stages = useRows('rm_aprovacoes_etapas');
   const clients = useRows('rm_clientes'); const logs = useRows('rm_logs_aprovacao'); const users = useRows('rm_users'); const queue = useQueue();
+  const equipment = useRows('rm_equipamentos');
+  const equipmentIndex = useMemo(() => indexProjectEquipment(equipment.loaded && !equipment.error ? equipment.rows : []), [equipment.rows, equipment.loaded, equipment.error]);
   const records = useRows('rm_registros_formulario', { field: 'celula_id', value: celula });
   const [search, setSearch] = useState(''); const [filter, setFilter] = useState(''); const [page, setPage] = useState(0);
   const [qrError, setQrError] = useState(''); const [qrBusy, setQrBusy] = useState(false); const qrReading = useRef(false);
@@ -67,10 +70,10 @@ export default function Projetos() {
   const visible = allocated.filter(allocation => {
     const project = projects.rows.find(row => row.id === allocation.projeto_id);
     return (!filter || (filter === 'waiting' ? cellProjectStages(allocation, stages.rows).some(stage => stage.status == null || stage.status === 'nulo') : allocation.status === filter))
-      && `${project?.numero || allocation.numero_projeto} ${projectClientName(project, allocation, clients.rows)} ${project?.nome || ''} ${allocation.tipo_equipamento_nome_export || ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+      && projectMatchesSearch(search, project, allocation, clients.rows, equipmentIndex);
   });
   const paged = pageItems(visible, page, 10);
-  const error = allocations.error || projects.error || cells.error || clients.error || records.error || logs.error || queue.error;
+  const error = allocations.error || projects.error || cells.error || clients.error || equipment.error || records.error || logs.error || queue.error;
   return <Screen scrollRef={scrollRef} title="Projetos alocados" eyebrow={cell?.nome || 'Célula'} backHref="/celula" backLabel="Trocar célula" subtitle="Abra um projeto ou consulte as atividades da célula.">
     {!allowed || !cell ? <><Notice error>{!allowed ? 'Escolha uma célula vinculada ao operador identificado.' : 'Esta célula ainda não está disponível no catálogo local. Sincronize novamente.'}</Notice><Button title="Escolher célula" onPress={() => router.replace('/celula')} /></> : <>
       <Badge text={`${allocated.length} ${allocated.length === 1 ? 'projeto alocado' : 'projetos alocados'}`} />
@@ -85,7 +88,7 @@ export default function Projetos() {
       {!!error && <Notice error>{error}</Notice>}
       {!visible.length && <Notice>{allocated.length ? 'Nenhum projeto corresponde à busca e ao status selecionados.' : 'Nenhum projeto liberado para esta célula no catálogo local. Sincronize para receber as alocações do planejamento.'}</Notice>}
       <PageControls page={paged.page} pages={paged.pages} onChange={changePage} />
-      {paged.items.map(allocation => <ProjectCard key={allocation.id} allocation={allocation} project={projects.rows.find(project => project.id === allocation.projeto_id)} clients={clients.rows} records={records.rows} catalogsLoaded={allocations.loaded && records.loaded && !allocations.error && !records.error} stages={stages.rows} logs={logs.rows} users={users.rows} queue={queue.rows} queueReady={queue.ready} />)}
+      {paged.items.map(allocation => <ProjectCard key={allocation.id} allocation={allocation} project={projects.rows.find(project => project.id === allocation.projeto_id)} clients={clients.rows} equipmentIndex={equipmentIndex} records={records.rows} catalogsLoaded={allocations.loaded && records.loaded && !allocations.error && !records.error} stages={stages.rows} logs={logs.rows} users={users.rows} queue={queue.rows} queueReady={queue.ready} />)}
       <PageControls page={paged.page} pages={paged.pages} onChange={changePage} />
     </>}
   </Screen>;

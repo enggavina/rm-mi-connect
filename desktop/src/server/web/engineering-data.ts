@@ -95,7 +95,7 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
     const userIds = selectedIds((entry?.stages ?? []).flatMap(stage => [stage.aprovador_id, ...(stage.aprovadores_ids ?? []), ...(stage.aprovadores_retorno_ids ?? [])]));
     const [base, activeForms, currentForms, activeUsers, currentUsers, cellUserLinks, photoTitles, statusResult] = await Promise.all([
       baseChoices(), all('rm_forms', 'id,titulo,ativo', q => q.eq('ativo', true), 'titulo'), byIds('rm_forms', 'id,titulo,ativo', formIds),
-      all('rm_users', 'id,nome,status', q => q.eq('status', 'ativo'), 'nome'), byIds('rm_users', 'id,nome,status', userIds),
+      all('rm_users', 'id,nome,matricula,status', q => q.eq('status', 'ativo'), 'nome'), byIds('rm_users', 'id,nome,matricula,status', userIds),
       all('rm_tablet_celula_users', 'id,celula_id,identidade_id'), all('rm_cadastro_fotos', TITLE, undefined, 'titulo'),
       client.from('rm_option_sets').select('option_key,bubble_display,sort_order').eq('option_set_key', 'status_cel_proj').order('sort_order'),
     ]);
