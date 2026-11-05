@@ -1,6 +1,6 @@
 # EM · MI Electric Brasil — Banco para a Fase 1 mobile
 
-Estado atual em **05/11/2026**: produção com migrações **001–033 e 035 aplicadas e imutáveis**; a entrega QR 034 não exigiu SQL. O APK interno atual é **1.2.5/código 8**: prioriza os projetos retornados na lista, preservando a ordem secundária, e não exibe classificação de formulário quando ela estiver ausente. Mesmo pacote e certificado do 1.2.4; assinatura verificada, sem instalação ou alteração de dispositivos. SHA-256 `c96e1367354be0cdde823af9ef9b08e3a3f33fc6c7459991ed5df177484ddb48`. Os capítulos de provisionamento e 001–015 registram a instalação original; consulte [a plataforma web](../desktop/docs/web-platform.md) para a sequência completa e o estado publicado.
+Estado atual em **05/11/2026**: produção com migrações **001–033, 035 e 036 aplicadas e imutáveis**; a entrega QR 034 não exigiu SQL. O APK interno atual é **1.2.6/código 9**: mantém a prioridade de projetos retornados e apresenta e pesquisa a descrição técnica do equipamento quando o vínculo com o projeto é inequívoco. A descrição histórica do projeto tem prioridade; vínculos ausentes ou inconsistentes não são inferidos. Mesmo pacote e certificado do 1.2.5; assinatura verificada, sem instalação ou alteração de dispositivos. SHA-256 `88dad25b12ef86f98bc4caed55faba8e9e3ba1c1159b3aa63e4677486ddd34d3`. Os capítulos de provisionamento e 001–015 registram a instalação original; consulte [a plataforma web](../desktop/docs/web-platform.md) para a sequência completa e o estado publicado.
 
 ## Projeto provisionado em 27/10/2026
 
