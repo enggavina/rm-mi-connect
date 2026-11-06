@@ -1,11 +1,12 @@
 import type { Bridge } from './engine';
 import { entities, fieldValue, getEntity, type Entity, type Field, type Row } from './mapping';
 import { preserveImportedPdf } from './pdf-document';
+import {DeletedProjectImportError,filterDeletedProjectRows} from './deleted-projects';
 
 type Cached = Row & { id: string; bubble_id?: string | null; bubble_modified_at?: string | null };
 type Prepared = { raw: Row; row: Row; existing?: Cached; onConflict: 'id' | 'bubble_id' };
 export type QuarantineHandler = (raw: Row, error: Error) => void | Promise<void>;
-export type ImportPageResult = { loaded: number; unchanged: number };
+export type ImportPageResult = { loaded: number; unchanged: number; excluded?:number; excludedBubbleIds?:string[] };
 
 const message = (error: unknown) => error instanceof Error ? error : new Error(String(error));
 const chunks = <T>(rows: T[], size: number): T[][] => {
@@ -134,13 +135,20 @@ export class BatchImporter {
     return pending;
   }
 
-  private async persist(entity: Entity, rows: Prepared[], quarantine: QuarantineHandler): Promise<Prepared[]> {
+  private async persist(entity: Entity, rows: Prepared[], quarantine: QuarantineHandler,onExcluded:(items:Prepared[])=>void): Promise<Prepared[]> {
     if (!rows.length) return [];
     const result = await this.bridge.db.from(entity.table).upsert(rows.map(item => item.row), {
       onConflict: rows[0].onConflict,
       defaultToNull: false,
     }).select(this.columns(entity));
     if (result.error) {
+      // A deletion may commit after the page's initial tombstone check. The
+      // rejected upsert is atomic; refresh proof and retry only live neighbors.
+      if(result.error.code==='PT410'||result.error.code==='23503'){
+        const checked=await filterDeletedProjectRows((name,args)=>this.bridge.rpc(name,args),entity,rows.map(item=>item.raw));
+        const liveIds=new Set(checked.rows.map(raw=>raw._id));const removed=rows.filter(item=>!liveIds.has(item.raw._id));
+        if(removed.length){onExcluded(removed);return this.persist(entity,rows.filter(item=>liveIds.has(item.raw._id)),quarantine,onExcluded);}
+      }
       // Only isolate actual record/constraint errors. Never turn auth, network or
       // missing-column failures into hundreds of misleading quarantined records.
       if (!/^(22|23)/.test(result.error.code || '')) throw new Error(`${entity.table}: ${result.error.message}`);
@@ -149,8 +157,8 @@ export class BatchImporter {
         return [];
       }
       const middle = Math.floor(rows.length / 2);
-      return [...await this.persist(entity, rows.slice(0, middle), quarantine),
-        ...await this.persist(entity, rows.slice(middle), quarantine)];
+      return [...await this.persist(entity, rows.slice(0, middle), quarantine,onExcluded),
+        ...await this.persist(entity, rows.slice(middle), quarantine,onExcluded)];
     }
     const returned = new Map((result.data || []).map(row => [String((row as unknown as Cached).bubble_id), row as unknown as Cached]));
     for (const item of rows) {
@@ -198,7 +206,9 @@ export class BatchImporter {
       }
       unique.set(raw._id, raw);
     }
-    for (const raw of unique.values()) {
+    const filtered=await filterDeletedProjectRows((name,args)=>this.bridge.rpc(name,args),entity,[...unique.values()]);
+    const excludedIds=[...unique.values()].filter(raw=>!filtered.rows.includes(raw)).map(raw=>String(raw._id));
+    for (const raw of filtered.rows) {
       try {
         const modified = raw['Modified Date'];
         if (typeof modified !== 'string' || !Number.isFinite(Date.parse(modified))) throw new Error('Modified Date Bubble obrigatório.');
@@ -229,7 +239,7 @@ export class BatchImporter {
         }
         if (entity.table === 'rm_users' && typeof row.matricula === 'string' && !row.matricula.trim()) row.matricula = null;
         prepared.push({ raw, row, existing, onConflict: existing ? 'id' : 'bubble_id' });
-      } catch (error) { await onQuarantine(raw, message(error)); }
+      } catch (error) {if(error instanceof DeletedProjectImportError)excludedIds.push(String(raw._id));else await onQuarantine(raw, message(error));}
     }
     const pending = await this.pendingIds(prepared);
     const groups = new Map<string, Prepared[]>();
@@ -245,9 +255,9 @@ export class BatchImporter {
       group.push(item); groups.set(key, group);
     }
     const changed: Prepared[] = [];
-    for (const group of groups.values()) for (const page of chunks(group, 100)) changed.push(...await this.persist(entity, page, onQuarantine));
+    for (const group of groups.values()) for (const page of chunks(group, 100)) changed.push(...await this.persist(entity, page, onQuarantine,items=>excludedIds.push(...items.map(item=>String(item.raw._id)))));
     await this.finishLinks(entity, changed, sequenced);
     stats.loaded = changed.length;
-    return stats;
+    return excludedIds.length?{...stats,excluded:excludedIds.length,excludedBubbleIds:excludedIds}:stats;
   }
 }

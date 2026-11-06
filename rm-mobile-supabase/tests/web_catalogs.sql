@@ -175,6 +175,33 @@ begin
   perform pg_temp.reject_catalog('save_catalog',pg_temp.save_payload('cells',gen_random_uuid(),null,'{"nome":"Orphan future cell"}'),'23503');
 end $$;
 
+-- Equipment-type deletion is the same protected command used by the explicit
+-- list shortcut. Even a private FK with CASCADE cannot bypass its usage check.
+create table rm_private.rm_catalog_type_reference_fixture(
+ id uuid primary key default gen_random_uuid(),tipo_id uuid references public.rm_tipos_equipamento(id) on delete cascade);
+do $$
+#variable_conflict use_variable
+declare typ uuid:=gen_random_uuid(); used_type uuid:=gen_random_uuid(); equipment_type uuid:=gen_random_uuid();
+ project uuid:=gen_random_uuid(); equipment uuid:=gen_random_uuid(); r jsonb; payload jsonb;
+begin
+ r:=pg_temp.call_catalog(gen_random_uuid(),'save_catalog',pg_temp.save_payload('types',typ,null,'{"nome":"Unused deletion type fixture"}'));
+ payload:=pg_temp.delete_payload('types',typ,r->>'updated_at');
+ perform pg_temp.call_catalog(gen_random_uuid(),'delete_catalog',payload);
+ perform pg_temp.check(not exists(select 1 from public.rm_tipos_equipamento where id=typ),'unused equipment type can be deleted');
+ r:=pg_temp.call_catalog(gen_random_uuid(),'save_catalog',pg_temp.save_payload('types',used_type,null,'{"nome":"Private route reference type fixture"}'));
+ insert into rm_private.rm_catalog_type_reference_fixture(tipo_id) values(used_type);
+ perform pg_temp.reject_catalog('delete_catalog',pg_temp.delete_payload('types',used_type,r->>'updated_at'),'23503');
+ perform pg_temp.check(exists(select 1 from public.rm_tipos_equipamento where id=used_type)
+  and exists(select 1 from rm_private.rm_catalog_type_reference_fixture where tipo_id=used_type),'private provenance references and shared type survive');
+ r:=pg_temp.call_catalog(gen_random_uuid(),'save_catalog',pg_temp.save_payload('types',equipment_type,null,'{"nome":"Canonical equipment type fixture"}'));
+ insert into public.rm_projetos(id,nome) values(project,'Canonical equipment project fixture');
+ insert into public.rm_equipamentos(id,projeto_id,tipo_equipamento_id) values(equipment,project,equipment_type);
+ update public.rm_projetos set equipamento_id=equipment where id=project;
+ perform pg_temp.reject_catalog('delete_catalog',pg_temp.delete_payload('types',equipment_type,r->>'updated_at'),'23503');
+ perform pg_temp.check(exists(select 1 from public.rm_equipamentos where id=equipment and tipo_equipamento_id=equipment_type)
+  and exists(select 1 from public.rm_projetos where id=project and equipamento_id=equipment and tipo_equipamento_id is null),'canonical equipment and project survive with no legacy direct type');
+end $$;
+
 -- SSO, explicit capability, role, activity and MFA remain mandatory on replays.
 do $$
 #variable_conflict use_variable

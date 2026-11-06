@@ -22,14 +22,14 @@ import { ProjectEquipmentPanel } from '@/components/web/project-equipment-panel'
 import { projectEquipmentDisplayFromSnapshot } from '@/components/web/project-equipment-display';
 import { projectTabs, selectedProjectTab } from '@/components/web/project-tabs';
 import { getProjectRoute } from '@/server/web/project-route-data';
-import { ProjectRouteEditor } from '@/components/web/project-route-editor';
+import { ProjectRouteWorkspace } from '@/components/web/project-route-workspace';
 import { projectRouteMatchesContext } from '@/components/web/project-route-model';
 import { getOperationalPhotos } from '@/server/web/operational-photo-data';
 import { getOperationalStageRules } from '@/server/web/operational-stage-rule-data';
-import { OperationalPhotoEditor } from '@/components/web/operational-photo-editor';
-import { OperationalStageRuleEditor } from '@/components/web/operational-stage-rule-editor';
+import { getProjectRouteCell } from '@/server/web/project-route-cell-data';
 import { getProjectAudit } from '@/server/web/project-audit-data';
 import { ProjectAuditPanel } from '@/components/web/project-audit-panel';
+import { ProjectDeleteButton } from '@/components/web/project-delete-button';
 
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id: rawId } = await params; const id = rawId.toLowerCase(); const query = await searchParams;
@@ -83,6 +83,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
           : <div style={{ marginTop: 20 }}><div className="heading-actions">
             {choices && !allocation.retirada && !['finalizado', 'n_a'].includes(allocation.status ?? '') && <CellEditor projectId={id} allocation={allocation} cells={projectData.cells} forms={choices.forms} users={choices.users} destination={destination} />}
             <a className="button small secondary" href={destination} aria-label={`${canPlan ? 'Gerenciar' : 'Consultar'} disponibilidade de ${cellNames.get(allocation.celula_id) || 'célula'}`}>Disponibilidade da célula</a>
+            {!allocation.retirada&&<a className="button small secondary" href={`/projetos/${id}?tab=roteiro&route_allocation=${allocation.id}#configuracao-roteiro`}>Configurar roteiro da célula</a>}
           </div></div>}
       </div>
     </section>;
@@ -92,14 +93,15 @@ export default async function Projeto({ params, searchParams }: { params: Promis
   const routeSelection = scheduleId(query.route_allocation);
   const routeAllocation = tab === 'roteiro' && routeCurrent ? activeAllocations.find(allocation => allocation.id === routeSelection) ?? (!routeSelection ? activeAllocations.find(allocation => route?.items[0]?.id === allocation.id) : undefined) : undefined;
   const routeDestination = `/projetos/${id}?tab=roteiro${routeAllocation ? `&route_allocation=${routeAllocation.id}` : ''}`;
-  const [routePhotos, routeRules, cellAudit, operationalAudit] = await Promise.all([
+  const [routePhotos, routeRules, routeForms, cellAudit, operationalAudit] = await Promise.all([
     routeAllocation && hasWebCapability(session, 'em.photos.read') ? getOperationalPhotos(id, routeAllocation.id).catch(() => null) : null,
     routeAllocation && hasWebCapability(session, 'em.approvals.read') ? getOperationalStageRules(id, routeAllocation.id).catch(() => null) : null,
+    routeAllocation && hasWebCapability(session, 'em.forms.read') ? getProjectRouteCell(id, routeAllocation.id).catch(() => null) : null,
     tab === 'planejamento' && hasWebCapability(session, 'em.history.read') ? getProjectAudit(id, 'cells', typeof query.cellAuditPage === 'string' ? query.cellAuditPage : undefined).catch(() => null) : null,
     tab === 'historico' ? getProjectAudit(id, 'operations', typeof query.auditPage === 'string' ? query.auditPage : undefined).catch(() => null) : null,
   ]);
   const title = project.numero ? `OS ${project.numero.trim()}` : 'Projeto em recebimento';
-  return <><Link className="back-link" href="/projetos"><Icon name="back" size={15} />Todos os projetos</Link><PageHeading eyebrow="ACOMPANHAMENTO DO PROJETO" title={title} description={equipmentDescription || project.nome || 'Informações e registros do equipamento em uma mesma jornada.'} actions={<>{['administrador', 'padr_o', 'auditor'].includes(session.profile.perfil) && <a className="button secondary" href={`/projetos/${id}/qr`}><Icon name="image" size={15} />Identificação por QR</a>}{canEdit && <Link className="button secondary" href={`/projetos/${id}/editar`}><Icon name="edit" size={15} />Editar projeto</Link>}</>} />
+  return <><Link className="back-link" href="/projetos"><Icon name="back" size={15} />Todos os projetos</Link><PageHeading eyebrow="ACOMPANHAMENTO DO PROJETO" title={title} description={equipmentDescription || project.nome || 'Informações e registros do equipamento em uma mesma jornada.'} actions={<>{['administrador', 'padr_o', 'auditor'].includes(session.profile.perfil) && <a className="button secondary" href={`/projetos/${id}/qr`}><Icon name="image" size={15} />Identificação por QR</a>}{canEdit && <Link className="button secondary" href={`/projetos/${id}/editar`}><Icon name="edit" size={15} />Editar projeto</Link>}{session.profile.perfil === 'administrador' && canEdit && <ProjectDeleteButton projectId={id} />}</>} />
     <section className="panel"><div className="panel-content project-summary"><div><h2>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</h2><div className="summary-meta"><span>Chegada: {date(project.chegada_do_equipamento)}</span><span>Entrega prevista: {date(project.data_prevista_final)}</span>{hasWebCapability(session, 'em.planning.read') && <span>{activeAllocations.length} células no planejamento{retiredAllocations.length ? ` · ${retiredAllocations.length} retiradas` : ''}</span>}</div></div><Status value={project.status_pcp} /></div></section>
     <nav className="tabs" aria-label="Áreas do projeto">{tabs.map(item => <a key={item.id} href={`/projetos/${id}?tab=${item.id}`} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav>
     {tab === 'informacoes' && <>
@@ -111,13 +113,11 @@ export default async function Projeto({ params, searchParams }: { params: Promis
     </>}
     {tab === 'roteiro' && <section className="panel" data-project-route><div className="panel-header"><div><h2>Roteiro deste projeto</h2><p>As células e suas configurações pertencem a este projeto. Alterações no modelo do tipo de equipamento não substituem este roteiro.</p></div></div><div className="panel-content">
       {route?.initialized_from_type === false && <p className="notice">Projeto legado: o planejamento existente foi preservado. Nenhum roteiro modelo foi aplicado automaticamente.</p>}
-      {!route || !routeCurrent ? <p className="notice" role="status">O roteiro mudou durante a consulta ou não está disponível. Recarregue a página para conferir a sequência completa.</p> : <ProjectRouteEditor key={`${route.project.id}:${route.route_version}`} snapshot={route} canEdit={canPlan && !closed} destination={routeDestination} itemDetails={Object.fromEntries(route.items.map(item => { const allocation = data.allocations.find(row => row.id === item.id); return [item.id, <><span>{hasWebCapability(session, 'em.forms.read') ? `${allocation?.forms_ids?.length || 0} formulários vinculados` : 'Configuração da célula'} · Início: {date(allocation?.data_inicio)} · Prazo: {date(allocation?.data_limite)}</span><a className="text-link" href={`/projetos/${id}?tab=roteiro&route_allocation=${item.id}#configuracao-roteiro`}>Consultar configuração</a></>]; }))} />}
+      {!route || !routeCurrent ? <p className="notice" role="status">O roteiro mudou durante a consulta ou não está disponível. Recarregue a página para conferir a sequência completa.</p> : <ProjectRouteWorkspace key={`${route.project.id}:${route.route_version}:${routeAllocation?.id??''}`} route={route} canManage={canPlan && !closed} destination={routeDestination}
+        allocationId={routeAllocation?.id} allocationName={cellNames.get(routeAllocation?.celula_id)} photos={routePhotos} forms={routeForms} rules={routeRules}
+        canReadPhotos={hasWebCapability(session,'em.photos.read')} canReadForms={hasWebCapability(session,'em.forms.read')} canReadApprovals={hasWebCapability(session,'em.approvals.read')} initialTab={typeof query.route_tab==='string'?query.route_tab:undefined}
+        itemDetails={Object.fromEntries(route.items.map(item => { const allocation = data.allocations.find(row => row.id === item.id); return [item.id, <><span>{hasWebCapability(session, 'em.forms.read') ? `${allocation?.forms_ids?.length || 0} formulários vinculados` : 'Configuração da célula'} · Início: {date(allocation?.data_inicio)} · Prazo: {date(allocation?.data_limite)}</span><a className="text-link" href={`/projetos/${id}?tab=roteiro&route_allocation=${item.id}#configuracao-roteiro`}>{canPlan?'Configurar célula':'Consultar configuração'}</a></>]; }))} />}
       {query.route_allocation && !routeAllocation && <p className="notice" role="status">A célula solicitada não está disponível neste roteiro. Escolha uma célula da sequência.</p>}
-      {routeAllocation && <section id="configuracao-roteiro" style={{ marginTop: 28 }}><div className="panel-header"><div><h2>{cellNames.get(routeAllocation.celula_id) || 'Célula do roteiro'}</h2><p>Configuração própria da alocação selecionada.</p></div><a className="button small secondary" href={`/cronograma?project=${id}&allocation=${routeAllocation.id}`}>{canPlan ? 'Configurar célula' : 'Consultar célula'}</a></div>
-        {hasWebCapability(session, 'em.forms.read') && <div className="panel-content"><h3>Formulários vinculados</h3><p className="form-note">{routeAllocation.forms_ids?.map((formId: string) => formNames.get(formId) || 'Formulário histórico').join(' · ') || 'Nenhum formulário vinculado.'}</p></div>}
-        {hasWebCapability(session, 'em.photos.read') && <details open><summary className="back-link">Fotos e configurações</summary>{routePhotos && routePhotos.project.updated_at === project.updated_at && routePhotos.allocation.updated_at === routeAllocation.updated_at ? <OperationalPhotoEditor snapshot={routePhotos} canManage={false} destination={routeDestination} /> : <p className="notice">Não foi possível consultar as fotos desta alocação. Recarregue o roteiro.</p>}</details>}
-        {hasWebCapability(session, 'em.approvals.read') && <details open><summary className="back-link">Origem, destino e aprovadores</summary>{routeRules && routeRules.project.updated_at === project.updated_at && routeRules.allocation.updated_at === routeAllocation.updated_at ? <OperationalStageRuleEditor snapshot={routeRules} canManage={false} destination={routeDestination} /> : <p className="notice">Não foi possível consultar as regras desta alocação. Recarregue o roteiro.</p>}</details>}
-      </section>}
     </div></section>}
     {tab === 'planejamento' && <>
       {closed && <div className="notice">Este projeto está encerrado. O planejamento permanece disponível para consulta.</div>}

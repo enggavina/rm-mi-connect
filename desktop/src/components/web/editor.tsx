@@ -139,7 +139,7 @@ export type CellEditorProps = { projectId: string; allocation?: WebRow; cells: W
   destination?: string; disabled?: boolean; onInteractionChange?: (active: boolean) => void };
 const formFingerprint = (form: HTMLFormElement) => JSON.stringify([...new FormData(form).entries()].map(([key, value]) => [key, typeof value === 'string' ? value : value.name]));
 
-export function CellEditor({ projectId, allocation, cells, forms, users, destination, disabled = false, onInteractionChange }: CellEditorProps) {
+export function CellEditor({ projectId, allocation, cells, users, destination, disabled = false, onInteractionChange }: CellEditorProps) {
   const [open, setOpen] = useState(false), [dirty, setDirty] = useState(false), [saved, setSaved] = useState(false);
   const leaving = useRef(false), originalForm = useRef(''), resultId = useRef<string | null>(null);
   const target = projectRouteDestination(destination ?? `/projetos/${projectId}?tab=planejamento`, projectId);
@@ -181,7 +181,6 @@ export function CellEditor({ projectId, allocation, cells, forms, users, destina
     for (const key of ['data_inicio', 'data_limite']) if (!allocation || String(data.get(key) || '') !== inputDay(allocation[key])) changes[key] = day(data.get(key));
     const hours = data.get('horas_previstas'); changes.horas_previstas = hours ? Number(hours) : null;
     if (!allocation || String(data.get('prioridade') || '') !== (allocation.prioridade || '')) changes.prioridade = nullable(data, 'prioridade');
-    if (allocation) changes.forms_ids = data.getAll('forms_ids').map(String);
     void save.send({ submissionId: crypto.randomUUID(), projeto_id: projectId, celula_id: allocation?.celula_id || String(data.get('celula_id')), expected_updated_at: allocation?.updated_at ?? null, changes });
   };
   if (allocation?.retirada === true) return null;
@@ -199,7 +198,7 @@ export function CellEditor({ projectId, allocation, cells, forms, users, destina
       <div className="field"><label>Motivo do atraso<input aria-label="Motivo do atraso" name="motivo_atraso" maxLength={5000} defaultValue={allocation?.motivo_atraso || ''} /></label></div>
       {!allocation && <label className="check-label span-all"><input type="checkbox" name="visibilidade" defaultChecked />Disponibilizar esta célula no aplicativo dos operadores autorizados</label>}
       <div className="field span-all"><label>Observação<textarea aria-label="Observação do planejamento" name="observacao" maxLength={10000} defaultValue={allocation?.observacao || ''} /></label></div>
-      <div className="span-all"><p className="field-label">Formulários da célula</p>{allocation ? <div style={{ display: 'grid', gap: 10, maxHeight: 240, overflow: 'auto' }}>{forms.map(form => <label className="check-label" key={form.id}><input type="checkbox" name="forms_ids" value={form.id} defaultChecked={allocation.forms_ids?.includes(form.id)} />{form.titulo}</label>)}</div> : <p className="form-note">Os formulários, fotos obrigatórias e aprovações serão copiados do roteiro cadastrado para o tipo de equipamento.</p>}</div>
+      <p className="form-note span-all">{allocation ? <a className="text-link" href={`/projetos/${projectId}?tab=roteiro&route_allocation=${allocation.id}#configuracao-roteiro`}>Configurar fotos, formulários e aprovações no Roteiro</a> : 'Após alocar, configure fotos, formulários e aprovações na aba Roteiro do projeto.'}</p>
     </div></fieldset><div className="form-actions"><button className="button secondary" type="button" disabled={locked} onClick={() => { setDirty(false); setOpen(false); }}>Cancelar</button><button className="button" disabled={save.busy || save.stale || save.unauthorized || saved || disabled}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : 'Salvar planejamento'}</button></div>
   </form></div>;
 }

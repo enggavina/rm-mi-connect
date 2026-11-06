@@ -40,3 +40,12 @@ test('delete supports replay snapshots and preserves definitive and uncertain er
     assert.ok(!failure.ok); assert.equal(failure.code, code);
   }
 });
+
+test('used equipment types explain the protected dependencies without exposing SQL errors', async () => {
+  const body = { submissionId: id, id, kind: 'types', expected_updated_at: version };
+  const result = await setup('administrador', { ok: false, code: '23503', error: 'Private database details must not reach UI' }).deleteCatalog(body);
+  assert.ok(!result.ok); assert.equal(result.code, '23503');
+  assert.match(result.error, /equipamentos, projetos, roteiros/);
+  assert.match(result.error, /preservados/);
+  assert.doesNotMatch(result.error, /Private database/);
+});

@@ -5,6 +5,7 @@ import { BubbleClient } from './client';
 import { Bridge } from './engine';
 import { entities, fieldValue, type Entity, type Row } from './mapping';
 import { isOperationalProject, scopedGroups } from './scope';
+import {filterDeletedProjectRows} from './deleted-projects';
 
 type EntityReport = { table:string; checked:number; loaded:number; unchanged:number; excluded:number; quarantined:number; sampled:boolean; errors:Record<string,number> };
 function sanitized(entity:Entity,raw:Row):Row {
@@ -48,17 +49,21 @@ export async function runEtl() {
         const groups=scope==='all'?[[]]:scopedGroups(entity,projectIds,revisionIds);
         outer:for(const constraints of groups)for await(const page of bubble.pages(entity.endpoint,since,until,constraints)){
           const valid:Row[]=[];
-          for(const raw of page){
+          const filtered=await filterDeletedProjectRows((name,args)=>bridge.rpc(name,args),entity,page);stats.excluded+=filtered.excluded;
+          for(const raw of filtered.rows){
             // Project lists remain complete in preflight to define the real scope.
             if(stats.checked>=sample && entity.table!=='rm_projetos'){stats.sampled=true;break;}
             stats.checked++;
             if(scope==='active'&&entity.table==='rm_projetos'&&!isOperationalProject(raw)){stats.excluded++;continue;}
             try {bridge.validate(entity,raw);valid.push(raw);}catch(error){quarantine(raw,error instanceof Error?error:new Error('Invalid record.'));}
           }
+          let excludedIds:string[]=[];
           if(importer&&valid.length){
             const result=await importer.importPage(entity,valid,quarantine);stats.loaded+=result.loaded;stats.unchanged+=result.unchanged;
+            stats.excluded+=result.excluded||0;excludedIds=result.excludedBubbleIds||[];
           }
           for(const raw of valid){
+            if(excludedIds.includes(String(raw._id)))continue;
             if(entity.table==='rm_projetos'&&typeof raw._id==='string')projectIds.push(raw._id);
             if(entity.table==='rm_registros_formulario'&&['Revisar','direcionado'].includes(String(raw.Status))&&typeof raw._id==='string')revisionIds.push(raw._id);
           }

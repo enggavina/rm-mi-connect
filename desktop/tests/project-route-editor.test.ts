@@ -15,8 +15,8 @@ test('route position controls move only IDs and preserve all operational fields 
   assert.equal(projectRouteNeedsNormalization(original), true); assert.equal(projectRouteNeedsNormalization([{ indice: 1 }, { indice: 2 }]), false);
 });
 test('route request freezes the complete explicit sequence and exact versions without sending positions or priority', () => {
-  const snapshot = { project: { id: 'project', updated_at: version }, route_version: 'hash' } as ProjectRouteSnapshot;
   const items = [{ id: 'allocation', updated_at: version, indice: 9, posicao: 5 }];
+  const snapshot = { project: { id: 'project', updated_at: version }, route_version: 'hash',items } as unknown as ProjectRouteSnapshot;
   const request = projectRouteRequest(snapshot, items, 'same-uuid'); items[0].updated_at = 'changed'; items.push({ ...items[0], id: 'extra' });
   assert.deepEqual(request, { submissionId: 'same-uuid', projeto_id: 'project', expected_project_updated_at: version, expected_route_version: 'hash', items: [{ id: 'allocation', expected_updated_at: version }] });
   assert.equal(Object.isFrozen(request.items), true); assert.throws(() => { request.items[0].id = 'different'; }, TypeError);

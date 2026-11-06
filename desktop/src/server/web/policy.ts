@@ -80,6 +80,7 @@ export function mutationError(code?: string): { code: string; error: string } {
     case '23503': return { code, error: 'Um dos vínculos selecionados não está mais disponível.' };
     case 'PT422': return { code, error: 'O roteiro modelo possui uma aprovação que aponta para célula fora do roteiro ativo. Revise as células e os destinos na Engenharia antes de salvar.' };
     case 'PT423': return { code, error: 'Para criar o projeto, selecione o tipo na aba de cadastro e salve o equipamento junto com o projeto. Recarregue a página se ela foi aberta antes desta atualização.' };
+    case 'PT410': return { code, error: 'Este projeto foi excluído. O envio anterior não será aplicado; preserve os dados pendentes para reconciliação.' };
     case '22023': case '22007': case '22008': case '22P02': case '23514': return { code, error: 'Os dados não atendem às regras desta operação. Confira os campos e a situação do registro.' };
     default: return { code: 'UNAVAILABLE', error: 'Não foi possível confirmar a alteração. Tente novamente com o mesmo protocolo.' };
   }

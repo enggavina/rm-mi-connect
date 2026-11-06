@@ -170,24 +170,36 @@ select public.rm_sso_session_put_v1(repeat('a2',32),rm_test_photos.key('8',1),rm
 update rm_private.sso_settings set require_sso=true;
 insert into public.rm_projetos(id,numero) select rm_test_photos.key('5',n),'PHOTO-RACE-22-'||n from generate_series(1,8) n;
 insert into public.rm_fotos(id,projeto_id,foto_url,numero,tag,selecao_relatorio)
- select rm_test_photos.key('6',n),rm_test_photos.key('5',n),'https://example.invalid/original.jpg',77,'ORIGINAL',false from generate_series(1,7) n;
+ select rm_test_photos.key('6',n),rm_test_photos.key('5',n),case when n=6 then null else 'https://example.invalid/original.jpg' end,77,'ORIGINAL',false from generate_series(1,7) n;
 create function rm_test_photos.run(mode text,rid uuid,p jsonb,hold_seconds real default 0) returns jsonb language plpgsql as $$
-declare r jsonb; state text; begin
+declare r jsonb; state text; deletion jsonb; begin
  perform set_config('request.jwt.claim.sub',rm_test_photos.key('1',1)::text,true);
  perform set_config('request.jwt.claims',jsonb_build_object('session_id',rm_test_photos.key('3',1),'aal','aal1')::text,true);
  if mode='select' then
   perform public.rm_sso_action_permit_v1(repeat('a2',32),rid,'set_project_photo_selection',p,'em.projects.manage');
   set local role authenticated; r:=public.rm_web_mutate_v1(rid,'set_project_photo_selection',p); reset role;
  elsif mode='metadata' then
-  update public.rm_fotos set foto_url='https://example.invalid/concurrent.jpg',tag='CONCURRENT',numero=88 where id=(p->>'foto_id')::uuid;
+  -- A captured slot retains its configuration. Retake and non-destructive tag
+  -- changes still race with selection and invalidate its exact revision.
+  update public.rm_fotos set foto_url='https://example.invalid/concurrent.jpg',tag='CONCURRENT' where id=(p->>'foto_id')::uuid;
  elsif mode='close' then
   perform pg_advisory_xact_lock(hashtextextended(p->>'projeto_id',11));
   update public.rm_projetos set status_pcp='cancelado',data_real_de_entrega=clock_timestamp() where id=(p->>'projeto_id')::uuid;
  elsif mode='move' then
+  -- Scenario6 is deliberately unused:040 protects a captured slot's context.
   update public.rm_fotos set projeto_id=rm_test_photos.key('5',8) where id=(p->>'foto_id')::uuid;
  elsif mode='delete' then
-  perform pg_advisory_xact_lock(hashtextextended(p->>'projeto_id',11));
-  delete from public.rm_projetos where id=(p->>'projeto_id')::uuid;
+  if to_regprocedure('public.rm_web_project_delete_snapshot_v1(uuid)') is not null then
+   set local role authenticated;deletion:=public.rm_web_project_delete_snapshot_v1((p->>'projeto_id')::uuid);reset role;
+   deletion:=jsonb_build_object('id',p->>'projeto_id','expected_updated_at',deletion->'project'->>'updated_at',
+    'expected_context_version',deletion->>'context_version','confirm_delete',true,'justificativa','Local selection/deletion concurrency fixture');
+   perform public.rm_sso_action_permit_v1(repeat('a2',32),rid,'delete_project',deletion,'em.projects.manage');
+   set local role authenticated;r:=public.rm_web_mutate_v1(rid,'delete_project',deletion);reset role;
+  else
+   -- The same suite also runs during the historical022 upgrade rehearsal.
+   perform pg_advisory_xact_lock(hashtextextended(p->>'projeto_id',11));
+   delete from public.rm_projetos where id=(p->>'projeto_id')::uuid;
+  end if;
  else raise exception 'Unknown test mode'; end if;
  perform pg_sleep(hold_seconds);
  return jsonb_build_object('sqlstate','00000','result',r);
@@ -226,8 +238,8 @@ do $$ declare scenario int; p jsonb; a jsonb; b jsonb; pid_a int; pid_b int; wai
    perform rm_test_photos.check((b->'result'->>'idempotent_replay')::boolean,'same UUID replay after real contention');
    perform rm_test_photos.check((select count(*)=1 from rm_private.web_mutation_receipts where client_submission_id=first_id),'one receipt for simultaneous same UUID');
   end if;
-  if scenario=3 then perform rm_test_photos.check((select not selecao_relatorio and numero=88 and tag='CONCURRENT' from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'metadata winner is never overwritten'); end if;
-  if scenario=4 then perform rm_test_photos.check((select selecao_relatorio and numero=88 and tag='CONCURRENT' from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'metadata after selection preserves its flag'); end if;
+  if scenario=3 then perform rm_test_photos.check((select not selecao_relatorio and numero=77 and tag='CONCURRENT' and foto_url='https://example.invalid/concurrent.jpg' from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'metadata winner is never overwritten and captured configuration stays fixed'); end if;
+  if scenario=4 then perform rm_test_photos.check((select selecao_relatorio and numero=77 and tag='CONCURRENT' and foto_url='https://example.invalid/concurrent.jpg' from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'metadata after selection preserves its flag and captured configuration'); end if;
   if scenario=5 then perform rm_test_photos.check((select selecao_relatorio from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'project closing serializes but does not forbid historical selection'); end if;
   if scenario=6 then perform rm_test_photos.check((select not selecao_relatorio and projeto_id=rm_test_photos.key('5',8) from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'changed project reference is preserved'); end if;
   if scenario=7 then perform rm_test_photos.check(not exists(select 1 from public.rm_fotos where id=rm_test_photos.key('6',scenario)),'project deletion leaves no stale selection or recreated photo'); end if;

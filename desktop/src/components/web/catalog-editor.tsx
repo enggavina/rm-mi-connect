@@ -6,12 +6,12 @@ import type { WebRow } from '@/server/web/data';
 import { catalogFailureState, catalogLabels, confirmsCatalogDeletion, freezeCatalogAttempt, readCatalogForm, type CatalogAttempt, type CatalogFields } from './catalog-model';
 import { Icon } from './icons';
 
-export function CatalogEditor({ kind, entry }: { kind: EditableCatalogKind; entry?: WebRow }) {
+export function CatalogEditor({ kind, entry, initialDeleting = false }: { kind: EditableCatalogKind; entry?: WebRow; initialDeleting?: boolean }) {
   const label = catalogLabels[kind], back = `/cadastros?kind=${kind}`;
   const [id] = useState(() => entry?.id || crypto.randomUUID());
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [stale, setStale] = useState(false);
   const [error, setError] = useState(''), [fieldErrors, setFieldErrors] = useState<CatalogFields>({});
-  const [deleting, setDeleting] = useState(false), [confirmation, setConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(!!entry && initialDeleting), [confirmation, setConfirmation] = useState('');
   const [unauthorized, setUnauthorized] = useState(false);
   const inFlight = useRef(false), attempt = useRef<CatalogAttempt | null>(null), errorBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (error) errorBox.current?.focus(); }, [error]);
@@ -83,7 +83,7 @@ export function CatalogEditor({ kind, entry }: { kind: EditableCatalogKind; entr
         {!deleting && <button className="button" disabled={busy || stale || unauthorized}>{busy ? 'Salvando…' : uncertain ? 'Tentar confirmar envio' : <><Icon name="check" size={16} />Salvar {label.singular}</>}</button>}
       </div>
     </form>
-    {entry && <section aria-labelledby="delete-catalog-title" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid var(--line)' }}>
+    {entry && <section id="delete-catalog" aria-labelledby="delete-catalog-title" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid var(--line)' }}>
       <h2 id="delete-catalog-title" style={{ fontSize: 14 }}>Excluir {label.singular}</h2>
       <p className="form-note">A exclusão é permanente. Cadastros em uso por outros registros não podem ser excluídos.</p>
       {!deleting ? <button type="button" className="button secondary" disabled={locked} onClick={() => { setDeleting(true); setConfirmation(''); setError(''); }}>Excluir {label.singular}</button> : <form onSubmit={event => { event.preventDefault(); remove(); }} style={{ marginTop: 16 }}>

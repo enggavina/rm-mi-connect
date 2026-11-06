@@ -19,11 +19,12 @@ export function createOperationalPhotoActions(dependencies: { actionUser: typeof
     const result = await dependencies.mutate(access.client, 'manage_operational_photos', parsed.data, 'em.planning.manage', access.sso);
     if (!result.ok) return result;
     const data = result.data, record = operationalPhotoResultSchema.safeParse(data.record);
-    const targets = new Set(parsed.data.action === 'add' ? parsed.data.items.map(item => item.id) : [parsed.data.foto_id]);
+    const targets = new Set(parsed.data.action === 'add' ? parsed.data.items.map(item => item.id) : parsed.data.action === 'replace' ? [parsed.data.foto_id,parsed.data.new_id] : [parsed.data.foto_id]);
     if (data.operation !== 'manage_operational_photos' || data.id !== parsed.data.celula_projeto_id || data.projeto_id !== parsed.data.projeto_id
       || !timestamp.safeParse(data.updated_at).success || typeof data.idempotent_replay !== 'boolean' || !record.success
       || record.data.projeto_id !== parsed.data.projeto_id || record.data.celula_projeto_id !== parsed.data.celula_projeto_id || record.data.action !== parsed.data.action
-      || new Set(record.data.changed_ids).size !== record.data.changed_ids.length || record.data.changed_ids.some(id => !targets.has(id))) {
+      || new Set(record.data.changed_ids).size !== record.data.changed_ids.length || record.data.changed_ids.some(id => !targets.has(id))
+      || parsed.data.action === 'replace' && record.data.changed_ids.length !== 2) {
       return { ok: false, code: 'UNAVAILABLE', error: 'Não foi possível confirmar a alteração das fotos. Tente novamente com o mesmo protocolo.' };
     }
     return { ok: true, data: { operation: data.operation, id: data.id, projeto_id: data.projeto_id, updated_at: data.updated_at,

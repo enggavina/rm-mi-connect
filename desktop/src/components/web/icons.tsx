@@ -15,6 +15,7 @@ const paths = {
   clock: ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20', 'M12 6v6l4 2'], image: ['M3 3h18v18H3z', 'm3 17 6-6 4 4 3-3 5 5', 'M8 7h.01'],
   file: ['M14 2H4v20h16V8Z', 'M14 2v6h6', 'M8 13h8', 'M8 17h6'], check: ['m4 12 5 5L20 6'], alert: ['m12 3 10 18H2Z', 'M12 9v5', 'M12 17h.01'],
   edit: ['m16 3 5 5-12 12-6 1 1-6Z', 'm13 6 5 5'], plus: ['M12 4v16', 'M4 12h16'], download: ['M12 3v12', 'm7 10 5 5 5-5', 'M3 16v5h18v-5'],
+  trash: ['M3 6h18', 'M8 6V3h8v3', 'M5 6l1 15h12l1-15', 'M10 10v7', 'M14 10v7'],
 } as const;
 export type IconName = keyof typeof paths;
 export function Icon({ name, size = 20, style }: { name: IconName; size?: number; style?: CSSProperties }) {

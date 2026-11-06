@@ -4,18 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import { manageOperationalPhotos } from '@/server/web/operational-photo-actions';
 import type { ManageOperationalPhotosInput } from '@/server/web/operational-photo-policy';
 import type { OperationalPhotoSnapshot } from '@/server/web/operational-photo-data';
-import { canManageOperationalPhotos, operationalPhotoPage, operationalPhotoRequest, operationalTitleBlockReason, type OperationalPhotoMode } from './operational-photo-model';
+import { canManageOperationalPhotos, operationalPhotoPage, operationalPhotoRequest, operationalTitleBlockReason, operationalReplacementTitleBlockReason, type OperationalPhotoMode } from './operational-photo-model';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
 import { projectRouteDestination } from './project-route-model';
 import { Empty, Status } from './ui';
 import { Icon } from './icons';
 import s from './operational-photo.module.css';
 
-export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
-  snapshot: OperationalPhotoSnapshot; canManage: boolean; destination: string;
+export function OperationalPhotoEditor({ snapshot, canManage, destination, disabled=false, onInteractionChange }: {
+  snapshot: OperationalPhotoSnapshot; canManage: boolean; destination: string; disabled?: boolean; onInteractionChange?: (active: boolean)=>void;
 }) {
   const [mode, setMode] = useState<OperationalPhotoMode | null>(null), [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState(''), [tag, setTag] = useState(''), [confirmed, setConfirmed] = useState(false);
+  const [titleId,setTitleId]=useState(''),[number,setNumber]=useState(''),[description,setDescription]=useState('');
   const [retired, setRetired] = useState(false), [page, setPage] = useState(1), [saved, setSaved] = useState(false);
   const leaving = useRef(false);
   const target = projectRouteDestination(destination, snapshot.project.id);
@@ -25,10 +26,13 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
     return result;
   }, target);
   const editable = canManageOperationalPhotos(snapshot, canManage);
-  const locked = save.locked || saved;
+  const locked = save.locked || saved || disabled;
   const current = mode && mode.action !== 'add' ? snapshot.photos.find(photo => photo.id === mode.photoId) : undefined;
   const currentTitle = current?.titulo || 'Foto sem título';
-  const dirty = mode?.action === 'add' ? selectedIds.length > 0 : mode?.action === 'tag' && tag !== (current?.tag ?? '');
+  const dirty = mode?.action === 'add' ? selectedIds.length > 0 : mode?.action === 'replace'
+    ? titleId!==(current?.cadastro_foto_id??'')||number!==String(current?.numero??'')||description!==(current?.descricao??'')||tag!==(current?.tag??'')||confirmed
+    : mode?.action === 'tag' && tag !== (current?.tag ?? '');
+  useEffect(()=>{onInteractionChange?.(!!mode||save.busy||save.uncertain);},[mode,save.busy,save.uncertain,onInteractionChange]);
   useEffect(() => {
     if (!dirty && !save.busy && !save.uncertain) return;
     const unload = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
@@ -46,7 +50,9 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
   function open(next: OperationalPhotoMode) {
     if (!editable || locked || mode || next.action === 'add' && !snapshot.titles_complete) return;
     setMode(next); setSelectedIds([]); setSearch(''); setConfirmed(false); save.setError('');
-    setTag(next.action === 'tag' ? snapshot.photos.find(photo => photo.id === next.photoId)?.tag ?? '' : '');
+    const photo=next.action!=='add'?snapshot.photos.find(photo=>photo.id===next.photoId):undefined;
+    setTag(next.action === 'tag'||next.action==='replace' ? photo?.tag ?? '' : '');
+    setTitleId(photo?.cadastro_foto_id??'');setNumber(photo?.numero==null?'':String(photo.numero));setDescription(photo?.descricao??'');
   }
   function cancel() {
     if (save.busy || save.uncertain) return;
@@ -59,6 +65,7 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
     try {
       const draft = mode.action === 'add' ? { action: 'add' as const, titleIds: selectedIds }
         : mode.action === 'tag' ? { action: 'tag' as const, photoId: mode.photoId, tag }
+          : mode.action==='replace'?{action:'replace' as const,photoId:mode.photoId,titleId,numero:number,descricao:description,tag,confirmed}
           : { action: mode.action, photoId: mode.photoId };
       void save.send(operationalPhotoRequest(snapshot, draft, crypto.randomUUID(), () => crypto.randomUUID()));
     } catch (error) { save.setError(error instanceof Error ? error.message : 'Confira os dados desta foto.'); }
@@ -67,7 +74,7 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
   const retiredCount = snapshot.photos.length - activeCount;
   const displayed = operationalPhotoPage(snapshot.photos, retired, page);
   const filteredTitles = snapshot.titles.filter(title => (title.titulo ?? '').toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
-  const actionLabel = mode?.action === 'add' ? 'Adicionar fotos obrigatórias' : mode?.action === 'tag' ? 'Salvar tag'
+  const actionLabel = mode?.action === 'add' ? 'Adicionar fotos obrigatórias' : mode?.action === 'replace' ? 'Confirmar substituição' : mode?.action === 'tag' ? 'Salvar tag'
     : mode?.action === 'retire' ? 'Confirmar retirada' : 'Confirmar restauração';
 
   if (!snapshot.complete) return <Empty title="Esta célula excede o limite de fotos desta tela" detail="Nenhuma parte das fotos será alterada isoladamente. Os registros existentes permanecem preservados." icon="image" />;
@@ -83,7 +90,7 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
       {saved && <p className="notice success" role="status">Alteração confirmada. Atualizando as fotos…</p>}
     </div>
     {mode && <form className={s.form} onSubmit={event => { event.preventDefault(); submit(); }}>
-      <h3>{mode.action === 'add' ? 'Adicionar fotos obrigatórias' : mode.action === 'tag' ? 'Editar tag da foto' : mode.action === 'retire' ? 'Retirar título previsto' : 'Restaurar título previsto'}</h3>
+      <h3>{mode.action === 'add' ? 'Adicionar fotos obrigatórias' : mode.action === 'replace' ? 'Substituir configuração da foto' : mode.action === 'tag' ? 'Editar tag da foto' : mode.action === 'retire' ? 'Retirar título previsto' : 'Restaurar título previsto'}</h3>
       {mode.action !== 'add' && <p><strong>{currentTitle}</strong></p>}
       <fieldset className={s.fieldSet} disabled={locked}>
         {mode.action === 'add' ? <>
@@ -96,7 +103,17 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
           })}</div> : <p>Nenhum título disponível para esta célula.</p>}
           {snapshot.titles.length > 0 && filteredTitles.length === 0 && <p>Nenhum título encontrado nesta pesquisa.</p>}
           <p>{selectedIds.length} títulos selecionados. Até 100 títulos por envio.</p>
-        </> : mode.action === 'tag' ? <>
+        </> : mode.action==='replace'?<>
+          <p>A previsão anterior ficará nas retiradas. A nova configuração pertence somente a esta célula neste projeto.</p>
+          <div className="field"><label htmlFor="operational-photo-replacement-title">Título da foto</label><select id="operational-photo-replacement-title" value={titleId} onChange={event=>{setTitleId(event.target.value);setConfirmed(false);}}>
+            <option value="">Selecione um título</option>{titleId&&!snapshot.titles.some(title=>title.id===titleId)&&<option value={titleId} disabled>Título anterior indisponível</option>}
+            {snapshot.titles.map(title=><option key={title.id} value={title.id} disabled={!current||!!operationalReplacementTitleBlockReason(title,current,snapshot.photos)}>{title.titulo||'Título não informado'}</option>)}
+          </select></div>
+          <div className="field"><label htmlFor="operational-photo-number">Número da foto</label><input id="operational-photo-number" type="number" min={1} max={1000000} step={1} value={number} onChange={event=>{setNumber(event.target.value);setConfirmed(false);}}/></div>
+          <div className="field"><label htmlFor="operational-photo-description">Descrição da foto</label><textarea id="operational-photo-description" value={description} maxLength={4000} onChange={event=>{setDescription(event.target.value);setConfirmed(false);}}/></div>
+          <div className="field"><label htmlFor="operational-photo-replacement-tag">Tag da foto</label><textarea id="operational-photo-replacement-tag" value={tag} maxLength={2000} onChange={event=>{setTag(event.target.value);setConfirmed(false);}}/></div>
+          <label className="check-label"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/>Confirmo a substituição desta configuração ainda não utilizada.</label>
+        </>: mode.action === 'tag' ? <>
           <p>A tag identifica esta foto nos relatórios. Deixe o campo vazio para removê-la.</p>
           <div className="field"><label htmlFor="operational-photo-tag">Tag da foto</label><textarea className={s.tagInput} id="operational-photo-tag" value={tag} onChange={event => setTag(event.target.value)} maxLength={2000} /></div>
           {tag.length > 2000 && <p className="notice">A tag legada excede 2.000 caracteres. Ela será preservada enquanto você não salvar uma alteração.</p>}
@@ -106,18 +123,19 @@ export function OperationalPhotoEditor({ snapshot, canManage, destination }: {
         </>}
       </fieldset>
       <div className={s.actions}><button type="button" className="button secondary" disabled={save.busy || save.uncertain} onClick={cancel}>Cancelar edição</button>
-        <button type="submit" className="button" disabled={save.busy || save.stale || save.unauthorized || saved
+        <button type="submit" className="button" disabled={disabled || save.busy || save.stale || save.unauthorized || saved
           || (!save.uncertain && ((mode.action === 'add' && !selectedIds.length) || (mode.action === 'tag' && (tag === (current?.tag ?? '') || tag.length > 2000))
-            || ((mode.action === 'retire' || mode.action === 'restore') && !confirmed)))}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : actionLabel}</button>
+            || ((mode.action === 'retire' || mode.action === 'restore' || mode.action === 'replace') && !confirmed)))}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : actionLabel}</button>
       </div>
     </form>}
     <div className={s.tabs} aria-label="Situação das fotos"><button type="button" aria-pressed={!retired} disabled={locked || !!mode} onClick={() => { setRetired(false); setPage(1); }}>Em uso ({activeCount})</button><button type="button" aria-pressed={retired} disabled={locked || !!mode} onClick={() => { setRetired(true); setPage(1); }}>Retiradas ({retiredCount})</button></div>
     {retired && <div className={s.notice}><p className="form-note">As previsões retiradas permanecem no histórico. Restaure um título para voltar a solicitá-lo, sem criar outra foto.</p></div>}
     {displayed.rows.length ? <div className={s.list}>{displayed.rows.map(photo => <article className={s.item} key={photo.id} data-operational-photo={photo.id}>
       <div><h3>{photo.titulo || 'Foto sem título'}</h3><div className={s.meta}><Status value={photo.categoria_foto} /><Status value={photo.retired ? 'inativo' : photo.captured ? 'finalizado' : 'pendente'} label={photo.retired ? 'Retirada' : photo.captured ? 'Capturada' : 'Aguardando captura'} />{photo.selected_for_report && <Status value="ativo" label="Selecionada para relatório" />}</div>
-        <p className={s.tag}>{photo.tag === null || photo.tag === '' ? 'Sem tag' : `Tag: ${photo.tag}`}</p>{canManage && photo.action_reason && <p className={s.reason}>{photo.action_reason}</p>}
+        <p className={s.tag}>{photo.tag === null || photo.tag === '' ? 'Sem tag' : `Tag: ${photo.tag}`}</p>{photo.descricao&&<p className={s.tag}>{photo.descricao}</p>}{canManage && (photo.replace_reason||photo.action_reason) && <p className={s.reason}>{photo.replace_reason||photo.action_reason}</p>}
       </div>
       {editable && <div className={s.controls}>
+        {photo.can_replace&&<button type="button" className="button small secondary" aria-label={`Editar configuração de ${photo.titulo||'foto sem título'}`} disabled={locked||!!mode||!snapshot.titles_complete} onClick={()=>open({action:'replace',photoId:photo.id})}><Icon name="edit" size={14}/>Editar configuração</button>}
         {photo.can_edit_tag && <button type="button" className="button small secondary" aria-label={`Editar tag de ${photo.titulo || 'foto sem título'}`} disabled={locked || !!mode} onClick={() => open({ action: 'tag', photoId: photo.id })}><Icon name="edit" size={14} />Editar tag</button>}
         {photo.can_retire && <button type="button" className="button small secondary" aria-label={`Retirar ${photo.titulo || 'foto sem título'}`} disabled={locked || !!mode} onClick={() => open({ action: 'retire', photoId: photo.id })}>Retirar</button>}
         {photo.can_restore && <button type="button" className="button small secondary" aria-label={`Restaurar ${photo.titulo || 'foto sem título'}`} disabled={locked || !!mode} onClick={() => open({ action: 'restore', photoId: photo.id })}>Restaurar</button>}

@@ -11,8 +11,8 @@ import { Empty, Status, display } from './ui';
 import { Icon } from './icons';
 import s from './operational-stage-rule.module.css';
 
-export function OperationalStageRuleEditor({ snapshot, canManage, destination }: {
-  snapshot: OperationalStageRuleSnapshot; canManage: boolean; destination: string;
+export function OperationalStageRuleEditor({ snapshot, canManage, destination, disabled=false, onInteractionChange }: {
+  snapshot: OperationalStageRuleSnapshot; canManage: boolean; destination: string; disabled?: boolean; onInteractionChange?: (active:boolean)=>void;
 }) {
   const [mode, setMode] = useState<StageRuleMode | null>(null), [config, setConfig] = useState<StageRuleConfig>(emptyStageRuleConfig);
   const [confirmed, setConfirmed] = useState(false), [saved, setSaved] = useState(false), [retired, setRetired] = useState(false), [page, setPage] = useState(1);
@@ -21,7 +21,7 @@ export function OperationalStageRuleEditor({ snapshot, canManage, destination }:
   const save = useEngineeringSave<ManageStageRulesInput>(async input => {
     const result = await manageStageRules(input); if (result.ok) { leaving.current = true; setSaved(true); } return result;
   }, target);
-  const editable = canManageStageRules(snapshot, canManage), locked = save.locked || saved;
+  const editable = canManageStageRules(snapshot, canManage), locked = save.locked || saved || disabled;
   const current = mode && mode.action !== 'create' ? snapshot.rules.find(rule => rule.id === mode.ruleId) : undefined;
   const configuring = mode?.action === 'create' || mode?.action === 'replace';
   const dirty = mode !== null && (JSON.stringify(config) !== initial.current || confirmed);
@@ -32,6 +32,7 @@ export function OperationalStageRuleEditor({ snapshot, canManage, destination }:
   const title = (status: string | null) => snapshot.statuses.find(item => item.key === status)?.label || display(status);
   const draftDestination = snapshot.destinations.find(item => item.celula_id === config.celula_destino_id);
   useEffect(() => { if (mode) formHeading.current?.focus(); }, [mode]);
+  useEffect(()=>{onInteractionChange?.(!!mode||save.busy||save.uncertain);},[mode,save.busy,save.uncertain,onInteractionChange]);
   useEffect(() => {
     if (!dirty && !save.busy && !save.uncertain) return;
     const unload = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
@@ -103,7 +104,7 @@ export function OperationalStageRuleEditor({ snapshot, canManage, destination }:
         {mode.action !== 'create' && <label className="check-label"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{mode.action === 'replace' ? 'Confirmo a substituição desta regra, preservando a configuração anterior.' : mode.action === 'retire' ? 'Confirmo a retirada desta regra.' : 'Confirmo a restauração da regra original.'}</label>}
       </fieldset>
       <div className={s.actions}><button type="button" className="button secondary" disabled={save.busy || save.uncertain} onClick={cancel}>Cancelar alteração</button>
-        <button type="submit" className="button" disabled={save.busy || save.stale || save.unauthorized || saved || (!save.uncertain && (mode.action !== 'create' && !confirmed || mode.action === 'replace' && !!current && !stageRuleConfigChanged(current, config)))}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : mode.action === 'create' ? 'Criar regra' : mode.action === 'replace' ? 'Confirmar substituição' : mode.action === 'retire' ? 'Confirmar retirada' : 'Confirmar restauração'}</button>
+        <button type="submit" className="button" disabled={disabled || save.busy || save.stale || save.unauthorized || saved || (!save.uncertain && (mode.action !== 'create' && !confirmed || mode.action === 'replace' && !!current && !stageRuleConfigChanged(current, config)))}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : mode.action === 'create' ? 'Criar regra' : mode.action === 'replace' ? 'Confirmar substituição' : mode.action === 'retire' ? 'Confirmar retirada' : 'Confirmar restauração'}</button>
       </div>
     </form>}
     <div className={s.tabs} aria-label="Situação das regras"><button type="button" aria-pressed={!retired} disabled={locked || !!mode} onClick={() => { setRetired(false); setPage(1); }}>Em uso ({activeCount})</button><button type="button" aria-pressed={retired} disabled={locked || !!mode} onClick={() => { setRetired(true); setPage(1); }}>Retiradas ({retiredCount})</button></div>

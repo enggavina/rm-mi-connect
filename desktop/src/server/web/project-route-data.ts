@@ -7,7 +7,8 @@ const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
 const projectRouteSchema = z.object({
   project: z.object({ id: uuid, numero: text, nome: text, status_pcp: text, data_real_de_entrega: timestamp.nullable(), updated_at: timestamp, closed: z.boolean() }),
-  items: z.array(z.object({ id: uuid, celula_id: uuid.nullable(), celula_nome: text, status: text, visibilidade: z.boolean(), indice: z.number().int().nullable(), updated_at: timestamp })).max(2000),
+  items: z.array(z.object({ id: uuid, celula_id: uuid.nullable(), celula_nome: text, status: text, visibilidade: z.boolean(), indice: z.number().int().nullable(), updated_at: timestamp,
+    can_reorder:z.boolean().optional(),reorder_reason:text.optional() })).max(2000),
   route_version: z.string().regex(/^[0-9a-f]{64}$/), total: z.number().int().nonnegative(), complete: z.boolean(),
   initialized_from_type: z.boolean().optional(), source_type_id: uuid.nullable().optional(),
 });

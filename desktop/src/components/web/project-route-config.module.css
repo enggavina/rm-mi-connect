@@ -1,0 +1,15 @@
+.editor {display:grid;gap:18px;padding:22px 0;}
+.editor h3,.removal h3 {margin:0;font-size:16px;}
+.choices {border:1px solid #e5e7eb;border-radius:8px;padding:16px;display:grid;gap:12px;max-height:430px;overflow:auto;}
+.choices legend {font-size:13px;font-weight:600;padding:0 5px;}
+.choice {display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5;}
+.choice input {margin-top:4px;flex-shrink:0;}
+.choice span {overflow-wrap:anywhere;}
+.choice small {display:block;color:#596579;font-size:12px;margin-top:4px;}
+.actions {display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;}
+.tabs {display:flex;gap:8px;flex-wrap:wrap;margin:18px 0;}
+.tabs button[aria-pressed=true] {border-color:#c52032;color:#a60f24;background:#fff3f4;}
+.removal {border-top:1px solid #e5e7eb;padding-top:22px;margin-top:24px;display:grid;gap:14px;}
+.removal form {display:grid;gap:14px;}
+.body {padding:0 24px 24px;}
+@media(max-width:600px){.body {padding:0 16px 18px;}.actions {justify-content:stretch;}.actions button {flex:1 1 180px;}.tabs button {flex:1 1 110px;}}

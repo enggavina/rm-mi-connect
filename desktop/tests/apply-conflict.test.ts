@@ -37,7 +37,7 @@ function fixture(pendingRecordId: string, status = 'pending') {
       return Promise.resolve({ data: this.singleton ? rows[0] || null : rows, error: null } as Result).then(fulfilled, rejected);
     }
   }
-  const db = { from: (table: string) => new Query(table) } as unknown as SupabaseClient;
+  const db = { from: (table: string) => new Query(table),rpc:async(name:string)=>{assert.equal(name,'rm_deleted_bubble_ids_v1');return{data:[],error:null};} } as unknown as SupabaseClient;
   const bubble = { get: async () => assert.fail('All referenced records already exist locally.') } as unknown as BubbleClient;
   const bridge = new Bridge(db, bubble);
   const raw: Row = {

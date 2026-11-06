@@ -64,6 +64,16 @@ test('each action uses the common gateway, preserves retry body and strips priva
   }
 });
 
+test('photo replacement requires confirmation, a distinct new slot and confirmation of both affected IDs',async()=>{
+  const body={...target,action:'replace' as const,new_id:id(6),cadastro_foto_id:id(7),numero:2,descricao:'Configuração',tag:null,confirm_change:true};
+  assert.equal(manageOperationalPhotosSchema.safeParse(body).success,true);
+  for(const bad of [{...body,confirm_change:false},{...body,new_id:id(4)},{...body,numero:0},{...body,actor_id:id(8)}])assert.equal(manageOperationalPhotosSchema.safeParse(bad).success,false);
+  const malformed=await fixture().manageOperationalPhotos(body);assert.equal(malformed.ok,false);if(!malformed.ok)assert.equal(malformed.code,'UNAVAILABLE');
+  const good=fixture({transform:value=>value.ok?{...value,data:{...value.data,record:{...value.data.record,changed_ids:[id(4),id(6)]}}}:value});
+  const result=await good.manageOperationalPhotos(body);assert.ok(result.ok);assert.equal(result.data.record.private_snapshot,undefined);
+  assert.deepEqual(good.calls[0][2],body);
+});
+
 test('unrelated operation, context or changed photo IDs cannot confirm a successful management action', async () => {
   for (const patch of [{ operation: 'save_project_route' }, { id: id(99) }, { projeto_id: id(99) }, { updated_at: 'bad' },
     { record: {} }, { record: { projeto_id: id(2), celula_projeto_id: id(3), action: 'tag', photos_version: 'b'.repeat(64), changed_ids: [id(4)] } },

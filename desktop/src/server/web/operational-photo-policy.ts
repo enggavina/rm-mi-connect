@@ -17,16 +17,20 @@ export const manageOperationalPhotosSchema = z.discriminatedUnion('action', [
   z.object({ ...common, ...target, action: z.literal('tag'), tag: z.string().max(2000).nullable() }).strict(),
   z.object({ ...common, ...target, action: z.literal('retire') }).strict(),
   z.object({ ...common, ...target, action: z.literal('restore') }).strict(),
+  z.object({ ...common, ...target, action: z.literal('replace'), new_id: uuid, cadastro_foto_id: uuid,
+    numero: z.number().int().min(1).max(1_000_000), descricao: z.string().max(4000).nullable(),
+    tag: z.string().max(2000).nullable(), confirm_change: z.literal(true) }).strict(),
 ]).superRefine((value, context) => {
   if (value.action === 'add' && (new Set(value.items.map(item => item.id)).size !== value.items.length
     || new Set(value.items.map(item => item.cadastro_foto_id)).size !== value.items.length)) {
     context.addIssue({ code: 'custom', path: ['items'], message: 'Selecione cada título uma única vez.' });
   }
+  if (value.action === 'replace' && value.new_id === value.foto_id) context.addIssue({code:'custom',path:['new_id'],message:'A substituição precisa de um novo identificador.'});
 });
 
 export type ManageOperationalPhotosInput = z.infer<typeof manageOperationalPhotosSchema>;
 
 export const operationalPhotoResultSchema = z.object({
-  projeto_id: uuid, celula_projeto_id: uuid, action: z.enum(['add', 'tag', 'retire', 'restore']),
+  projeto_id: uuid, celula_projeto_id: uuid, action: z.enum(['add', 'tag', 'retire', 'restore', 'replace']),
   photos_version: z.string().regex(/^[0-9a-f]{64}$/), changed_ids: z.array(uuid).max(100),
 });

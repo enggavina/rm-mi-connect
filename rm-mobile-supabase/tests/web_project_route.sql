@@ -232,6 +232,10 @@ commit;
 do $$ declare scenario int; project_id uuid; cell_id uuid; s jsonb; route_payload jsonb; other_payload jsonb;
  first_payload jsonb; second_payload jsonb; first_mode text; second_mode text; first_id uuid; second_id uuid;
  a jsonb; b jsonb; pid_a int; pid_b int; waited int; begin
+ -- Read the optimistic version as the same actor used by both dblink writers.
+ -- The route fingerprint now includes approval evidence scoped to that actor.
+ perform set_config('request.jwt.claim.sub',rm_test_route.key('1',1)::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',rm_test_route.key('3',1),'aal','aal1')::text,true);
  perform dblink_connect('route_a','host=127.0.0.1 port='||current_setting('port')||' dbname='||current_database()||' user=postgres');
  perform dblink_connect('route_b','host=127.0.0.1 port='||current_setting('port')||' dbname='||current_database()||' user=postgres');
  select pid into pid_a from dblink('route_a','select pg_backend_pid()') as t(pid integer);

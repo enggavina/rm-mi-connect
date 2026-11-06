@@ -10,6 +10,7 @@ const photoSchema = z.object({
   titulo: text, categoria_foto: text, tag: text, numero: z.number().nullable(), updated_at: timestamp,
   captured: z.boolean(), selected_for_report: z.boolean(), retired: z.boolean(),
   can_edit_tag: z.boolean(), can_retire: z.boolean(), can_restore: z.boolean(), action_reason: text,
+  can_replace: z.boolean().optional(), replace_reason: text.optional(), descricao: text.optional(),
 });
 const titleSchema = z.object({
   id: uuid, titulo: text, numero: z.number().nullable(), updated_at: timestamp,
@@ -61,6 +62,7 @@ export function createOperationalPhotoData(client: SupabaseClient, capabilities?
         || photo.retired && (photo.can_edit_tag || photo.can_retire)
         || !photo.retired && photo.can_restore
         || (photo.captured || photo.selected_for_report) && (photo.can_retire || photo.can_restore))
+      || snapshot.photos.some(photo => photo.can_replace === true && (ended || photo.retired || photo.captured || photo.selected_for_report || photo.categoria_foto !== 'obrigat_ria'))
       || snapshot.titles.some(title => title.retired_photo_id !== null && (!title.assigned
         || snapshot.complete && !snapshot.photos.some(photo => photo.id === title.retired_photo_id && photo.retired)))) throw unavailable();
     // Titles are an operational choice for writers, not a second public catalog.

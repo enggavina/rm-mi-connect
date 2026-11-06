@@ -10,6 +10,8 @@ export function createCatalogActions(dependencies: { actionUser: typeof actionUs
     const parsed = (operation === 'save_catalog' ? saveCatalogSchema : deleteCatalogSchema).safeParse(input);
     if (!parsed.success) return { ok: false, code: 'INVALID_INPUT', error: 'Confira os campos do cadastro.', fieldErrors: parsed.error.flatten().fieldErrors };
     const result = await dependencies.mutate(access.client, operation, parsed.data, 'em.catalogs.manage', access.sso);
+    if (!result.ok && operation === 'delete_catalog' && parsed.data.kind === 'types' && result.code === '23503')
+      return { ok: false, code: result.code, error: 'Este tipo de equipamento está em uso por equipamentos, projetos, roteiros ou registros relacionados e não pode ser excluído. Os vínculos foram preservados.' };
     return !result.ok && ['23503', '23505'].includes(result.code) ? { ok: false, ...catalogMutationError(result.code) } : result;
   }
   return { saveCatalog: (input: unknown) => execute('save_catalog', input), deleteCatalog: (input: unknown) => execute('delete_catalog', input) };

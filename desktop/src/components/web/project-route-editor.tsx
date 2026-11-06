@@ -6,12 +6,12 @@ import { saveProjectRoute } from '@/server/web/project-route-actions';
 import type { ProjectRouteSnapshot } from '@/server/web/project-route-data';
 import type { SaveProjectRouteInput } from '@/server/web/project-route-policy';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
-import { projectRouteDestination, projectRouteNeedsNormalization, projectRouteOrderChanged, projectRouteRequest, moveProjectRouteItem } from './project-route-model';
+import { projectRouteDestination, projectRouteNeedsNormalization, projectRouteOrderChanged, projectRouteRequest, moveProjectRouteItem,canMoveProjectRouteItem } from './project-route-model';
 import { Empty, Status } from './ui';
 import { Icon } from './icons';
 import s from './project-route.module.css';
 
-export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails }: { snapshot: ProjectRouteSnapshot; canEdit: boolean; destination: string; itemDetails?: Record<string, ReactNode> }) {
+export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails,disabled=false,onInteractionChange }: { snapshot: ProjectRouteSnapshot; canEdit: boolean; destination: string; itemDetails?: Record<string, ReactNode>;disabled?:boolean;onInteractionChange?:(active:boolean)=>void }) {
   const [items, setItems] = useState(snapshot.items), [normalize, setNormalize] = useState(false), [confirmed, setConfirmed] = useState(false), [saved, setSaved] = useState(false);
   const leaving = useRef(false);
   const target = projectRouteDestination(destination, snapshot.project.id);
@@ -22,7 +22,8 @@ export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails
   }, target);
   const changed = normalize || projectRouteOrderChanged(items, snapshot.items);
   const editable = canEdit && !snapshot.project.closed && snapshot.complete;
-  const locked = save.locked || saved;
+  const locked = save.locked || saved || disabled;
+  useEffect(()=>{onInteractionChange?.(changed||save.busy||save.uncertain);},[changed,save.busy,save.uncertain,onInteractionChange]);
   useEffect(() => {
     if (!changed && !save.busy && !save.uncertain) return;
     const unload = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
@@ -37,12 +38,12 @@ export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails
     window.addEventListener('beforeunload', unload); document.addEventListener('click', navigate, true);
     return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate, true); };
   }, [changed, save.busy, save.uncertain]);
-  function move(id: string, targetIndex: number) { setItems(current => moveProjectRouteItem(current, id, targetIndex)); setConfirmed(false); save.setError(''); }
+  function move(id: string, targetIndex: number) { if(locked||!canMoveProjectRouteItem(snapshot,items,id,targetIndex))return;setItems(current => moveProjectRouteItem(current, id, targetIndex)); setConfirmed(false); save.setError(''); }
   function reload() { leaving.current = true; window.location.assign(target); }
   function submit() {
     if (!editable || locked) return;
     if (!changed || !confirmed) { save.setError('Confira a sequência completa e confirme antes de salvar.'); return; }
-    void save.send(projectRouteRequest(snapshot, items, crypto.randomUUID()));
+    try{void save.send(projectRouteRequest(snapshot, items, crypto.randomUUID()));}catch(error){save.setError(error instanceof Error?error.message:'Confira a sequência.');}
   }
   if (!snapshot.complete) return <Empty title="Este roteiro excede o limite de edição" detail="A sequência completa precisa ser conferida. Nenhuma parte do roteiro será salva isoladamente." icon="board" />;
   if (!items.length) return <Empty title="Nenhuma célula alocada" detail="Aloque as células do projeto para definir a sequência de execução." icon="board" />;
@@ -54,7 +55,8 @@ export function ProjectRouteEditor({ snapshot, canEdit, destination, itemDetails
       return <article className={s.item} key={item.id} data-route-item={item.id}>
         <span className={s.position} aria-label={`Posição proposta ${index + 1}`}>{index + 1}</span>
         <div><h3 className={s.title}>{label}</h3><div className={s.meta}><Status value={item.status} /><Status value={item.visibilidade ? 'ativo' : 'pendente'} label={item.visibilidade ? 'Visível no mobile' : 'Oculta no mobile'} /><span className={s.note}>{item.indice === null ? 'Sem ordem salva' : `Ordem salva: ${item.indice}`}</span></div></div>
-        {editable && <div className={s.controls}><button type="button" className="button small secondary" disabled={locked || index === 0} aria-label={`Mover ${label} para cima`} onClick={() => move(item.id, index - 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(-90deg)' }} />Subir</button><button type="button" className="button small secondary" disabled={locked || index === items.length - 1} aria-label={`Mover ${label} para baixo`} onClick={() => move(item.id, index + 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(90deg)' }} />Descer</button></div>}
+        {editable && <div className={s.controls}><button type="button" className="button small secondary" disabled={locked || index === 0||!canMoveProjectRouteItem(snapshot,items,item.id,index-1)} aria-label={`Mover ${label} para cima`} onClick={() => move(item.id, index - 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(-90deg)' }} />Subir</button><button type="button" className="button small secondary" disabled={locked || index === items.length - 1||!canMoveProjectRouteItem(snapshot,items,item.id,index+1)} aria-label={`Mover ${label} para baixo`} onClick={() => move(item.id, index + 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(90deg)' }} />Descer</button></div>}
+        {item.reorder_reason&&<p className={s.itemDetails}>{item.reorder_reason}</p>}
         {itemDetails?.[item.id] && <div className={s.itemDetails}>{itemDetails[item.id]}</div>}
       </article>;
     })}</div>

@@ -8,10 +8,10 @@ import type { PhotoTitleAttempt, PhotoTitlePayload } from './engineering-model';
 import { confirmsCatalogDeletion } from './catalog-model';
 import s from './engineering.module.css';
 
-export function EngineeringTitleEditor({ entry, cells }: { entry?: WebRow; cells: WebRow[] }) {
+export function EngineeringTitleEditor({ entry, cells, initialDeleting = false }: { entry?: WebRow; cells: WebRow[]; initialDeleting?: boolean }) {
   const [id] = useState(() => entry?.id || crypto.randomUUID());
   const [title, setTitle] = useState(String(entry?.titulo ?? '')), [number, setNumber] = useState(String(entry?.numero ?? '')), [scope, setScope] = useState('');
-  const [deleting, setDeleting] = useState(false), [confirmation, setConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(!!entry && initialDeleting), [confirmation, setConfirmation] = useState('');
   // One frozen attempt owns both commands. An uncertain delete cannot start save.
   const save = useEngineeringSave<PhotoTitleAttempt>(attempt => attempt.action === 'save' ? savePhotoTitle(attempt.payload) : deletePhotoTitle(attempt.payload),
     attempt => `/engenharia/titulos?resultado=${attempt.action === 'save' ? 'salvo' : 'excluido'}`);
@@ -38,7 +38,7 @@ export function EngineeringTitleEditor({ entry, cells }: { entry?: WebRow; cells
       <div className="field"><label htmlFor="photo-title-number">Número de referência</label>{changeNumber ? <input id="photo-title-number" type="number" min={0} max={1000} step={1} value={number} onChange={event => setNumber(event.target.value)} /> : <><input id="photo-title-number" value={number} readOnly /><span className="form-note">A numeração legada será preservada.</span><button type="button" className="button small secondary" onClick={() => setChangeNumber(true)}>Alterar numeração</button></>}<span className="form-note">Opcional. A ordem de cada foto é definida no roteiro.</span></div>
       <div className="field"><label htmlFor="photo-title-scope">Disponível para *</label>{entry ? <><input id="photo-title-scope" value={String(entry.celula_nome ?? '').trim() || 'Todas as células — Global'} readOnly /><span className="form-note">O escopo é preservado na edição.{entry.scope_resolved === false && ' Vínculo legado sem correspondência única no cadastro atual.'}</span></> : <select id="photo-title-scope" required value={scope} onChange={event => setScope(event.target.value)}><option value="">Selecione o escopo</option><option value="global">Todas as células — Global</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.nome}</option>)}</select>}</div>
     </div></fieldset><div className="form-actions"><button type="button" className="button secondary" disabled={save.busy || save.uncertain} onClick={() => window.location.assign('/engenharia/titulos')}>Cancelar</button>{!deleting && <button className="button" disabled={save.busy || save.stale || save.unauthorized}>{save.busy ? 'Salvando…' : save.uncertain ? 'Tentar confirmar envio' : <><Icon name="check" size={15} />Salvar título</>}</button>}</div></form>
-    {entry && <section aria-labelledby="delete-photo-title" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid var(--line)' }}>
+    {entry && <section id="delete-title" aria-labelledby="delete-photo-title" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid var(--line)' }}>
       <h2 id="delete-photo-title" style={{ fontSize: 14 }}>Excluir título de foto</h2>
       <p className="form-note">Títulos vinculados a fotos ou modelos não podem ser excluídos. Os registros existentes são preservados.</p>
       {!deleting ? <button type="button" className="button secondary" disabled={save.locked} onClick={() => { setDeleting(true); setConfirmation(''); save.setError(''); }}>Excluir título</button> : <form onSubmit={event => { event.preventDefault(); remove(); }}>

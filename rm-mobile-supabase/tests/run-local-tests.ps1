@@ -58,6 +58,11 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_route_instances.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_route_instances_concurrency.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_project_audit.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_delete.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_delete_integrity.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_delete_concurrency.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_route_configuration.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_project_route_configuration_concurrency.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -115,6 +120,12 @@ try {
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '038_rm_web_project_audit.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_project_audit_upgrade.sql'
     }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '039_rm_web_project_delete.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_delete_upgrade.sql'
+    }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '040_rm_web_project_route_configuration.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_project_route_configuration_upgrade.sql'
+    }
     $migration028Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\028_rm_web_cell_availability.sql'))
     $migration029Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\029_rm_web_project_dossier.sql'))
     $migration030Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\030_rm_web_project_dossier_search.sql'))
@@ -124,7 +135,9 @@ try {
     $migration036Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\036_rm_web_project_equipment_bundle.sql'))
     $migration037Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\037_rm_web_project_route_instances.sql'))
     $migration038Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\038_rm_web_project_audit.sql'))
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -v "rm_migration_033_path=$migration033Path" -v "rm_migration_036_path=$migration036Path" -v "rm_migration_037_path=$migration037Path" -v "rm_migration_038_path=$migration038Path" -c 'SET client_min_messages=warning' -f $executionFile
+    $migration039Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\039_rm_web_project_delete.sql'))
+    $migration040Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\040_rm_web_project_route_configuration.sql'))
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -v "rm_migration_033_path=$migration033Path" -v "rm_migration_036_path=$migration036Path" -v "rm_migration_037_path=$migration037Path" -v "rm_migration_038_path=$migration038Path" -v "rm_migration_039_path=$migration039Path" -v "rm_migration_040_path=$migration040Path" -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit

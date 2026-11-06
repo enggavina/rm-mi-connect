@@ -13,9 +13,11 @@ class Database {
   rpcCalls: { name: string; args: Row }[] = [];
   error: { code: string; message: string } | null = null;
   sequence = 0;
+  deleted=new Map<string,Set<string>>();
+  beforeUpsert?: (table:string,rows:Row[])=>Result['error'];
   rows(table: string) { if (!this.tables.has(table)) this.tables.set(table, []); return this.tables.get(table)!; }
   from(table: string) { return new Query(this, table); }
-  async rpc(name: string, args: Row) { this.rpcCalls.push({ name, args }); return { data: true, error: null }; }
+  async rpc(name: string, args: Row) { this.rpcCalls.push({ name, args }); return { data:name==='rm_deleted_bubble_ids_v1'?(args.p_ids as string[]).filter(id=>this.deleted.get(String(args.p_table))?.has(id)):true,error:null }; }
 }
 class Query implements PromiseLike<Result> {
   private operation = 'select'; private columns = '*'; private filters: ((row: Row) => boolean)[] = [];
@@ -39,6 +41,7 @@ class Query implements PromiseLike<Result> {
     const storage = this.db.rows(this.table);
     let selected: Row[];
     if (this.operation === 'upsert') {
+      const concurrent=this.db.beforeUpsert?.(this.table,this.payload);if(concurrent)return{data:null,error:concurrent};
       if (this.db.error) return { data: null, error: this.db.error };
       if (this.payload.some(row => row.nome === 'invalid-database-row')) return { data: null, error: { code: '23514', message: 'fixture check constraint' } };
       selected = this.payload.map(row => {
@@ -182,10 +185,10 @@ test('form sequence advances once per form and unchanged records can repair it',
   const rows = [1, 9, 3].map(code => ({ _id: `record-${code}`, 'Modified Date': date,
     ProjetoRM: 'remote-project', Form: 'remote-form', Codigo: code }));
   await importer.importPage(getEntity('rm_registros_formulario'), rows, () => assert.fail('unexpected quarantine'));
-  assert.equal(db.rpcCalls.length, 1); assert.equal(db.rpcCalls[0].args.p_code, 9);
+  assert.equal(db.rpcCalls.filter(call=>call.name==='rm_advance_form_sequence_v1').length, 1); assert.equal(db.rpcCalls.find(call=>call.name==='rm_advance_form_sequence_v1')!.args.p_code, 9);
   assert.deepEqual(await importer.importPage(getEntity('rm_registros_formulario'), rows, () => assert.fail('unexpected quarantine')),
     { loaded: 0, unchanged: 3 });
-  assert.equal(db.rpcCalls[1].args.p_code, 9);
+  assert.equal(db.rpcCalls.filter(call=>call.name==='rm_advance_form_sequence_v1')[1].args.p_code, 9);
 });
 
 test('infrastructure errors stop the page instead of quarantining every record', async () => {
@@ -193,6 +196,42 @@ test('infrastructure errors stop the page instead of quarantining every record',
   let quarantines = 0;
   await assert.rejects(importer.importPage(getEntity('rm_clientes'), [{ _id: 'client', 'Modified Date': date, Nome: 'Client' }], () => { quarantines++; }), /permission denied/);
   assert.equal(quarantines, 0);
+});
+
+test('deleted Bubble project and its direct children are excluded before mapping while a live project imports',async()=>{
+  const{db,importer}=fixture();db.deleted.set('rm_projetos',new Set(['deleted-project']));db.rows('rm_projetos').push({id:'live-id',bubble_id:'live-project'});
+  await importer.preload();let quarantined=0;
+  const result=await importer.importPage(getEntity('rm_fotos'),[
+    {_id:'deleted-photo','Modified Date':date,ProjetoRM:'deleted-project',Titulo:'Must not recreate'},
+    {_id:'live-photo','Modified Date':date,ProjetoRM:'live-project',Titulo:'Preserved neighbor'},
+  ],()=>{quarantined++;});
+  assert.equal(result.loaded,1);assert.equal(result.excluded,1);assert.equal(quarantined,0);
+  assert.deepEqual(db.rows('rm_fotos').map(row=>row.bubble_id),['live-photo']);
+  const root=await importer.importPage(getEntity('rm_projetos'),[{_id:'deleted-project','Modified Date':date,Nome:'Must not recreate'}],()=>assert.fail('deleted project is excluded, not quarantined'));
+  assert.equal(root.loaded,0);assert.equal(root.excluded,1);assert.equal(db.rows('rm_projetos').length,1);
+});
+
+test('answers referencing a deleted record are skipped before cached resolution and do not abort valid neighbors',async()=>{
+  const{db,importer}=fixture();db.deleted.set('rm_registros_formulario',new Set(['deleted-record']));db.rows('rm_registros_formulario').push({id:'live-record-id',bubble_id:'live-record'});
+  await importer.preload();const result=await importer.importPage(getEntity('rm_respostas'),[
+    {_id:'answer-deleted','Modified Date':date,Registro_Formulario:'deleted-record',Resposta:'Deleted context'},
+    {_id:'answer-live','Modified Date':date,Registro_Formulario:'live-record',Resposta:'Preserved context'},
+  ],()=>assert.fail('known deleted parent is excluded'));
+  assert.equal(result.loaded,1);assert.equal(result.excluded,1);assert.equal(db.rows('rm_respostas')[0].registro_formulario_id,'live-record-id');
+});
+
+test('deletion committed after page preflight retries the live neighbors of an atomic rejected upsert',async()=>{
+  for(const code of ['PT410','23503']){
+    const{db,importer}=fixture();db.rows('rm_projetos').push({id:'deleted-id',bubble_id:'deleted-project'},{id:'live-id',bubble_id:'live-project'});
+    await importer.preload();let raced=false;
+    db.beforeUpsert=(table)=>{if(table==='rm_fotos'&&!raced){raced=true;db.deleted.set('rm_projetos',new Set(['deleted-project']));return{code,message:'Concurrent explicit deletion'};}return null;};
+    const result=await importer.importPage(getEntity('rm_fotos'),[
+      {_id:'deleted-photo','Modified Date':date,ProjetoRM:'deleted-project',Titulo:'Must not recreate'},
+      {_id:'live-photo','Modified Date':date,ProjetoRM:'live-project',Titulo:'Preserved neighbor'},
+    ],()=>assert.fail('known deleted parent is excluded without quarantining neighbors'));
+    assert.equal(result.loaded,1);assert.equal(result.excluded,1);assert.deepEqual(result.excludedBubbleIds,['deleted-photo']);
+    assert.deepEqual(db.rows('rm_fotos').map(row=>row.bubble_id),['live-photo']);
+  }
 });
 
 test('missing references are validated and resolved once then cached across the page', async () => {

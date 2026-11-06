@@ -5,6 +5,7 @@ import { BubbleClient } from './client';
 import { entities, getEntity, fieldValue, fieldUrl, type Entity, type Field, type Row } from './mapping';
 import { isOperationalProject, scopedGroups } from './scope';
 import { preserveImportedPdf } from './pdf-document';
+import {DeletedProjectImportError,filterDeletedProjectRows} from './deleted-projects';
 
 function fail(error: { message: string } | null) { if (error) throw new Error(error.message); }
 export class Bridge {
@@ -78,6 +79,7 @@ export class Bridge {
   async apply(entity: Entity, raw: Row): Promise<string> {
     this.validate(entity, raw);
     if (typeof raw._id !== 'string' || !raw._id) throw new Error('_id Bubble obrigatório.');
+    if(!(await filterDeletedProjectRows((name,args)=>this.rpc(name,args),entity,[raw])).rows.length)throw new DeletedProjectImportError();
     const modified = raw['Modified Date'];
     if (typeof modified !== 'string' || !Number.isFinite(Date.parse(modified))) throw new Error('Modified Date Bubble obrigatório.');
     const { data: byBubble, error: readError } = await this.db.from(entity.table).select('*').eq('bubble_id', raw._id).maybeSingle(); fail(readError);
@@ -126,7 +128,9 @@ export class Bridge {
       if (pending?.length) throw new Error(`Conflito pendente em ${entity.name}; exportar fila antes de aplicar Desktop.`);
       }
     }
-    const { data, error } = await this.db.from(entity.table).upsert(row, { onConflict: existing?'id':'bubble_id' }).select('id').single(); fail(error);
+    const { data, error } = await this.db.from(entity.table).upsert(row, { onConflict: existing?'id':'bubble_id' }).select('id').single();
+    if(error&&(error.code==='PT410'||error.code==='23503')&&!(await filterDeletedProjectRows((name,args)=>this.rpc(name,args),entity,[raw])).rows.length)throw new DeletedProjectImportError();
+    fail(error);
     if (!data) throw new Error(`Importação sem resultado: ${entity.name}`);
     if (entity.table === 'rm_registros_formulario' && row.codigo != null) await this.rpc('rm_advance_form_sequence_v1',{p_form_id:row.form_id || existing?.form_id,p_code:row.codigo});
     // Restore the reverse equipment link required by project detail consumers.
@@ -275,7 +279,7 @@ export class Bridge {
                   projects.set(String(raw._id),{...raw,id});
                   if(isOperationalProject(raw))changedProjects.set(String(raw._id),String(raw['Modified Date']));
                 }
-              }catch(error){recordError(error);}
+              }catch(error){if(!(error instanceof DeletedProjectImportError))recordError(error);}
             }
           }catch(error){recordError(error);}
         }

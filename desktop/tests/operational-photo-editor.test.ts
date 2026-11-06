@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { OperationalPhotoSnapshot } from '../src/server/web/operational-photo-data';
-import { canManageOperationalPhotos, operationalPhotoPage, operationalPhotoRequest, operationalTitleBlockReason } from '../src/components/web/operational-photo-model';
+import { canManageOperationalPhotos, operationalPhotoPage, operationalPhotoRequest, operationalTitleBlockReason, operationalReplacementTitleBlockReason } from '../src/components/web/operational-photo-model';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const version = '2026-10-29T18:03:24.123456+00:00';
@@ -41,6 +41,47 @@ test('add freezes generated slot IDs and exact versions with only the permitted 
   assert.ok(request.action === 'add'); assert.deepEqual(request.items, [{ id: id(30), cadastro_foto_id: id(10) }]);
   assert.equal(Object.isFrozen(request.items[0]), true); assert.equal(Object.isFrozen(request), true);
   assert.ok(!JSON.stringify(request).includes('foto_url')); assert.ok(!('actor_id' in request));
+});
+
+test('unused photo replacement freezes a new slot and never accepts a captured or unavailable source',()=>{
+  const current=snapshot();current.photos[0]={...current.photos[0],can_replace:true,numero:1,descricao:'Anterior'};
+  const draft={action:'replace' as const,photoId:id(3),titleId:id(10),numero:'2',descricao:'Nova configuração',tag:'TAG',confirmed:true};
+  const request=operationalPhotoRequest(current,draft,id(20),()=>id(30));assert.equal(request.action,'replace');if(request.action!=='replace')return;
+  assert.equal(request.foto_id,id(3));assert.equal(request.new_id,id(30));assert.equal(request.cadastro_foto_id,id(10));assert.equal(request.numero,2);
+  assert.equal(request.descricao,'Nova configuração');assert.equal(request.expected_foto_updated_at,version);assert.equal(Object.isFrozen(request),true);
+  assert.throws(()=>operationalPhotoRequest(current,{...draft,confirmed:false},id(20),()=>id(30)),/confirme/);
+  assert.throws(()=>operationalPhotoRequest(current,{...draft,titleId:id(12)},id(20),()=>id(30)),/disponível/);
+  assert.throws(()=>operationalPhotoRequest(current,{...draft,photoId:id(5)},id(20),()=>id(30)),/não permite/);
+});
+
+test('metadata replacements can keep their title through multiple retired predecessors',()=>{
+  const value=snapshot();value.photos=[{...value.photos[0],can_replace:true,numero:1,descricao:'Inicial'}];value.total=1;
+  const title=value.titles.find(title=>title.id===id(11))!;
+  const first=operationalPhotoRequest(value,{action:'replace',photoId:id(3),titleId:title.id,numero:'2',descricao:'Primeira revisão',tag:'',confirmed:true},id(20),()=>id(30));
+  assert.equal(first.action,'replace');
+  const predecessor={...value.photos[0],retired:true,can_replace:false,can_retire:false,can_edit_tag:false,can_restore:true};
+  const active={...value.photos[0],id:id(30),numero:2,descricao:'Primeira revisão'};
+  value.photos=[predecessor,active];value.total=2;title.retired_photo_id=predecessor.id;
+  assert.equal(operationalReplacementTitleBlockReason(title,active,value.photos),null);
+  const second=operationalPhotoRequest(value,{action:'replace',photoId:active.id,titleId:title.id,numero:'3',descricao:'Segunda revisão',tag:'',confirmed:true},id(21),()=>id(31));
+  assert.equal(second.action,'replace');if(second.action!=='replace')return;
+  assert.equal(second.foto_id,active.id);assert.equal(second.new_id,id(31));assert.equal(second.cadastro_foto_id,title.id);
+  assert.equal(second.numero,3);assert.equal(second.descricao,'Segunda revisão');
+  value.photos.push({...active,id:id(32)});
+  assert.match(operationalReplacementTitleBlockReason(title,active,value.photos)!,/Outro item ativo/);
+  assert.throws(()=>operationalPhotoRequest(value,{action:'replace',photoId:active.id,titleId:title.id,numero:'4',descricao:'Recusada',tag:'',confirmed:true},id(22),()=>id(33)),/disponível/);
+});
+
+test('legacy name-only title links allow correction but preserve foreign active and retired slots',()=>{
+  const value=snapshot(),legacy={...value.photos[0],cadastro_foto_id:null,titulo:'  FRENTE  ',can_replace:true,numero:1};
+  value.photos=[legacy];value.total=1;const title=value.titles.find(title=>title.id===id(11))!;
+  assert.equal(title.assigned,true);assert.equal(operationalReplacementTitleBlockReason(title,legacy,value.photos),null);
+  const request=operationalPhotoRequest(value,{action:'replace',photoId:legacy.id,titleId:title.id,numero:'1',descricao:'Instrução corrigida',tag:'',confirmed:true},id(20),()=>id(30));
+  assert.equal(request.action,'replace');if(request.action!=='replace')return;
+  assert.equal(request.cadastro_foto_id,title.id);assert.equal(request.descricao,'Instrução corrigida');
+  const other={...legacy,id:id(40),titulo:'frente',cadastro_foto_id:id(99)};
+  assert.match(operationalReplacementTitleBlockReason(title,legacy,[legacy,other])!,/Outro item ativo/);
+  assert.match(operationalReplacementTitleBlockReason(value.titles[2],legacy,value.photos)!,/restaurá/);
 });
 
 test('tag preserves whitespace and can change a captured mandatory photo; retire and restore retain the original target ID', () => {
