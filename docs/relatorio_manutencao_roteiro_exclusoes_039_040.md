@@ -1,16 +1,17 @@
 # Manutenção do roteiro e exclusões de projetos
 
-Solicitação do anexo `654ae4b0-f257-4dc7-8a23-54de0cda492d`, seção “Novo prompt (Tá quase lá)”, em 06/11/2026. Continuação do EM existente e dos incrementos 037–038. Implementação em validação, ainda sem publicação desta entrega.
+Solicitação do anexo `654ae4b0-f257-4dc7-8a23-54de0cda492d`, seção “Novo prompt (Tá quase lá)”, em 06/11/2026. Continuação do EM existente e dos incrementos 037–038. **Implementação validada e publicada em [EM web](https://em-web-production.up.railway.app), com as migrações 039 e 040 aplicadas.**
 
 ## Discovery e diferenças encontradas
 
 | Requisito | Estado anterior | Reutilização e evolução |
 | --- | --- | --- |
 | Excluir projeto | Não implementado; várias FKs e guards impediam remoção inconsistente | Novo comando transacional no gateway atual, com preflight, confirmação, justificativa e evidência mínima. |
-| Configurar roteiro na página do projeto | Consulta em Roteiro; edição distribuída pelo Cronograma/Planejar | Mesmos editores de fotos e aprovação passam a atender Roteiro; vínculos de formulários ficam centralizados nessa aba. |
-| Proteção granular | Fotos e regras parcialmente protegidas; faltava cobrir rascunhos e escritas concorrentes | Proteção por foto, formulário e regra, incluindo conteúdo persistido ainda sem registro final. |
-| Remover célula sem uso | Retirada 028 preservava IDs, mas exigia retirar as configurações separadamente | Retirada conjunta das configurações não utilizadas e da alocação, no mesmo comando. |
-| Excluir tipos/títulos | Backend, permissões e confirmação já implementados | Atalhos Excluir nas listas abrem a confirmação existente; não há outro serviço de exclusão. |
+| Configurar roteiro na página do projeto | Parcialmente implementado: consulta em Roteiro; edição distribuída pelo Cronograma/Planejar | Mesmos editores de fotos e aprovação passam a atender Roteiro; vínculos de formulários ficam centralizados nessa aba. |
+| Proteção granular | Parcialmente implementado: fotos e regras protegidas em parte; faltava cobrir rascunhos e escritas concorrentes | Proteção por foto, formulário e regra, incluindo conteúdo persistido ainda sem registro final. |
+| Nova célula no projeto | Parcialmente implementado: alocação existente, sem os três editores no Roteiro | A alocação aparece no roteiro próprio e recebe configuração Projeto + Célula, sem alterar o modelo. |
+| Remover célula sem uso | Parcialmente implementado: retirada 028 preservava IDs, mas exigia retirar as configurações separadamente | Retirada conjunta das configurações não utilizadas e da alocação, no mesmo comando. |
+| Excluir tipos/títulos | Já implementado no backend, com permissões e confirmação; acesso pouco evidente nas listas | Atalhos Excluir nas listas abrem a confirmação existente; não há outro serviço de exclusão. |
 
 O modelo continua **Projeto ↔ Equipamento → Tipo**, com roteiro próprio em `rm_celulas_projeto`, fotos e regras específicas. O modelo do tipo e os demais projetos não são editados por essas ações. O [discovery de catálogos](discovery_exclusao_catalogos_039.md) registra as exclusões que já existiam; os contratos 025, 027, 028, 037 e 038 foram reaproveitados.
 
@@ -67,7 +68,7 @@ Não são acrescentadas FKs nem ampliados `ON DELETE CASCADE` nas duas migraçõ
 | Protocolos e integração | Recibo mínimo da exclusão permanece. Recibos exclusivos anteriores são reduzidos a identificadores/hash; recibos compartilhados ficam preservados. Eventos exclusivos da outbox são removidos, e identificadores Bubble excluídos passam a ser filtrados na importação. |
 | Entidades globais ou compartilhadas | Clientes, usuários e identidades, células globais, tipos, títulos, definições de formulários/modelos e dados de outros projetos são preservados. Referência cruzada incompatível bloqueia toda a exclusão. |
 
-As funções principais da 039 são `rm_web_project_delete_snapshot_v1`, `project_delete_scope_v1`, `project_delete_context_v1` e `project_delete_has_shared_fk_v1`, integradas ao `web_mutate_core_v1` existente. `project_deleted_v1` e os guards impedem recriação; `rm_deleted_bubble_ids_v1` atende o filtro da importação. `rm_project_delete_files_claim_v1`/`finish_v1` oferecem lease e retentativa ao worker por `service_role`, sem conceder acesso direto à tabela privada.
+As funções principais da 039 são `rm_web_project_delete_snapshot_v1`, `project_delete_scope_v1`, `project_delete_context_v1` e `project_delete_has_shared_fk_v1`, integradas ao `web_mutate_core_v1` existente. `project_deleted_v1` e os guards impedem recriação; `rm_deleted_bubble_ids_v1` atende o filtro da importação. `rm_project_delete_files_claim_v1`/`finish_v1` oferecem lease e retentativa ao worker por `service_role`, sem conceder acesso direto à tabela privada. O [contrato de exclusão](../rm-mobile-supabase/WEB_PROJECT_DELETE.md) documenta a propriedade dos registros, tratamento dos recibos e limites de arquivos/offline.
 
 A 040 acrescenta somente a coluna operacional `rm_aprovacoes_etapas.configuracao_utilizada boolean not null default false`, sem backfill ou reconstrução de decisões antigas. O trigger de selo preserva uso anterior quando o estado de decisão é redefinido legitimamente. Outros quatro triggers protegem vínculos de formulários/rascunhos, configuração de fotos utilizadas e estado de regras utilizadas. A consulta nova `rm_web_project_route_cell_snapshot_v1` usa `route_cell_form_used_v1` e `route_cell_removal_metadata_v1`; os snapshots de roteiro/fotos, a prova de regras e a projeção de histórico existentes são estendidos. O gateway recebe `manage_project_route_cell` e a substituição de foto com UUID novo; retirar uma célula mantém suas identidades de recuperação, conforme a regra 028.
 
@@ -84,10 +85,38 @@ Arquivos principais:
 
 ## Validação e publicação
 
-Em andamento. Os testes de interface com React e CSS reais já verificaram confirmação/justificativa, retentativa, proteção granular, configuração de recursos sem uso, edição exclusiva e remoção dos controles de formulários em Planejar, incluindo visualização em 390 px. As ações desse ensaio foram simuladas, sem excluir projetos reais.
+| Verificação | Resultado |
+| --- | --- |
+| Testes web | 446 aprovados. |
+| Testes mobile | 103 aprovados; sem alteração do código mobile ou geração de APK. |
+| Contrato QR web/mobile | Dois testes integrados aprovados. |
+| PostgreSQL | Suíte completa de 39 fontes de migração e 33 arquivos funcionais, incluindo upgrades e concorrência, aprovada em banco descartável. As migrações anteriores não foram editadas; todos os hashes ficaram estáveis durante a execução. |
+| Novas disputas reais | 14 da exclusão e sete da manutenção do roteiro, além das disputas legadas preservadas. |
+| Tipos e build | Typecheck web/mobile, build Next e dois smokes de runtime/autenticação aprovados. |
+| Lint | O repositório não possui script/configuração de ESLint independente. `git diff --check` passou; não se declara execução de um lint inexistente. |
+| Navegador | React e CSS reais em desktop e 390 px: confirmação/justificativa, retentativa, proteção granular, recursos sem uso, edição exclusiva e Planejar sem controles de formulários. Ações simuladas, sem excluir projetos reais. |
+| Segredos no JavaScript | 79 arquivos do build local verificados contra dez segredos locais conhecidos, sem ocorrências. |
+| CI | [Dois jobs aprovados](https://github.com/enggavina/rm-mi-connect/actions/runs/42288309896), Node 22, no commit `06227c0b44d17e4b56df7efba916baf0f72619b9`. |
+
+O ensaio com rollback e a aplicação no Supabase preservaram integralmente as **83 tabelas anteriores** (75 RM/privadas e oito relações de Storage), comparando os valores de todas as colunas antigas. Também preservaram 113 OIDs, owners e ACLs de funções, policies, índices, triggers e constraints anteriores, exceto as alterações explicitamente previstas e conferidas contra o manifesto compilado independente. Os corpos alterados e as novas funções foram verificados nesse manifesto, totalizando 138 funções. A instalação deixou a fila de limpeza vazia e o selo novo falso nas linhas antigas, sem backfill ou DML operacional.
+
+O histórico 001–017 já possuía somente metadados, com `statements=[]`; foi preservado exatamente assim. As fontes armazenadas de 018 em diante coincidiram com os hashes locais. Nenhuma linha antiga do histórico foi preenchida ou reescrita. As fontes novas, árvore local, índice Git, commit e histórico aplicado conferem:
+
+- 039: `4a51278757e6f2e275c9dd3b0ca196f4c524611fb72b968783754f499ea7065f`.
+- 040: `351b9fbd8d254b414406e466c06377c7549bc0abb95841a9d2283b44300ca8e6`.
+
+Após instalar, a consulta observou 76 tabelas RM/privadas, 57 públicas RM com RLS, 180 projetos, 179 equipamentos, 1.449 alocações, 778 registros, 61.803 respostas, 14.737 fotos, 94 comentários, 102 usuários, outbox 4 e 21 recibos web. São contagens daquele instante; a prova de preservação é o snapshot transacional da instalação, sem presumir ausência de uso legítimo da produção. Os dois administradores EM, SSO e os três buckets/13 objetos permaneceram. Nove DTOs reais de roteiro/célula/preflight passaram em três projetos existentes, em transação somente leitura, sem excluir dados ou autenticar uma pessoa pela Microsoft.
+
+Consumidor `06227c0b44d17e4b56df7efba916baf0f72619b9`; deploy Railway `8944f2f1-1a4e-44ba-8555-96991e70e822` com **SUCCESS**. Destino exclusivo: [portal EM](https://em-web-production.up.railway.app), Supabase `oficina-em-mi-off`. `EM_PROJECT_DELETE_CLEANUP_ENABLED=true` habilita somente a limpeza privada de anexos; `SYNC_OUTBOX_ENABLED=false` continua desativando a ponte Bubble.
+
+Após o deploy, health 200 e **108 verificações públicas de acesso** passaram: 92 negações em 46 URLs com anônimo/cookie forjado e 16 recusas nas APIs. O início nativo do SSO conferiu origem, POST 303 e navegação até Microsoft. Somente o fluxo próprio de QA foi cancelado; nenhum login humano ou CRUD artificial de produção foi automatizado. A exclusão real de projetos foi validada no banco descartável, não em dados de clientes.
+
+Provas locais ignoradas: `.tmp/maintenance-{ci,deployment,environment}-proof.json`, `maintenance-sql-full-proof.json`, `maintenance-manifest-proof.json`, `maintenance-envelope-local-proof.json`, `maintenance-039-040-{rehearse,apply}-proof.json`, `maintenance-prod-postflight.json`, `maintenance-prod-rpc-proof.json`, `maintenance-public-qa.json`, `maintenance-public-sso-qa.json`, `maintenance-browser-secret-audit.json` e logs `maintenance-*`.
 
 ## Limites preservados
 
 Envios offline de um projeto excluído são recusados pelo servidor e permanecem no dispositivo, com protocolo, ator, conteúdo e arquivos preservados para reconciliação. A fila FIFO existente pode aguardar essa intervenção; não se apresenta uma exclusão como envio concluído nem se apagam rascunhos automaticamente. O catálogo local já possui reconciliação por manifesto de IDs para retirar registros apagados sem limpar os trabalhos locais.
 
 Não há garantia de purga de arquivos externos ou de URLs legadas sem propriedade exclusiva comprovada. A revisão dos sete destinos de modelos identificados na entrega anterior continua sendo uma pendência de cadastro separada deste desenvolvimento.
+
+Os requisitos funcionais deste prompt foram implementados. A retirada lógica da célula segue o contrato existente e preserva identificadores de recuperação; o projeto, por sua vez, é excluído fisicamente. A homologação por usuários reais e a reconciliação de envios offline recusados continuam sendo atividades operacionais, sem testes destrutivos artificiais em produção. A paridade global e o gerador visual de relatórios continuam no plano geral e não são declarados concluídos por esta entrega.
