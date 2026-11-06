@@ -24,8 +24,19 @@ create function rm_private.guard_deleted_project_v1() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
  if tg_op='UPDATE' and rm_private.project_deletion_in_progress_v1(old.id) then return new;end if;
- perform pg_advisory_xact_lock(hashtextextended(new.id::text,11));
- if new.bubble_id is not null then perform pg_advisory_xact_lock(hashtextextended(new.bubble_id,39));end if;
+ -- An unchanged identity is already serialized by its tuple with DELETE. Do
+ -- not invert advisory11 -> row merely to repeat a stable identity check.
+ if tg_op='UPDATE' then
+  if row(new.id,new.bubble_id) is distinct from row(old.id,old.bubble_id) then
+   if not pg_try_advisory_xact_lock(hashtextextended(new.id::text,11)) then
+    raise exception 'O projeto está sendo alterado. Reenvie o mesmo protocolo.' using errcode='PT409';end if;
+   if new.bubble_id is not null and not pg_try_advisory_xact_lock(hashtextextended(new.bubble_id,39)) then
+    raise exception 'A identidade do projeto está sendo alterada. Reenvie o mesmo protocolo.' using errcode='PT409';end if;
+  end if;
+ else
+  perform pg_advisory_xact_lock(hashtextextended(new.id::text,11));
+  if new.bubble_id is not null then perform pg_advisory_xact_lock(hashtextextended(new.bubble_id,39));end if;
+ end if;
  if rm_private.project_deleted_v1(new.id,new.bubble_id) then
   raise exception 'Projeto excluído explicitamente. O envio foi preservado para reconciliação.' using errcode='PT410';end if;
  return new;

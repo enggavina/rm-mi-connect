@@ -6,7 +6,7 @@ create function rm_test_project_delete.id(h text,n int) returns uuid language sq
 begin;
 insert into auth.users(id) values(rm_test_project_delete.id('1',1));
 insert into public.rm_users(id,auth_user_id,nome,perfil,status) values(rm_test_project_delete.id('2',1),rm_test_project_delete.id('1',1),'Delete race administrator','administrador','ativo');
-insert into public.rm_projetos(id,bubble_id,nome) select rm_test_project_delete.id('5',n),'delete-race-bubble-'||n,'Project delete race '||n from generate_series(1,13)n;
+insert into public.rm_projetos(id,bubble_id,nome) select rm_test_project_delete.id('5',n),'delete-race-bubble-'||n,'Project delete race '||n from generate_series(1,15)n;
 insert into public.rm_celulas(id,nome) values(rm_test_project_delete.id('4',1),'Delete race cell');
 insert into public.rm_forms(id,titulo) values(rm_test_project_delete.id('7',1),'Delete race form');
 insert into public.rm_questoes(id,form_id,enunciado,tipo) values(rm_test_project_delete.id('a',1),rm_test_project_delete.id('7',1),'Race question','texto_curto');
@@ -31,6 +31,11 @@ create function rm_test_project_delete.write(n int,kind text,hold_seconds numeri
  elsif kind='origin' then insert into public.rm_documentos(id,projeto_id,documentos_origem_ids,nome) values(rm_test_project_delete.id('d',n),rm_test_project_delete.id('5',13),array[rm_test_project_delete.id('b',n)],'Shared document source');
  elsif kind='file' then insert into public.rm_docs(id,projeto_id,nome,arquivo_url) values(rm_test_project_delete.id('d',n),rm_test_project_delete.id('5',13),'New shared reference','https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/web-dossier/'||rm_test_project_delete.id('5',n)||'/'||rm_test_project_delete.id('b',n)||'.pdf');
  elsif kind='bubble' then insert into public.rm_projetos(id,bubble_id,nome) values(rm_test_project_delete.id('f',n),'delete-race-bubble-'||n,'Reimport must fail');
+ elsif kind in('locked_project','locked_identity') then
+  perform 1 from public.rm_projetos where id=rm_test_project_delete.id('5',n) for update;
+  perform pg_sleep(1.1);
+  if kind='locked_identity' then update public.rm_projetos set bubble_id='replacement-bubble-'||n where id=rm_test_project_delete.id('5',n);
+  else update public.rm_projetos set nome='Raw tuple winner' where id=rm_test_project_delete.id('5',n);end if;
  end if;
  perform pg_sleep(hold_seconds);return '{"sqlstate":"00000"}'::jsonb;
 exception when others then get stacked diagnostics state=returned_sqlstate;return jsonb_build_object('sqlstate',state,'message',sqlerrm);end$$;
@@ -71,6 +76,19 @@ do $$declare p jsonb;r1 jsonb;r2 jsonb;pid_a int;n int;kind text;first_write boo
  perform dblink_send_query('pd_b','select rm_test_project_delete.write(12,''bubble'',0)');
  select r into r1 from dblink_get_result('pd_a')t(r jsonb);perform r from dblink_get_result('pd_a')t(r jsonb);select r into r2 from dblink_get_result('pd_b')t(r jsonb);perform r from dblink_get_result('pd_b')t(r jsonb);
  if r1->>'sqlstate'<>'00000' or r2->>'sqlstate'<>'PT410' or exists(select 1 from public.rm_projetos where id=rm_test_project_delete.id('f',12)) then raise exception 'FAIL: Bubble tombstone race % / %',r1,r2;end if;
+ -- Raw UPDATE may own its tuple before executing any trigger. An unchanged
+ -- identity keeps the historical tuple winner; a new identity yields instead
+ -- of waiting for11 held by the delete command waiting on that same tuple.
+ p:=rm_test_project_delete.payload(14);
+ perform dblink_send_query('pd_a','select rm_test_project_delete.write(14,''locked_project'',0)');perform rm_test_project_delete.wait_for_sleep(pid_a);
+ perform dblink_send_query('pd_b',format('select rm_test_project_delete.run(%L::uuid,%L::jsonb,0)',rm_test_project_delete.id('e',14),p));
+ select r into r1 from dblink_get_result('pd_a')t(r jsonb);perform r from dblink_get_result('pd_a')t(r jsonb);select r into r2 from dblink_get_result('pd_b')t(r jsonb);perform r from dblink_get_result('pd_b')t(r jsonb);
+ if r1->>'sqlstate'<>'00000' or r2->>'sqlstate'<>'PT409' or(select nome from public.rm_projetos where id=rm_test_project_delete.id('5',14))<>'Raw tuple winner' or exists(select 1 from rm_private.web_mutation_receipts where client_submission_id=rm_test_project_delete.id('e',14)) then raise exception 'FAIL: stable identity raw tuple winner lost % / %',r1,r2;end if;
+ p:=rm_test_project_delete.payload(15);
+ perform dblink_send_query('pd_a','select rm_test_project_delete.write(15,''locked_identity'',0)');perform rm_test_project_delete.wait_for_sleep(pid_a);
+ perform dblink_send_query('pd_b',format('select rm_test_project_delete.run(%L::uuid,%L::jsonb,0)',rm_test_project_delete.id('e',15),p));
+ select r into r1 from dblink_get_result('pd_a')t(r jsonb);perform r from dblink_get_result('pd_a')t(r jsonb);select r into r2 from dblink_get_result('pd_b')t(r jsonb);perform r from dblink_get_result('pd_b')t(r jsonb);
+ if r1->>'sqlstate'<>'PT409' or r2->>'sqlstate'<>'00000' or exists(select 1 from public.rm_projetos where id=rm_test_project_delete.id('5',15)) or(select count(*) from rm_private.web_mutation_receipts where client_submission_id=rm_test_project_delete.id('e',15))<>1 then raise exception 'FAIL: new identity raw tuple/advisory11 inversion % / %',r1,r2;end if;
  perform dblink_disconnect('pd_a');perform dblink_disconnect('pd_b');
 exception when others then if 'pd_a'=any(dblink_get_connections()) then perform dblink_disconnect('pd_a');end if;if 'pd_b'=any(dblink_get_connections()) then perform dblink_disconnect('pd_b');end if;raise;end$$;
-select 'PASS: 039 twelve real races protect edits/photos/answers/document origins/private paths in both orders, one UUID and Bubble reimport' result;
+select 'PASS: 039 fourteen real races protect edits/photos/answers/document origins/private paths in both orders, one UUID, Bubble reimport and raw stable/new identity tuple locks' result;
