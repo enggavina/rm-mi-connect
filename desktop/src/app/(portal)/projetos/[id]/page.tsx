@@ -30,6 +30,9 @@ import { getProjectRouteCell } from '@/server/web/project-route-cell-data';
 import { getProjectAudit } from '@/server/web/project-audit-data';
 import { ProjectAuditPanel } from '@/components/web/project-audit-panel';
 import { ProjectDeleteButton } from '@/components/web/project-delete-button';
+import { getProjectEquipmentType } from '@/server/web/project-equipment-type-data';
+import { projectEquipmentTypeDisplay } from '@/components/web/project-equipment-type-display';
+import s from './project-detail.module.css';
 
 export default async function Projeto({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id: rawId } = await params; const id = rawId.toLowerCase(); const query = await searchParams;
@@ -42,9 +45,13 @@ export default async function Projeto({ params, searchParams }: { params: Promis
   let commentPage: ProjectCommentPage | null = null, documentPage: ProjectDocumentPage | null = null;
   let commentError = commentQuery.errors.join(' '), documentError = documentQuery.errors.join(' ');
   let equipmentSnapshot: ProjectEquipmentSnapshot | null = null;
+  let equipmentType: WebRow | null = null, equipmentTypeError = false;
   if (tab === 'informacoes') {
-    try { equipmentSnapshot = await getProjectEquipment(id); }
-    catch { /* Keep the dossier readable without trusting an unchecked equipment binding. */ }
+    try {
+      equipmentSnapshot = await getProjectEquipment(id);
+      equipmentType = await getProjectEquipmentType(data.project, equipmentSnapshot);
+    }
+    catch { equipmentTypeError = true; /* Keep the dossier readable without trusting an unchecked equipment binding. */ }
   }
   if (tab === 'comentarios' && !commentError) {
     try { commentPage = await getProjectComments(id, commentQuery.filters); }
@@ -106,7 +113,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
     <nav className="tabs" aria-label="Áreas do projeto">{tabs.map(item => <a key={item.id} href={`/projetos/${id}?tab=${item.id}`} aria-current={tab === item.id ? 'page' : undefined}>{item.label}</a>)}</nav>
     {tab === 'informacoes' && <>
       <section className="panel"><div className="panel-header"><h2>Informações do projeto</h2></div><div className="panel-content"><Details values={[
-        ['OS / número', project.numero], ['Nome', project.nome], ['Cliente', data.client?.nome || project.cliente_nome_exportacao], ['Descrição do equipamento', equipmentDescription], ['Contato', project.contato], ['Proprietário', project.proprietario], ['Status PCP', display(project.status_pcp)], ['Etapa do projeto', display(project.status)], ['Nota fiscal', project.nota_fiscal], ['Chegada do equipamento', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Data renegociada', date(project.data_renegociada)], ['Início da peritagem', calendarDate(project.data_inicio_peritagem)], ['Fim da peritagem', calendarDate(project.data_fim_peritagem)], ['Início do reparo', calendarDate(project.data_inicio_reparo)], ['Fim do reparo', calendarDate(project.data_fim_reparo)], ['Entrega realizada', date(project.data_real_de_entrega)], ['Última atualização', date(project.updated_at, true)], ['Escopo', project.escopo_abreviado], ['Eventualidades', project.eventualidades], ['Motivo de replanejamento', project.replanejamento_motivo],
+        ['OS / número', project.numero], ['Nome', project.nome], ['Cliente', data.client?.nome || project.cliente_nome_exportacao], ['Descrição do equipamento', equipmentDescription], ['Tipo de equipamento', equipmentTypeError ? 'Não foi possível consultar' : projectEquipmentTypeDisplay(project, equipmentSnapshot, equipmentType)], ['Contato', project.contato], ['Proprietário', project.proprietario], ['Status PCP', display(project.status_pcp)], ['Etapa do projeto', display(project.status)], ['Nota fiscal', project.nota_fiscal], ['Chegada do equipamento', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Data renegociada', date(project.data_renegociada)], ['Início da peritagem', calendarDate(project.data_inicio_peritagem)], ['Fim da peritagem', calendarDate(project.data_fim_peritagem)], ['Início do reparo', calendarDate(project.data_inicio_reparo)], ['Fim do reparo', calendarDate(project.data_fim_reparo)], ['Entrega realizada', date(project.data_real_de_entrega)], ['Última atualização', date(project.updated_at, true)], ['Escopo', project.escopo_abreviado], ['Eventualidades', project.eventualidades], ['Motivo de replanejamento', project.replanejamento_motivo],
       ]} />{project.arquivo_nota_fiscal_url && <div style={{ marginTop: 25 }}><a className="button small secondary" href={`/api/web/documents/${id}?source=invoice`} target="_blank" rel="noopener noreferrer"><Icon name="download" size={14} />Abrir nota fiscal</a></div>}</div></section>
       <ProjectEquipmentPanel snapshot={equipmentSnapshot} project={{ id: project.id, updated_at: project.updated_at, equipamento_id: project.equipamento_id,
         tipo_equipamento_id: project.tipo_equipamento_id, status_pcp: project.status_pcp, data_real_de_entrega: project.data_real_de_entrega }} canManage={canEdit} />
@@ -125,7 +132,7 @@ export default async function Projeto({ params, searchParams }: { params: Promis
       {activeAllocations.map(allocationPanel)}
       {!activeAllocations.length && <section className="panel"><Empty title="Nenhuma célula ativa no planejamento" detail="Aloque uma nova célula ou consulte as retiradas preservadas. Formulários, fotos e regras existentes não serão copiados novamente ao restaurar." icon="board" /></section>}
       {retiredAllocations.length > 0 && <details open={selectedAllocation?.retirada === true}><summary className="back-link">Células retiradas ({retiredAllocations.length})</summary>{retiredAllocations.map(allocationPanel)}</details>}
-      {choices && newCells.length > 0 && <CellEditor projectId={id} cells={newCells} forms={choices.forms} users={choices.users} destination={`/projetos/${id}?tab=planejamento`} />}
+      {choices && newCells.length > 0 && <div className={s.allocationActions}><CellEditor projectId={id} cells={newCells} forms={choices.forms} users={choices.users} destination={`/projetos/${id}?tab=planejamento`} /></div>}
       {hasWebCapability(session, 'em.history.read') && <ProjectAuditPanel projectId={id} kind="cells" data={cellAudit} names={{ cells: data.cells, users: data.users, forms: data.forms }} />}
     </>}
     {tab === 'formularios' && <section className="panel"><div className="panel-header"><h2>Registros do projeto <span className="inline-count">{data.records.length}</span></h2></div>{data.records.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Formulário</th><th>Célula</th><th>Operador</th><th>Status</th><th>Enviado em</th><th className="table-action">Abrir</th></tr></thead><tbody>{data.records.map(record => <tr key={record.id}><td><Link className="table-title" href={`/formularios/${record.id}`}>{formNames.get(record.form_id) || 'Formulário'}</Link><span className="table-subtitle">Registro {record.codigo_text || record.codigo || 'sem código'}</span></td><td>{cellNames.get(record.celula_id) || 'Projeto'}</td><td>{userNames.get(record.identidade_user_id) || userNames.get(record.created_by_user_id) || 'Não informado'}</td><td><Status value={record.status} /></td><td>{date(record.created_at)}</td><td className="table-action"><Link href={`/formularios/${record.id}`} aria-label="Consultar respostas"><Icon name="arrow" size={15} /></Link></td></tr>)}</tbody></table></div> : <Empty title="Nenhum formulário enviado" detail="Os registros enviados pelos operadores aparecerão aqui após a sincronização." icon="clipboard" />}</section>}

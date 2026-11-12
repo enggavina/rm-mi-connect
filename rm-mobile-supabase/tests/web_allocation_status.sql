@@ -1,0 +1,103 @@
+\set ON_ERROR_STOP on
+begin;
+do $$begin if current_database()<>'rmmi_test' then raise exception 'Disposable database required';end if;end$$;
+create function pg_temp.cs_id(h text,n int) returns uuid language sql immutable as $$select(h||'a420000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid$$;
+create function pg_temp.cs_check(v boolean,msg text) returns void language plpgsql as $$begin if v is distinct from true then raise exception 'FAIL: %',msg;end if;end$$;
+create function pg_temp.cs_outbox_count() returns bigint language sql security definer set search_path='' as $$select count(*) from public.rm_sync_outbox$$;
+create function pg_temp.cs_payload(n int,changes jsonb) returns jsonb language sql stable as $$select jsonb_build_object('projeto_id',pg_temp.cs_id('5',1),'celula_id',pg_temp.cs_id('4',n),'expected_updated_at',(select updated_at from public.rm_celulas_projeto where projeto_id=pg_temp.cs_id('5',1) and celula_id=pg_temp.cs_id('4',n)),'changes',changes)$$;
+create function pg_temp.cs_reject(payload jsonb,code text) returns void language plpgsql as $$begin
+ begin perform public.rm_web_mutate_v1(gen_random_uuid(),'plan_cell',payload);raise exception 'FAIL: rejected status command succeeded';
+ exception when others then if sqlstate<>code then raise exception 'FAIL: expected %, got % (%)',code,sqlstate,sqlerrm;end if;end;
+end$$;
+insert into auth.users(id) values(pg_temp.cs_id('1',1)),(pg_temp.cs_id('1',2));
+insert into public.rm_users(id,auth_user_id,nome,perfil,status) values(pg_temp.cs_id('2',1),pg_temp.cs_id('1',1),'Status planner','padr_o','ativo'),(pg_temp.cs_id('2',2),pg_temp.cs_id('1',2),'Status operator','mobile','ativo');
+insert into public.rm_celulas(id,nome) select pg_temp.cs_id('4',n),'Allocation status cell '||n from generate_series(1,6)n;
+insert into public.rm_projetos(id,nome,status,status_pcp) values(pg_temp.cs_id('5',1),'Allocation status project','peritagem','executando');
+insert into public.rm_projetos(id,nome,status,status_pcp) values(pg_temp.cs_id('5',2),'Other project in same cell','calculo','sem_status');
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,status_historico) values(pg_temp.cs_id('6',99),pg_temp.cs_id('5',2),pg_temp.cs_id('4',1),'em_dia',array['pendente','em_dia']::public.rm_status_cel_proj_enum[]);
+create temporary table cs_project_before as select to_jsonb(p) value from public.rm_projetos p where id=pg_temp.cs_id('5',1);
+create temporary table cs_other_before as select to_jsonb(a) value from public.rm_celulas_projeto a where id=pg_temp.cs_id('6',99);
+insert into auth.sessions(id,user_id) values(pg_temp.cs_id('3',1),pg_temp.cs_id('1',1));
+insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at) values(extensions.digest('allocation-status-local','sha256'),pg_temp.cs_id('1',1),pg_temp.cs_id('2',1),pg_temp.cs_id('2',1),clock_timestamp()+interval '1 day');
+update rm_private.sso_settings set require_sso=false;
+select set_config('request.jwt.claim.sub',pg_temp.cs_id('1',1)::text,true);
+select set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.cs_id('3',1),'aal','aal1')::text,true);
+set local role authenticated;
+do $$declare p jsonb;r jsonb;old_r jsonb;a uuid;before_count bigint;page jsonb;begin
+ perform pg_temp.cs_check((select count(*)=12 from public.rm_option_sets where option_set_key='status_cel_proj'),'same option set includes old ten and new two');
+ perform pg_temp.cs_check((select bubble_display='Aguardando coleta' from public.rm_option_sets where option_set_key='status_cel_proj' and option_key='aguardando_coleta'),'new display is readable');
+ p:=pg_temp.cs_payload(1,'{"status":"aguardando_coleta","visibilidade":true}');
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',1),'plan_cell',p);old_r:=r;a:=(r->>'id')::uuid;
+ perform pg_temp.cs_check(r->'record'->>'status'='aguardando_coleta' and (select status_historico=array['aguardando_coleta']::public.rm_status_cel_proj_enum[] and data_fim_real is null and visibilidade from public.rm_celulas_projeto where id=a),'initial status stored on allocation with genuine initial history and no collection side effect');
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',1),'plan_cell',p);
+ perform pg_temp.cs_check((r->>'idempotent_replay')::boolean and r-'idempotent_replay'=old_r-'idempotent_replay','exact UUID replay');
+ p:=pg_temp.cs_payload(1,'{"status":"coletado"}');
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',2),'plan_cell',p);
+ perform pg_temp.cs_check((select status='coletado' and status_historico=array['aguardando_coleta','coletado']::public.rm_status_cel_proj_enum[] and data_fim_real is null and visibilidade from public.rm_celulas_projeto where id=a),'planning updates status and history without terminal semantics');
+ page:=public.rm_web_project_audit_v1(pg_temp.cs_id('5',1),'cells',1);
+ perform pg_temp.cs_check(exists(select 1 from jsonb_array_elements(page->'items') i cross join lateral jsonb_array_elements(i->'changes') c where i->>'actor_id'=pg_temp.cs_id('2',1)::text and i->>'celula_projeto_id'=a::text and c->>'field'='status' and c->>'before'='aguardando_coleta' and c->>'after'='coletado' and i->>'actor_name'='Status planner'),'existing audit contains actor, time/context and exact status before/after');
+ perform pg_temp.cs_reject(p,'PT409');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(2,'{"status":"retornado"}'),'22023');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(2,'{"status":null}'),'22023');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(2,'{"status":"not_a_status"}'),'22P02');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(2,'{"status_projeto":"executando"}'),'22023');
+ before_count:=pg_temp.cs_outbox_count();
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',3),'plan_cell',pg_temp.cs_payload(2,'{"status":"pendente"}'));
+ perform pg_temp.cs_check(pg_temp.cs_outbox_count()=before_count,'ordinary initial pending status does not manufacture operational use/outbox');
+ p:=pg_temp.cs_payload(2,'{"status":"retornado"}');
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',4),'plan_cell',p);
+ perform pg_temp.cs_check(r->'record'->>'status'='retornado','returned remains available for an existing allocation');
+ -- Mobile access checks remain authoritative after sharing the private writer.
+ begin perform public.rm_mobile_mutate_v1(pg_temp.cs_id('d',1),'rm_update_cell_status_v1',jsonb_build_object('p_celula_projeto_id',a,'p_status','aguardando_coleta'),'allocation-status-local');raise exception 'FAIL: mobile access bypassed';exception when insufficient_privilege then null;end;
+ perform set_config('request.jwt.claim.sub',pg_temp.cs_id('1',2)::text,true);
+ perform pg_temp.cs_reject(pg_temp.cs_payload(3,'{"status":"coletado"}'),'42501');
+ perform set_config('request.jwt.claim.sub',pg_temp.cs_id('1',1)::text,true);
+end$$;
+reset role;
+insert into public.rm_tablet_celula_users(celula_id,usuario_id,identidade_id) values(pg_temp.cs_id('4',1),pg_temp.cs_id('2',1),pg_temp.cs_id('2',1));
+set local role authenticated;
+do $$declare a uuid;p jsonb;r jsonb;begin
+ select id into a from public.rm_celulas_projeto where projeto_id=pg_temp.cs_id('5',1) and celula_id=pg_temp.cs_id('4',1);
+ p:=jsonb_build_object('p_celula_projeto_id',a,'p_status','aguardando_coleta');
+ r:=public.rm_mobile_mutate_v1(pg_temp.cs_id('d',2),'rm_update_cell_status_v1',p,'allocation-status-local');
+ perform pg_temp.cs_check(r->>'status'='aguardando_coleta','same status is accepted by existing mobile RPC');
+ r:=public.rm_mobile_mutate_v1(pg_temp.cs_id('d',2),'rm_update_cell_status_v1',p,'allocation-status-local');
+ perform pg_temp.cs_check((r->>'idempotent_replay')::boolean,'mobile completed receipt still replays');
+end$$;
+reset role;
+-- Existing completion checks and metadata remain identical to the mobile flow.
+insert into public.rm_forms(id,titulo) values(pg_temp.cs_id('7',1),'Completion required form');
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,forms_ids,visibilidade) values(pg_temp.cs_id('6',3),pg_temp.cs_id('5',1),pg_temp.cs_id('4',3),array[pg_temp.cs_id('7',1)],true),(pg_temp.cs_id('6',4),pg_temp.cs_id('5',1),pg_temp.cs_id('4',4),'{}',true);
+insert into public.rm_fotos(projeto_id,celula_id,celula_projeto_id,titulo,categoria_foto) values(pg_temp.cs_id('5',1),pg_temp.cs_id('4',4),pg_temp.cs_id('6',4),'Completion photo','obrigat_ria');
+set local role authenticated;
+do $$declare before3 jsonb;before4 jsonb;n bigint;begin
+ select to_jsonb(a) into before3 from public.rm_celulas_projeto a where id=pg_temp.cs_id('6',3);
+ select to_jsonb(a) into before4 from public.rm_celulas_projeto a where id=pg_temp.cs_id('6',4);n:=pg_temp.cs_outbox_count();
+ perform pg_temp.cs_reject(pg_temp.cs_payload(3,'{"status":"finalizado","observacao":"Must roll back"}'),'22023');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(4,'{"status":"finalizado","visibilidade":false}'),'22023');
+ perform pg_temp.cs_check((select to_jsonb(a)=before3 from public.rm_celulas_projeto a where id=pg_temp.cs_id('6',3)) and(select to_jsonb(a)=before4 from public.rm_celulas_projeto a where id=pg_temp.cs_id('6',4)) and pg_temp.cs_outbox_count()=n,'failed completion rolls back all planning fields, versions, history and outbox');
+end$$;
+do $$declare r jsonb;begin
+ r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',5),'plan_cell',pg_temp.cs_payload(5,'{"status":"finalizado","visibilidade":true}'));
+ perform pg_temp.cs_check(r->'record'->>'status'='finalizado' and r->'record'->>'data_fim_real' is not null and not(r->'record'->>'visibilidade')::boolean,'finalization keeps completion timestamp and visibility rule');
+ perform pg_temp.cs_reject(pg_temp.cs_payload(5,'{"status":"coletado"}'),'22023');
+end$$;
+reset role;
+insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at) values(pg_temp.cs_id('8',1),'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',pg_temp.cs_id('9',1),pg_temp.cs_id('2',1),pg_temp.cs_id('1',1),true,pg_temp.cs_id('2',1),clock_timestamp());
+select public.rm_sso_session_put_v1(repeat('42',32),pg_temp.cs_id('8',1),pg_temp.cs_id('3',1),'opaque-allocation-status-local',clock_timestamp()+interval '45 minutes');
+update rm_private.sso_settings set require_sso=true;
+set local role authenticated;
+select pg_temp.cs_reject(pg_temp.cs_payload(6,'{"status":"coletado"}'),'42501');
+reset role;
+do $$declare p jsonb;r jsonb;begin
+ p:=pg_temp.cs_payload(6,'{"status":"coletado"}');
+ begin perform public.rm_sso_action_permit_v1(repeat('42',32),pg_temp.cs_id('e',6),'plan_cell',p,'em.projects.manage');raise exception 'FAIL: wrong capability accepted';exception when invalid_parameter_value then null;end;
+ perform public.rm_sso_action_permit_v1(repeat('42',32),pg_temp.cs_id('e',6),'plan_cell',p,'em.planning.manage');
+ set local role authenticated;r:=public.rm_web_mutate_v1(pg_temp.cs_id('e',6),'plan_cell',p);reset role;
+ perform pg_temp.cs_check(r->'record'->>'status'='coletado','existing planning capability and SSO envelope govern status');
+ perform pg_temp.cs_check((select to_jsonb(q)=(select value from cs_project_before) from public.rm_projetos q where id=pg_temp.cs_id('5',1)),'the project itself never changes');
+ perform pg_temp.cs_check((select to_jsonb(q)=(select value from cs_other_before) from public.rm_celulas_projeto q where id=pg_temp.cs_id('6',99)),'another project in the same cell remains untouched');
+ perform pg_temp.cs_check(not has_function_privilege('authenticated','rm_private.apply_cell_status_v1(uuid,uuid,text)','execute') and not has_function_privilege('service_role','rm_private.apply_cell_status_v1(uuid,uuid,text)','execute'),'private writer has no application-role bypass');
+end$$;
+rollback;
+select 'PASS: allocation initial/edit status, collection options, exact audit, project isolation, completion parity, mobile authority/replay and SSO' result;

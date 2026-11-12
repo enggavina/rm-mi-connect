@@ -89,7 +89,18 @@ globalThis.fetch = (input, init) => {
       for (const path of [`/api/web/forms/${id}`, `/api/web/documents/${id}?source=docs`]) {
         const denied = await request(path, { headers }); assert.equal(denied.status, 401, path); noStore(denied);
       }
+      for (const suppliedOrigin of [origin, 'https://cross-site.example.invalid', undefined]) {
+        const denied = await request('/api/web/planning/export', {
+          method: 'POST', headers: { ...headers, ...(suppliedOrigin ? { Origin: suppliedOrigin } : {}), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cell_ids: [], fields: [] }),
+        });
+        assert.equal(denied.status, suppliedOrigin === origin ? 401 : 403, 'Export must validate origin and current SSO before reading business data.');
+        noStore(denied); assert.equal(denied.headers.get('x-content-type-options'), 'nosniff');
+        assert.equal(denied.headers.get('content-disposition'), null, 'Denied export cannot return a workbook attachment.');
+        assert.equal(typeof (await denied.json()).error, 'string');
+      }
     }
+    assert.equal((await request('/api/web/planning/export')).status, 405, 'Excel download requires POST.');
     assert.equal((await request('/auth/sso/start')).status, 405);
     for (const path of ['/auth/sso/start', '/auth/logout']) {
       for (const headers of [{}, { Origin: 'null' }, { Origin: origin }, { Origin: 'https://cross-site.example.invalid', 'X-Forwarded-Host': 'cross-site.example.invalid' }] as Record<string, string>[]) {
@@ -104,7 +115,7 @@ globalThis.fetch = (input, init) => {
       assert.equal(await response.text(), '');
     }
     assert.doesNotMatch(diagnostics, /SSO_SMOKE_NETWORK_BLOCKED/, 'Nenhum caminho de negação deve tentar acessar serviços externos.');
-    console.info('SSO runtime smoke: Microsoft-only login; portal and forged cookies denied; web APIs 401; cross-site POSTs 403; strict callback. No external requests or real credentials.');
+    console.info('SSO runtime smoke: Microsoft-only login; portal and forged cookies denied; web APIs401; Excel GET405 and POST401/403; cross-site POSTs403; strict callback. No external requests or real credentials.');
   } catch (error) { console.error('SSO smoke falhou. Saída do processo:', diagnostics); throw error; }
   finally { server.kill(); unlinkSync(guardPath); }
 }

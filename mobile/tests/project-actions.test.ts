@@ -4,17 +4,26 @@ import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import type { Operator, OutboxRow, Row } from '../src/core/types';
 import type { JourneyContext } from '../src/domain/journey';
-import { availableStageActions, cellCompletionRequirements, cellProjectComments, cellProjectLogs, cellProjectStages, cellStatusOptions, frontProjectPhoto, projectClientName, queuedProjectActions } from '../src/domain/project-actions';
+import { availableStageActions, cellCompletionRequirements, cellProjectComments, cellProjectLogs, cellProjectStages, cellStatusLabel, cellStatusOptions, frontProjectPhoto, projectClientName, queuedProjectActions } from '../src/domain/project-actions';
 
 const admin: Operator = { operador_id: 'admin', nome: 'Admin', matricula: '1', perfil: 'administrador', perfil_assinante: [], celulas_vinculadas: [], authenticated_at: '2026-10-28T12:00:00Z' };
 const allocation: Row = { id: 'allocation', projeto_id: 'project', celula_id: 'cell', status: 'em_dia' };
 const context = (status = 'em_dia'): JourneyContext => ({ ok: true, cell: { id: 'cell' }, project: { id: 'project' }, allocation: { ...allocation, status }, canEdit: true });
 const stage: Row = { id: 'stage', projeto_id: 'project', celula_origem_id: 'cell', status_cel_proj: 'em_dia', status: 'nulo' };
 
+test('collection statuses extend the existing mobile selector and preserve readable labels without a terminal shortcut',()=>{
+  assert.equal(cellStatusOptions.length,12);
+  assert.equal(cellStatusLabel('aguardando_coleta'),'Aguardando coleta');
+  assert.equal(cellStatusLabel('coletado'),'Coletado');
+  assert.deepEqual(availableStageActions(admin,context('coletado'),stage),[]);
+  assert.deepEqual(availableStageActions(admin,context('aguardando_coleta'),stage),[]);
+});
+
 test('status selector contains every canonical SQL status including all release and N/A statuses', () => {
   const sql = readFileSync(new URL('../../rm-mobile-supabase/migrations/001_rm_enums_and_option_sets.sql', import.meta.url), 'utf8');
   const body = sql.match(/create type public\.rm_status_cel_proj_enum as enum\s*\(([\s\S]*?)\)/)![1];
-  const statuses = [...body.matchAll(/'([^']+)'/g)].map(match => match[1]);
+  const extension = readFileSync(new URL('../../rm-mobile-supabase/migrations/041_rm_cell_collection_status_values.sql', import.meta.url), 'utf8');
+  const statuses = [...body.matchAll(/'([^']+)'/g), ...extension.matchAll(/add value '([^']+)'/g)].map(match => match[1]);
   assert.deepEqual(cellStatusOptions.map(option => option.value).sort(), statuses.sort());
 });
 

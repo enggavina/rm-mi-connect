@@ -1,0 +1,53 @@
+\set ON_ERROR_STOP on
+do $$begin if current_database()<>'rmmi_test' or inet_server_addr()<>'127.0.0.1'::inet then raise exception 'Disposable loopback database required';end if;end$$;
+create extension if not exists dblink with schema public;
+create schema rm_test_allocation_status;
+create function rm_test_allocation_status.id(h text,n int) returns uuid language sql immutable as $$select(h||'c420000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid$$;
+begin;
+insert into auth.users(id) values(rm_test_allocation_status.id('1',1));
+insert into public.rm_users(id,auth_user_id,nome,perfil,status) values(rm_test_allocation_status.id('2',1),rm_test_allocation_status.id('1',1),'Status race planner','padr_o','ativo');
+insert into public.rm_projetos(id,nome,status,status_pcp) select rm_test_allocation_status.id('5',n),'Status race project '||n,'peritagem','executando' from generate_series(1,5)n;
+insert into public.rm_celulas(id,nome) select rm_test_allocation_status.id('4',n),'Status race cell '||n from generate_series(1,5)n;
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,status_historico,visibilidade) select rm_test_allocation_status.id('6',n),rm_test_allocation_status.id('5',n),rm_test_allocation_status.id('4',n),'pendente',array['pendente']::public.rm_status_cel_proj_enum[],true from generate_series(1,4)n;
+insert into public.rm_tablet_celula_users(celula_id,usuario_id,identidade_id) select rm_test_allocation_status.id('4',n),rm_test_allocation_status.id('2',1),rm_test_allocation_status.id('2',1) from generate_series(1,5)n;
+insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at) values(extensions.digest('status-races-mobile','sha256'),rm_test_allocation_status.id('1',1),rm_test_allocation_status.id('2',1),rm_test_allocation_status.id('2',1),clock_timestamp()+interval '1 day');
+update rm_private.sso_settings set require_sso=false;
+create function rm_test_allocation_status.run(mode text,rid uuid,p jsonb,hold real) returns jsonb language plpgsql as $$declare result jsonb;state text;begin
+ perform set_config('request.jwt.claim.sub',rm_test_allocation_status.id('1',1)::text,true);perform set_config('request.jwt.claims','{"aal":"aal1"}',true);
+ set local role authenticated;
+ if mode='web' then result:=public.rm_web_mutate_v1(rid,'plan_cell',p);
+ else result:=public.rm_mobile_mutate_v1(rid,'rm_update_cell_status_v1',p,'status-races-mobile');end if;
+ reset role;perform pg_sleep(hold);return jsonb_build_object('sqlstate','00000','result',result);
+ exception when others then reset role;get stacked diagnostics state=returned_sqlstate;return jsonb_build_object('sqlstate',state,'message',sqlerrm);
+end$$;
+commit;
+do $$declare n int;scenario int;pid_a int;pid_b int;a jsonb;b jsonb;p jsonb;first_payload jsonb;second_payload jsonb;first_mode text;second_mode text;first_id uuid;second_id uuid;v timestamptz;current_status text;history text[];begin
+ perform dblink_connect('status_a','host=127.0.0.1 port='||current_setting('port')||' dbname='||current_database()||' user=postgres');
+ perform dblink_connect('status_b','host=127.0.0.1 port='||current_setting('port')||' dbname='||current_database()||' user=postgres');
+ select pid into pid_a from dblink('status_a','select pg_backend_pid()') as t(pid int);select pid into pid_b from dblink('status_b','select pg_backend_pid()') as t(pid int);
+ for scenario in 1..5 loop
+  select updated_at into v from public.rm_celulas_projeto where projeto_id=rm_test_allocation_status.id('5',scenario) and celula_id=rm_test_allocation_status.id('4',scenario);
+  p:=jsonb_build_object('projeto_id',rm_test_allocation_status.id('5',scenario),'celula_id',rm_test_allocation_status.id('4',scenario),'expected_updated_at',v,'changes',jsonb_build_object('status',case when scenario=5 then 'coletado' else 'aguardando_coleta' end));
+  first_mode:=case when scenario=1 then 'mobile' else 'web' end;second_mode:=case when scenario=2 then 'mobile' else 'web' end;
+  first_payload:=case when scenario=1 then jsonb_build_object('p_celula_projeto_id',rm_test_allocation_status.id('6',scenario),'p_status','em_dia') else p end;
+  second_payload:=case when scenario=2 then jsonb_build_object('p_celula_projeto_id',rm_test_allocation_status.id('6',scenario),'p_status','coletado') when scenario=4 then jsonb_set(p,'{changes,status}','"coletado"') else p end;
+  first_id:=gen_random_uuid();second_id:=case when scenario in(3,5) then first_id else gen_random_uuid() end;
+  perform dblink_send_query('status_a',format('select rm_test_allocation_status.run(%L,%L,%L::jsonb,1)',first_mode,first_id,first_payload::text));
+  n:=0;loop perform pg_stat_clear_snapshot();exit when exists(select 1 from pg_stat_activity where pid=pid_a and wait_event='PgSleep');n:=n+1;if n>500 then select r into a from dblink_get_result('status_a') as t(r jsonb);raise exception 'FAIL: status writer % did not hold: %',scenario,a;end if;perform pg_sleep(.01);end loop;
+  perform dblink_send_query('status_b',format('select rm_test_allocation_status.run(%L,%L,%L::jsonb,0)',second_mode,second_id,second_payload::text));
+  n:=0;loop perform pg_stat_clear_snapshot();exit when exists(select 1 from pg_stat_activity where pid=pid_b and wait_event_type='Lock');n:=n+1;if n>200 then raise exception 'FAIL: second status writer % did not contend',scenario;end if;perform pg_sleep(.005);end loop;
+  select r into a from dblink_get_result('status_a') as t(r jsonb);perform r from dblink_get_result('status_a') as t(r jsonb);
+  select r into b from dblink_get_result('status_b') as t(r jsonb);perform r from dblink_get_result('status_b') as t(r jsonb);
+  if a->>'sqlstate'<>'00000' or b->>'sqlstate'<>(case when scenario in(1,4) then 'PT409' else '00000' end) then raise exception 'FAIL: status race % failed: % / %',scenario,a,b;end if;
+  select status::text,status_historico::text[] into current_status,history from public.rm_celulas_projeto where projeto_id=rm_test_allocation_status.id('5',scenario) and celula_id=rm_test_allocation_status.id('4',scenario);
+  if scenario=1 and(current_status<>'em_dia' or history is distinct from array['pendente','em_dia']) then raise exception 'FAIL: mobile winner lost';end if;
+  if scenario=2 and(current_status<>'coletado' or history is distinct from array['pendente','aguardando_coleta','coletado']) then raise exception 'FAIL: later offline intention lost or history duplicated';end if;
+  if scenario in(3,4) and(current_status<>'aguardando_coleta' or history is distinct from array['pendente','aguardando_coleta']) then raise exception 'FAIL: competing web edit lost winner';end if;
+  if scenario=5 and(current_status<>'coletado' or history is distinct from array['coletado'] or(select count(*) from public.rm_celulas_projeto where projeto_id=rm_test_allocation_status.id('5',scenario))<>1) then raise exception 'FAIL: new allocation duplicated or fake initial history';end if;
+  if scenario in(3,5) and(not(b->'result'->>'idempotent_replay')::boolean or(select count(*) from rm_private.web_mutation_receipts where client_submission_id=first_id)<>1) then raise exception 'FAIL: one UUID produced more than one operation';end if;
+ end loop;
+ if exists(select 1 from public.rm_projetos where id in(select rm_test_allocation_status.id('5',x) from generate_series(1,5)x) and(status<>'peritagem' or status_pcp<>'executando')) then raise exception 'FAIL: cell status touched global project';end if;
+ perform dblink_disconnect('status_a');perform dblink_disconnect('status_b');
+ exception when others then if 'status_a'=any(dblink_get_connections()) then perform dblink_disconnect('status_a');end if;if 'status_b'=any(dblink_get_connections()) then perform dblink_disconnect('status_b');end if;raise;
+end$$;
+select 'PASS: five real allocation-status races preserve web/mobile ordering, stale rejection, exact retry, one creation and independent project statuses' result;

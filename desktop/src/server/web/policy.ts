@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { projectEquipmentChangesSchema } from './project-equipment-policy';
+import { cellStatuses } from './cell-statuses';
 
 export const uuid = z.string().uuid();
 const timestamp = z.string().datetime({ offset: true });
@@ -43,6 +44,7 @@ export const saveProjectWithEquipmentSchema = saveProjectSchema.extend({
 export const planCellSchema = z.object({
   submissionId: uuid, projeto_id: uuid, celula_id: uuid, expected_updated_at: version,
   changes: z.object({
+    status: z.enum(cellStatuses).optional(),
     data_inicio: nullableDate, data_limite: nullableDate, bloqueada: z.enum(['sim', 'n_o']).optional(),
     motivo_bloqueio: nullableText(5000), motivo_atraso: nullableText(5000), visibilidade: z.boolean().optional(), prioridade: option,
     indice: z.number().int().min(0).max(1_000_000).nullable().optional(),
@@ -50,7 +52,11 @@ export const planCellSchema = z.object({
     horas_previstas: z.number().min(0).max(1_000_000).nullable().optional(),
     responsavel_id: nullableId, observacao: nullableText(10_000), forms_ids: z.array(uuid).max(500).optional(),
   }).strict().refine(value => Object.keys(value).length > 0, 'Informe uma alteração.'),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.expected_updated_at === null && value.changes.status === 'retornado') context.addIssue({
+    code: 'custom', path: ['changes', 'status'], message: 'Retornado é um estado de alocação existente. Selecione outro status inicial.',
+  });
+});
 
 export const reviewFormSchema = z.object({
   submissionId: uuid, registro_formulario_id: uuid, expected_updated_at: timestamp,

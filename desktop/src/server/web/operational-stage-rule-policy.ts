@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { uuid } from './policy';
 
 export const STAGE_RULE_STATUSES = ['pendente', 'liberado_para_ensaios_parciais', 'liberado_para_impregna__o',
-  'liberado_para_montagem', 'para_execu__o', 'em_dia', 'finalizado', 'atrasado', 'n_a'] as const;
+  'liberado_para_montagem', 'para_execu__o', 'em_dia', 'finalizado', 'atrasado', 'n_a', 'aguardando_coleta', 'coletado'] as const;
 const timestamp = z.string().datetime({ offset: true });
 const ids = z.array(uuid).min(1).max(100).refine(values => new Set(values).size === values.length, 'Selecione cada identidade uma única vez.');
 export const stageRuleConfigSchema = z.object({

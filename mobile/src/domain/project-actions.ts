@@ -9,6 +9,7 @@ export const cellStatusOptions = [
   { value: 'liberado_para_montagem', label: 'Liberado para montagem' },
   { value: 'para_execu__o', label: 'Para execução' }, { value: 'em_dia', label: 'Executando' },
   { value: 'finalizado', label: 'Finalizado' }, { value: 'atrasado', label: 'Atrasado' }, { value: 'n_a', label: 'N/A' },
+  { value: 'aguardando_coleta', label: 'Aguardando coleta' }, { value: 'coletado', label: 'Coletado' },
 ] as const;
 export const cellStatusLabel = (status?: string) => cellStatusOptions.find(option => option.value === status)?.label ?? label(status);
 

@@ -12,6 +12,7 @@ import type { ProjectEquipmentSnapshot } from '@/server/web/project-equipment-po
 import equipmentStyles from './project-equipment.module.css';
 import { equipmentTypeLabel } from './engineering-model';
 import { canChangeProjectEquipmentType, canUseProjectEquipmentBundle, projectEquipmentType } from './project-equipment-type-model';
+import { allocationStatusOptions, cellStatusLabels } from '@/server/web/cell-statuses';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -177,6 +178,7 @@ export function CellEditor({ projectId, allocation, cells, users, destination, d
     if (save.uncertain) { save.retry(); return; }
     if (disabled || locked) return;
     const data = new FormData(form); const changes: Record<string, unknown> = { bloqueada: data.get('bloqueada'), motivo_bloqueio: nullable(data, 'motivo_bloqueio'), motivo_atraso: nullable(data, 'motivo_atraso'), observacao: nullable(data, 'observacao'), responsavel_id: nullable(data, 'responsavel_id') };
+    if (!allocation || String(data.get('status') || '') !== allocation.status) changes.status = String(data.get('status') || '');
     if (!allocation) changes.visibilidade = data.get('visibilidade') === 'on';
     for (const key of ['data_inicio', 'data_limite']) if (!allocation || String(data.get(key) || '') !== inputDay(allocation[key])) changes[key] = day(data.get(key));
     const hours = data.get('horas_previstas'); changes.horas_previstas = hours ? Number(hours) : null;
@@ -188,6 +190,7 @@ export function CellEditor({ projectId, allocation, cells, users, destination, d
   return <div className="cell-editor" style={{ border: '1px solid #e8ebf0', background: '#fff', borderRadius: 8, padding: 23, margin: '18px 0' }}><h3 style={{ fontSize: 15, marginBottom: 20 }}>{allocation ? cells.find(cell => cell.id === allocation.celula_id)?.nome : 'Alocar célula no projeto'}</h3><form ref={captureForm} onChange={event => setDirty(formFingerprint(event.currentTarget) !== originalForm.current)} onSubmit={event => { event.preventDefault(); submit(event.currentTarget); }}>
     <EngineeringSaveNotice state={save} reload={target} />{saved && <p className="notice success" role="status">Planejamento confirmado. Atualizando a célula…</p>}<fieldset disabled={disabled || locked} style={{ border: 0, margin: 0, padding: 0 }}><div className="form-grid">
       {!allocation && <div className="field span-all"><label htmlFor="new_cell">Célula *</label><select id="new_cell" name="celula_id" required><option value="">Selecione a célula</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.nome}</option>)}</select></div>}
+      <div className="field"><label>Status da célula *<select aria-label="Status da célula" name="status" required defaultValue={allocation?.status || 'pendente'}>{allocation?.status && !allocationStatusOptions(true).some(status => status === allocation.status) && <option value={allocation.status}>Valor atual: {allocation.status}</option>}{allocationStatusOptions(!!allocation).map(status => <option key={status} value={status}>{cellStatusLabels[status]}</option>)}</select></label></div>
       <div className="field"><label>Início previsto<input aria-label="Início previsto da célula" type="date" name="data_inicio" defaultValue={inputDay(allocation?.data_inicio)} /></label></div>
       <div className="field"><label>Prazo da célula<input aria-label="Prazo da célula" type="date" name="data_limite" defaultValue={inputDay(allocation?.data_limite)} /></label></div>
       <div className="field"><label>Responsável<select aria-label="Responsável da célula" name="responsavel_id" defaultValue={allocation?.responsavel_id || ''}><option value="">Não definido</option>{users.filter(user => user.status === 'ativo' || user.id === allocation?.responsavel_id).map(user => <option key={user.id} value={user.id}>{user.nome}</option>)}</select></label></div>

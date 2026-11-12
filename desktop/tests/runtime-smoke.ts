@@ -74,6 +74,21 @@ async function main() {
       const denied = await request(path); assert.equal(denied.status, 401, path);
       assert.match(denied.headers.get('cache-control') || '', /no-store/);
     }
+    assert.equal((await request('/api/web/planning/export')).status, 405, 'Excel download requires an authorized POST.');
+    for (const forged of [false, true]) {
+      const cookie: Record<string, string> = forged ? { Cookie: 'em-sso-session=forged' } : {};
+      for (const suppliedOrigin of [origin, 'https://cross-site.example.invalid', undefined]) {
+        const denied = await request('/api/web/planning/export', {
+          method: 'POST', headers: { ...cookie, ...(suppliedOrigin ? { Origin: suppliedOrigin } : {}), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cell_ids: [], fields: [] }),
+        });
+        assert.equal(denied.status, suppliedOrigin === origin ? 401 : 403, 'Export must deny missing sessions, forged cookies and invalid/missing origins.');
+        assert.match(denied.headers.get('cache-control') || '', /no-store/);
+        assert.equal(denied.headers.get('x-content-type-options'), 'nosniff');
+        assert.equal(denied.headers.get('content-disposition'), null, 'Denied export cannot return a workbook attachment.');
+        assert.equal(typeof (await denied.json()).error, 'string');
+      }
+    }
     assert.equal((await request('/auth/logout')).status, 405, 'GET não pode encerrar uma sessão.');
     assert.equal((await request('/auth/logout', { method: 'POST', headers: { Origin: 'https://cross-site.example.invalid' } })).status, 403);
     assert.equal((await request('/auth/logout', { method: 'POST' })).status, 403, 'Logout sem Origin deve ser negado.');
@@ -83,7 +98,7 @@ async function main() {
     for (const path of ['/api/reports/generate-pdf', '/api/reports/compile-s3', '/api/auth/totp']) {
       assert.equal((await request(path, { method: 'POST', headers: { Authorization: `Bearer ${secret}` } })).status, 501, path);
     }
-    console.info('Runtime smoke: health/login/assets 200; portal sem sessão → login; APIs web/internas 401; logout 405/403; rotas reservadas 501. Sem credenciais reais.');
+    console.info('Runtime smoke: health/login/assets 200; portal sem sessão → login; APIs web/internas 401; Excel GET405 e POST401/403; logout 405/403; rotas reservadas 501. Sem credenciais reais.');
   } catch (error) { console.error('Smoke falhou. Saída do processo:', diagnostics); throw error; }
   finally { server.kill(); }
 }

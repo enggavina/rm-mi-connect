@@ -12,7 +12,7 @@ test('web mutations reject actor injection, unknown changes, stale-version omiss
   assert.equal(saveProjectSchema.safeParse({ ...valid, expected_updated_at: undefined }).success, false);
   const planning = { submissionId: id, projeto_id: id, celula_id: id, expected_updated_at: null, changes: { visibilidade: false, horas_previstas: 0, forms_ids: [id] } };
   assert.equal(planCellSchema.safeParse(planning).success, true);
-  assert.equal(planCellSchema.safeParse({ ...planning, changes: { status: 'finalizado' } }).success, false);
+  assert.equal(planCellSchema.safeParse({ ...planning, changes: { status_projeto: 'finalizado' } }).success, false);
   assert.equal(planCellSchema.safeParse({ ...planning, changes: { horas_previstas: -1 } }).success, false);
 });
 test('return decision requires explicit answers and explanation; approve cannot carry a correction list', () => {

@@ -65,7 +65,9 @@ select pg_temp.sr_actor(1);
 set local role authenticated;
 do $$ declare s jsonb:=public.rm_web_stage_rules_snapshot_v1(pg_temp.sr_key('5',1),pg_temp.sr_key('6',11),true); begin
  perform pg_temp.sr_check((s->>'total')::int=1 and (s->>'selected_total')::int=1 and (s->>'complete')::boolean,'selected and whole project totals are explicit');
- perform pg_temp.sr_check((s->>'eligible_total')::int=2 and jsonb_array_length(s->'eligible_users')=2 and jsonb_array_length(s->'statuses')=9,'choices dedup active identities and exclude return status');
+ perform pg_temp.sr_check((s->>'eligible_total')::int=2 and jsonb_array_length(s->'eligible_users')=2
+  and jsonb_array_length(s->'statuses')=(select count(*) from public.rm_option_sets where option_set_key='status_cel_proj' and option_key<>'retornado')
+  and not exists(select 1 from jsonb_array_elements(s->'statuses') x where x->>'key'='retornado'),'choices dedup active identities and include the current status catalog except return');
  perform pg_temp.sr_check(not exists(select 1 from jsonb_array_elements(s->'eligible_users') u where u->>'id' in(pg_temp.sr_key('2',1)::text,pg_temp.sr_key('2',7)::text)),'tablet account and administrator bypass create no eligibility');
  perform pg_temp.sr_check(s::text !~ '"(email|auth_user_id|token|bubble_id|sync_source|payload|actor_id|client_submission_id)"','minimum DTO excludes envelopes/credentials');
  perform pg_temp.sr_check((s->'rules'->0->>'can_edit')::boolean,'unused rule can be replaced');

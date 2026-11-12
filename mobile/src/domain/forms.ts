@@ -16,6 +16,7 @@ export function displayedRecordAnswers(originals: readonly DisplayAnswer[], draf
 
 export const statusLabels: Record<string, string> = {
   pendente: 'Pendente', em_dia: 'Executando', atrasado: 'Atrasado', finalizado: 'Finalizado',
+  aguardando_coleta: 'Aguardando coleta', coletado: 'Coletado',
   retornado: 'Retornado', para_execu__o: 'Para execução', em_an_lise: 'Em análise',
   direcionado: 'Revisar', aprovado: 'Concluído', nulo: 'Ag. aprovação', reprovado: 'Retornado',
 };
