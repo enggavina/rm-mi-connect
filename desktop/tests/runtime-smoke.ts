@@ -51,6 +51,7 @@ async function main() {
     assert.match(html, /name="email"/); assert.match(html, /name="password"/);
     assert.match(login.headers.get('cache-control') || '', /no-store/);
     assert.equal((await request('/mi-electric-brasil.svg')).status, 200, 'Logo público ausente no standalone.');
+    assert.equal((await request('/mi-symbol-white.svg')).status, 200, 'Símbolo MI do menu ausente no standalone.');
     const css = html.match(/<link[^>]+href="([^"]+\.css(?:\?[^"]*)?)"[^>]*>/)?.[1];
     assert.ok(css, 'O login precisa carregar o CSS da plataforma.');
     const cssUrl = new URL(css, origin); assert.equal(cssUrl.origin, origin);

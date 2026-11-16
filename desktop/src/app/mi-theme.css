@@ -1,0 +1,126 @@
+/* MI palette shared with the Workshop 3D visual identity. */
+:root {
+  --brand: #ec3c44;
+  --brand-strong: #b92332;
+  --brand-hover: #981b28;
+  --brand-soft: #fff0f1;
+  --brand-border: #e8a1a8;
+  --red: var(--brand-strong);
+  --red-light: var(--brand-soft);
+  --graphite: #0e1724;
+  --ink: #0e1724;
+  --muted: #5b6777;
+  --canvas: #f3f5f7;
+  --surface: #ffffff;
+  --surface-soft: #f6f7f9;
+  --surface-muted: #e9edf2;
+  --line: #d9dfe6;
+  --soft: var(--surface-soft);
+  --green: #26705b;
+  --amber: #8a570c;
+  background: var(--canvas);
+}
+::selection { background: var(--brand-soft); color: var(--ink); }
+input:focus, select:focus, textarea:focus { outline-color: var(--ink); }
+.button:hover { background: var(--brand-hover); border-color: var(--brand-hover); filter: none; }
+.button.secondary:hover { background: var(--surface-soft); border-color: var(--muted); }
+.button.ghost:hover { background: var(--brand-soft); border-color: transparent; }
+.button.secondary { color: #334155; }
+.catalog-tabs a[aria-current=page] { background: var(--brand-soft); color: var(--brand-strong); border-color: var(--brand-border); }
+.tabs>a[aria-current=page] { background: var(--brand-soft); border-radius: 6px 6px 0 0; }
+.topbar-path, .topbar-meta { color: var(--muted); }
+.topbar .icon-button { color: var(--muted); }
+.topbar .icon-button:hover { background: var(--surface-muted); color: var(--ink); }
+
+/* Compact rail mirrors the digital twin; names remain available by expanding. */
+.portal .sidebar {
+  width: 70px;
+  background: var(--brand);
+  color: var(--surface);
+  border-right: 1px solid #ffffff2e;
+}
+.portal .portal-body { margin-left: 70px; min-width: 0; }
+.portal .sidebar-brand { padding: 24px 12px 28px; gap: 0; justify-content: center; flex-shrink: 0; }
+.portal .brand-symbol { width: 44px; height: 44px; background: transparent; border-radius: 10px; }
+.portal .brand-copy { display: none; }
+.portal .sidebar-label { display: none; }
+.portal .sidebar nav { padding: 0 12px 14px; gap: 10px; scrollbar-width: thin; scrollbar-color: #ffffff99 transparent; }
+.portal .sidebar nav>a {
+  min-height: 44px;
+  padding: 10px;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--surface);
+  background: transparent;
+}
+.portal .sidebar nav>a:hover { background: #ffffff1f; color: var(--surface); }
+.portal .sidebar nav>a[aria-current=page] { background: #fff5f5; color: var(--brand-strong); box-shadow: 0 2px 8px #b923321f; }
+.portal .sidebar nav>a[aria-current=page]:hover { background: var(--surface); }
+.portal .nav-label, .portal .nav-mark { display: none; }
+.portal .sidebar-note, .portal .sidebar-hint { display: none; }
+.portal .sidebar-bottom { flex-direction: column; padding: 15px 12px; gap: 10px; border-color: #ffffff4d; }
+.portal .sidebar-bottom .user-copy { display: none; }
+.portal .avatar { background: var(--brand-strong); color: var(--surface); border: 1px solid #ffffff80; }
+.portal .sidebar .icon-button { color: var(--surface); }
+.portal .sidebar .icon-button:hover { background: #ffffff1f; }
+.portal .sidebar a:focus-visible, .portal .sidebar button:focus-visible { outline: 2px solid var(--surface); outline-offset: 3px; }
+.portal .sidebar nav>a[aria-current=page]:focus-visible { outline-color: var(--ink); }
+.portal .skip-link { left: 82px; }
+.desktop-nav-button { display: inline-flex; }
+
+/* Small white text uses the stronger red; the bright rail stays consistent. */
+@media (min-width:651px) {
+  .portal.navigation-expanded .sidebar { width: 254px; }
+  .portal.navigation-expanded .portal-body { margin-left: 254px; }
+  .portal.navigation-expanded .sidebar-brand { justify-content: flex-start; padding: 25px 22px 28px; gap: 12px; }
+  .portal.navigation-expanded .brand-copy { display: block; }
+  .portal.navigation-expanded .sidebar-brand small { color: var(--ink); }
+  .portal.navigation-expanded .sidebar-label { display: block; color: var(--ink); padding: 0 24px 14px; }
+  .portal.navigation-expanded .sidebar nav { padding-left: 14px; padding-right: 14px; gap: 8px; }
+  .portal.navigation-expanded .sidebar nav>a { justify-content: flex-start; gap: 12px; padding: 12px 14px; background: var(--brand-strong); }
+  .portal.navigation-expanded .sidebar nav>a:hover { background: var(--brand-hover); }
+  .portal.navigation-expanded .sidebar nav>a[aria-current=page] { background: #fff5f5; }
+  .portal.navigation-expanded .nav-label { display: inline; line-height: 1.5; }
+  .portal .nav-label>svg { display: inline; vertical-align: -2px; margin-left: 6px; }
+  .portal.navigation-expanded .nav-mark { display: block; background: currentColor; flex: none; }
+  .portal.navigation-expanded .sidebar-hint { display: block; color: var(--ink); }
+  .portal.navigation-expanded .sidebar-note { display: flex; color: var(--ink); padding: 16px 24px; }
+  .portal.navigation-expanded .sidebar-note small { color: var(--ink); }
+  .portal.navigation-expanded .sidebar-bottom { flex-direction: row; padding: 18px 15px; background: var(--brand-strong); }
+  .portal.navigation-expanded .sidebar-bottom .user-copy { display: block; max-width: none; }
+  .portal.navigation-expanded .user-copy strong, .portal.navigation-expanded .user-copy small { color: var(--surface); }
+  .portal.navigation-expanded .skip-link { left: 266px; }
+}
+@media (max-width:650px) {
+  .portal .sidebar { width: 254px; visibility: hidden; }
+  .portal .sidebar.is-open { visibility: visible; }
+  .portal .portal-body { margin-left: 0; }
+  .portal .desktop-nav-button { display: none; }
+  .portal .sidebar-brand { justify-content: flex-start; padding: 25px 22px 28px; gap: 12px; }
+  .portal .brand-copy { display: block; }
+  .portal .sidebar-brand small { color: var(--ink); }
+  .portal .sidebar-label { display: block; color: var(--ink); padding: 0 24px 14px; }
+  .portal .sidebar nav { padding-left: 14px; padding-right: 14px; gap: 8px; }
+  .portal .sidebar nav>a { justify-content: flex-start; gap: 12px; padding: 12px 14px; background: var(--brand-strong); }
+  .portal .sidebar nav>a:hover { background: var(--brand-hover); }
+  .portal .sidebar nav>a[aria-current=page] { background: #fff5f5; }
+  .portal .nav-label { display: inline; line-height: 1.5; }
+  .portal .nav-label>svg { display: inline; vertical-align: -2px; margin-left: 6px; }
+  .portal .nav-mark { display: block; background: currentColor; flex: none; }
+  .portal .sidebar-hint { display: block; color: var(--ink); }
+  .portal .sidebar-note { display: flex; color: var(--ink); padding: 16px 24px; }
+  .portal .sidebar-note small { color: var(--ink); }
+  .portal .sidebar-bottom { flex-direction: row; padding: 18px 15px; background: var(--brand-strong); }
+  .portal .sidebar-bottom .user-copy { display: block; max-width: none; }
+  .portal .user-copy strong, .portal .user-copy small { color: var(--surface); }
+  .portal .skip-link { left: 10px; }
+  .portal .topbar-path { min-width: 0; }
+  .portal .topbar-path>strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .portal .topbar-meta { flex-shrink: 0; }
+}
+
+.login-intro { background: var(--brand); }
+.login-intro .login-brand img { background: transparent; padding: 0; }
+.login-intro .login-brand span, .login-intro p, .login-intro small { color: var(--ink); }
+.login-intro h1 em { color: var(--ink); }
+.login-intro .eyebrow { background: var(--brand-strong); color: var(--surface); padding: 7px 10px; border-radius: 5px; width: fit-content; }

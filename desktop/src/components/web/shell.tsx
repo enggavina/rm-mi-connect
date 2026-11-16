@@ -8,7 +8,7 @@ import type { CorporateCapability } from '@/server/web/sso-policy';
 import { activePortalItem, portalNavigation, portalShortcuts } from './navigation';
 import s from './home-modules.module.css';
 export function PortalShell({ profile, capabilities, children }: { profile: { nome: string; perfil: string; cargo?: string | null }; capabilities?: CorporateCapability[]; children: React.ReactNode }) {
-  const path = usePathname(); const [open, setOpen] = useState(false);
+  const path = usePathname(); const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const groups = portalNavigation(capabilities);
   const shortcuts = portalShortcuts(capabilities);
   const current = activePortalItem(path, groups.flatMap(group => group.items));
@@ -31,21 +31,21 @@ export function PortalShell({ profile, capabilities, children }: { profile: { no
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', keydown); desktop.removeEventListener('change', resized); };
   }, [open, closeNavigation]);
   const initials = profile.nome.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('');
-  return <div className="portal"><a className="skip-link" href="#conteudo">Ir para o conteúdo</a>
+  return <div className={`portal${expanded ? ' navigation-expanded' : ''}`}><a className="skip-link" href="#conteudo">Ir para o conteúdo</a>
     {open && <button className="sidebar-backdrop" tabIndex={-1} aria-label="Fechar navegação" onClick={closeNavigation} />}
     <aside ref={sidebar} id="navegacao-principal" className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Navegação principal" role={open ? 'dialog' : undefined} aria-modal={open ? true : undefined}>
-      <Link href="/painel" className="sidebar-brand" onClick={() => setOpen(false)}><span className="brand-symbol"><Image src="/mi-electric-brasil.svg" alt="" width={43} height={43} priority /></span><span><strong>EM</strong><small>MI Electric Brasil</small></span></Link>
+      <Link href="/painel" className="sidebar-brand" aria-label="EM · MI Electric Brasil · Início" title="EM · MI Electric Brasil · Início" onClick={() => setOpen(false)}><span className="brand-symbol"><Image src="/mi-symbol-white.svg" alt="" width={43} height={43} priority /></span><span className="brand-copy"><strong>EM</strong><small>MI Electric Brasil</small></span></Link>
       <div className={s.sidebarHeading}><div className="sidebar-label">Atalhos</div><button className={`icon-button ${s.sidebarClose}`} type="button" aria-label="Fechar menu" onClick={closeNavigation}><Icon name="close" size={17} /></button></div>
       <nav aria-label="Atalhos do EM">{shortcuts.map(item => {
-        const content = <><Icon name={item.icon} /><span>{item.label}</span>{item.external ? <Icon name="external" size={13} /> : current?.href === item.href && <span className="nav-mark" />}</>;
-        return item.external ? <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" aria-label={`${item.label} (abre em nova aba)`} onClick={closeNavigation}>{content}</a>
-          : <Link key={item.href} href={item.href} prefetch={item.href === '/acompanhamento' ? false : undefined} aria-current={current?.href === item.href ? 'page' : undefined} onClick={() => setOpen(false)}>{content}</Link>;
+        const content = <><Icon name={item.icon} /><span className="nav-label">{item.label}{item.external && <Icon name="external" size={13} />}</span>{!item.external && current?.href === item.href && <span className="nav-mark" />}</>;
+        return item.external ? <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" title={`${item.label} (abre em nova aba)`} aria-label={`${item.label} (abre em nova aba)`} onClick={closeNavigation}>{content}</a>
+          : <Link key={item.href} href={item.href} title={item.label} aria-label={item.label} prefetch={item.href === '/acompanhamento' ? false : undefined} aria-current={current?.href === item.href ? 'page' : undefined} onClick={() => setOpen(false)}>{content}</Link>;
       })}</nav>
-      <p className={s.sidebarHint}>Os cards do Início reúnem os módulos de trabalho.</p>
+      <p className={`sidebar-hint ${s.sidebarHint}`}>Os cards do Início reúnem os módulos de trabalho.</p>
       <div className="sidebar-note"><span className="connection-dot" /><span>Uma operação conectada<small>Web e mobile na mesma base</small></span></div>
       <div className="sidebar-bottom"><span className="avatar">{initials || 'EM'}</span><span className="user-copy"><strong>{profile.nome}</strong><small>{profile.cargo || (profile.perfil === 'administrador' ? 'Administrador' : 'Equipe MI Electric')}</small></span><form action="/auth/logout" method="post"><button className="icon-button" aria-label="Sair da plataforma" title="Sair da plataforma"><Icon name="logout" size={18} /></button></form></div>
     </aside>
-    <div className="portal-body"><header className="topbar"><div className="topbar-path"><button ref={toggle} className="icon-button mobile-nav-button" onClick={() => setOpen(true)} aria-label="Abrir navegação" aria-controls="navegacao-principal" aria-expanded={open}><Icon name="menu" /></button><span>Oficina</span><Icon name="chevron" size={14} /><strong>{current?.label || 'Projeto'}</strong></div><div className="topbar-meta"><span className="workspace-label"><span className="connection-dot" />Ambiente operacional</span><span className="topbar-divider" /><span className="topbar-date">{new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date())}</span></div></header>
+    <div className="portal-body"><header className="topbar"><div className="topbar-path"><button ref={toggle} className="icon-button mobile-nav-button" onClick={() => setOpen(true)} aria-label="Abrir navegação" aria-controls="navegacao-principal" aria-expanded={open}><Icon name="menu" /></button><button className="icon-button desktop-nav-button" onClick={() => setExpanded(value => !value)} aria-label={expanded ? 'Recolher navegação' : 'Expandir navegação'} title={expanded ? 'Recolher navegação' : 'Expandir navegação'} aria-controls="navegacao-principal" aria-expanded={expanded}><Icon name="menu" /></button><span>Oficina</span><Icon name="chevron" size={14} /><strong>{current?.label || 'Projeto'}</strong></div><div className="topbar-meta"><span className="workspace-label"><span className="connection-dot" />Ambiente operacional</span><span className="topbar-divider" /><span className="topbar-date">{new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date())}</span></div></header>
       {children}
     </div>
   </div>;
