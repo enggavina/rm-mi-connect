@@ -89,3 +89,11 @@ test('deletion keeps frozen retry context and never forwards private deletion au
   const used = await setup('administrador', { ok: false, code: '23503', error: 'raw' }).deleteFormTemplate(body);
   assert.ok(!used.ok); assert.equal(used.code, '23503'); assert.match(used.error, /histórico/);
 });
+
+test('deletion canonicalizes a UUID from a mixed-case route before checking the acknowledgement', async () => {
+  const target = 'abcdefab-cdef-4abc-8abc-abcdefabcdef';
+  const fixture = setup('administrador', { ok: true, data: { operation: 'delete_form_template', id: target, projeto_id: null,
+    updated_at: version, idempotent_replay: false, record: { id: target, kind: 'form', deleted: true } } });
+  const result = await fixture.deleteFormTemplate({ submissionId: id(9), id: target.toUpperCase(), kind: 'form', expected_updated_at: version, confirmed: true });
+  assert.ok(result.ok); assert.equal(fixture.calls[0][2].id, target);
+});

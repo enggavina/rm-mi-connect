@@ -48,7 +48,7 @@ export const createFormTemplateSchema = z.object({ ...base, source_form_id: uuid
   .refine(value => value.kind === 'new' ? value.source_form_id === null : value.source_form_id !== null, 'Escolha um formulário de origem para copiar ou criar versão.');
 export const saveFormTemplateSchema = z.object({ ...base, expected_updated_at: version, content: formTemplateContentSchema }).strict();
 export const publishFormTemplateSchema = z.object({ ...base, expected_updated_at: version }).strict();
-export const deleteFormTemplateSchema = z.object({ ...base, kind: z.enum(['draft', 'form']), expected_updated_at: version, confirmed: z.literal(true) }).strict();
+export const deleteFormTemplateSchema = z.object({ ...base, id: uuid.transform(value => value.toLowerCase()), kind: z.enum(['draft', 'form']), expected_updated_at: version, confirmed: z.literal(true) }).strict();
 export type FormTemplateContent = z.infer<typeof formTemplateContentSchema>;
 export type FormTemplateQuestion = z.infer<typeof formTemplateQuestionSchema>;
 export type FormTemplateItem = z.infer<typeof formTemplateItemSchema>;

@@ -2,8 +2,9 @@
 -- version immutability remain protected; no archival/backfill is invented.
 begin;
 
--- forms_ids is a legacy array rather than an FK. Serialize new references
--- with the same parent row used by deletion, including direct/import writes.
+-- Legacy arrays intentionally permit unresolved IDs for reconciliation.
+-- Lock known parents against concurrent deletion; reject only IDs explicitly
+-- tombstoned by this operation rather than introducing a new global FK rule.
 create function rm_private.guard_allocation_form_references_v1() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare fid uuid;
@@ -11,7 +12,9 @@ begin
  for fid in select distinct x from unnest(new.forms_ids) x order by x loop
   if tg_op='UPDATE' and array_position(old.forms_ids,fid) is not null then continue;end if;
   perform 1 from public.rm_forms where id=fid for key share;
-  if not found then raise exception 'Modelo de formulário indisponível.' using errcode='23503';end if;
+  if not found and exists(select 1 from rm_private.web_mutation_receipts w
+   where w.operation='delete_form_template' and w.payload->>'kind'='form' and w.before_record->'form'->>'id'=fid::text) then
+   raise exception 'Modelo de formulário excluído; reconciliação necessária.' using errcode='23503';end if;
  end loop;
  return new;
 end $$;
@@ -25,7 +28,10 @@ begin
  for iid in select distinct x from unnest(new.itens_questoes_ids) x order by x loop
   if tg_op='UPDATE' and array_position(old.itens_questoes_ids,iid) is not null then continue;end if;
   perform 1 from public.rm_itens_questoes where id=iid for key share;
-  if not found then raise exception 'Opção do modelo indisponível.' using errcode='23503';end if;
+  if not found and exists(select 1 from rm_private.web_mutation_receipts w
+   cross join lateral jsonb_array_elements(case when jsonb_typeof(w.before_record->'items')='array' then w.before_record->'items' else '[]'::jsonb end) item
+   where w.operation='delete_form_template' and w.payload->>'kind'='form' and item->>'id'=iid::text) then
+   raise exception 'Opção do modelo excluído; reconciliação necessária.' using errcode='23503';end if;
  end loop;
  return new;
 end $$;
@@ -53,7 +59,7 @@ begin
  -- its tuple: try-lock only, avoiding inversion with delete's identity->tuple.
  perform rm_private.lock_form_identity_v1(new.id,new.bubble_id,tg_op='INSERT');
  if exists(select 1 from rm_private.web_mutation_receipts w where w.operation='delete_form_template' and w.payload->>'kind'='form'
-  and (w.payload->>'id'=new.id::text or (new.bubble_id is not null and w.before_record->'form'->>'bubble_id'=new.bubble_id))) then
+  and (w.before_record->'form'->>'id'=new.id::text or (new.bubble_id is not null and w.before_record->'form'->>'bubble_id'=new.bubble_id))) then
   raise exception 'Modelo excluído; reconciliação necessária.' using errcode='PT410';
  end if;
  return new;

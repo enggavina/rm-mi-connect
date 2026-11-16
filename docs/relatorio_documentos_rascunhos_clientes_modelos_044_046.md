@@ -53,6 +53,8 @@ Bloqueiam a exclusão: vínculos de célula/equipe, roteiro de tipo de equipamen
 
 Locks de identidade e registros, validação de arrays e repetição por recibo protegem a operação contra novas referências e recriação concorrente de identidades. Tombstones reutilizam a consulta do ETL para formulário, questões e itens, impedindo reimportação silenciosa do que foi excluído. As guardas de imutabilidade 019 continuam valendo para edição de versões publicadas.
 
+As arrays legadas não foram convertidas em novas foreign keys. Identidades desconhecidas e elementos nulos já admitidos pela importação continuam disponíveis para a reconciliação existente; a guarda rejeita novas referências a identidades explicitamente excluídas. Modelos existentes recebem locks de chave para coordenar a criação de vínculos com a exclusão. IDs UUID são comparados em formato canônico, inclusive quando o pedido veio em letras maiúsculas.
+
 ## Alterações de banco
 
 | Migração | Novas estruturas |

@@ -70,6 +70,18 @@ do $$ declare n int;begin
  begin update public.rm_celulas_projeto set forms_ids=array[pg_temp.fd_id(10)] where projeto_id=pg_temp.fd_id(50);raise exception 'FAIL: deleted array reference';exception when foreign_key_violation then null;end;
 end $$;
 
+-- Unresolved legacy array identities remain visible for reconciliation. These
+-- arrays historically have no FK, so importing one is not a template deletion.
+update public.rm_celulas_projeto set forms_ids=array[pg_temp.fd_id(12),pg_temp.fd_id(999),null] where projeto_id=pg_temp.fd_id(50);
+select pg_temp.fd_check((select forms_ids=array[pg_temp.fd_id(12),pg_temp.fd_id(999),null] from public.rm_celulas_projeto where projeto_id=pg_temp.fd_id(50)),'unknown legacy form identity preserved');
+update public.rm_respostas set itens_questoes_ids=array[pg_temp.fd_id(998),null] where registro_formulario_id=pg_temp.fd_id(60);
+update public.rm_respostas_temp set itens_questoes_ids=array[pg_temp.fd_id(998),null] where projeto_id=pg_temp.fd_id(50);
+select pg_temp.fd_check((select itens_questoes_ids=array[pg_temp.fd_id(998),null] from public.rm_respostas where registro_formulario_id=pg_temp.fd_id(60)),'unknown legacy answer item identity preserved');
+select pg_temp.fd_check((select itens_questoes_ids=array[pg_temp.fd_id(998),null] from public.rm_respostas_temp where projeto_id=pg_temp.fd_id(50)),'unknown legacy draft item identity preserved');
+update public.rm_respostas set itens_questoes_ids=itens_questoes_ids where registro_formulario_id=pg_temp.fd_id(60);
+update public.rm_respostas_temp set itens_questoes_ids=itens_questoes_ids where projeto_id=pg_temp.fd_id(50);
+update public.rm_celulas_projeto set forms_ids=forms_ids where projeto_id=pg_temp.fd_id(50);
+
 -- Incomplete drafts are deletable; their source model is not removed.
 do $$ declare did uuid:=pg_temp.fd_id(70);p jsonb;r jsonb;fid uuid;draft_timestamp timestamptz;begin
  r:=pg_temp.fd_call(gen_random_uuid(),'create_form_template',jsonb_build_object('id',did,'kind','copy','source_form_id',pg_temp.fd_id(19)));
@@ -105,6 +117,18 @@ select pg_temp.fd_check(public.rm_deleted_bubble_ids_v1('rm_clientes',array['leg
 reset role;
 do $$ begin
  begin insert into public.rm_forms(titulo,bubble_id) values('Resurrection','legacy-removed-form-46');raise exception 'FAIL: deleted Bubble identity reused';exception when sqlstate 'PT410' then null;end;
+ begin update public.rm_respostas set itens_questoes_ids=array[pg_temp.fd_id(220)] where registro_formulario_id=pg_temp.fd_id(60);raise exception 'FAIL: deleted answer item reference';exception when foreign_key_violation then null;end;
+ begin update public.rm_respostas_temp set itens_questoes_ids=array[pg_temp.fd_id(220)] where projeto_id=pg_temp.fd_id(50);raise exception 'FAIL: deleted draft item reference';exception when foreign_key_violation then null;end;
+end $$;
+-- The immutable before-record contains canonical UUIDs even when a caller's
+-- original idempotency payload spells a UUID with uppercase hexadecimal.
+do $$ declare fid uuid:='ab460000-0000-4000-8000-000000000001';p jsonb;begin
+ insert into public.rm_forms(id,titulo) values(fid,'Uppercase request identity');
+ p:=jsonb_build_object('id',upper(fid::text),'kind','form','confirmed',true,'expected_updated_at',(select updated_at from public.rm_forms where id=fid));
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.fd_id(3),'aal','aal1')::text,true);
+ perform pg_temp.fd_call(gen_random_uuid(),'delete_form_template',p);
+ begin insert into public.rm_forms(id,titulo) values(fid,'Uppercase identity resurrection');raise exception 'FAIL: uppercase UUID bypassed tombstone';exception when sqlstate 'PT410' then null;end;
+ begin update public.rm_celulas_projeto set forms_ids=array[fid] where projeto_id=pg_temp.fd_id(50);raise exception 'FAIL: uppercase UUID acquired array reference';exception when foreign_key_violation then null;end;
 end $$;
 select pg_temp.fd_check(not has_function_privilege('authenticated','rm_private.web_mutate_before_template_delete_v1(uuid,text,jsonb)','execute'),'private dispatch not exposed');
 rollback;
