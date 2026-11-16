@@ -32,13 +32,13 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const canProjects = hasWebCapability(session, 'em.projects.read');
   const view = scheduleView(params, canProjects);
   const viewNavigation = <nav className="tabs" aria-label="Visões do cronograma">
-    {canProjects && <a href={scheduleHref()} aria-current={view === 'project' ? 'page' : undefined}>Células por projeto</a>}
-    <a href="/cronograma?view=gantt" aria-current={view === 'gantt' ? 'page' : undefined}>Gantt de prazos</a>
+    <a href="/cronograma?view=gantt" aria-current={view === 'gantt' ? 'page' : undefined}>Gantt e prazos</a>
+    {canProjects && <a href={scheduleHref()} aria-current={view === 'project' ? 'page' : undefined}>Roteiro e registros</a>}
   </nav>;
   const heading = <PageHeading eyebrow="PCP · PLANEJAMENTO E CONTROLE" title="Cronograma"
-    description={view === 'project' ? 'Escolha um projeto e acompanhe o roteiro e os registros de cada célula.' : 'Consulte os prazos planejados das células em uma janela de seis semanas.'}
+    description={view === 'project' ? 'Escolha um projeto e acompanhe o roteiro e os registros de cada célula.' : 'Planeje os prazos e as etapas da oficina nas visões geral, por célula e por projeto.'}
     actions={<Link className="button secondary" href="/planejamento"><Icon name="board" size={16} />Ver planejamento</Link>} />;
-  if (view === 'gantt') return <>{heading}{viewNavigation}<GanttSchedule params={params} canProjects={canProjects} /></>;
+  if (view === 'gantt') return <>{heading}{viewNavigation}<GanttSchedule params={params} canProjects={canProjects} canManage={hasWebCapability(session, 'em.planning.manage') && ['administrador', 'padr_o'].includes(session.profile.perfil)} /></>;
 
   const projectId = scheduleId(params.project);
   if (!projectId) {
@@ -120,7 +120,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
     </tr>)}</tbody></table></div> : <p className="form-note" key={formId}>Aguardando preenchimento pela equipe.</p>];
   }));
 
-  return <>{heading}{viewNavigation}<a className="back-link" href={scheduleHref()}><Icon name="back" size={15} />Trocar projeto</a>
+  return <>{heading}{viewNavigation}<div className="heading-actions" style={{ marginBottom: 18 }}><a className="back-link" href={scheduleHref()}><Icon name="back" size={15} />Trocar projeto</a><a className="button small secondary" href={`/cronograma?view=gantt&scope=project&project=${projectId}`}>Gantt deste projeto</a></div>
     <section className="panel"><div className={`panel-header ${s.projectHeader}`}><div><h2>{project.numero ? `OS ${project.numero}` : project.nome || 'Projeto sem OS'}</h2><p>{data.client?.nome || project.cliente_nome_exportacao || 'Cliente não informado'}</p></div><div className="heading-actions"><Status value={project.status_pcp} /><Link className="button small secondary" href={`/projetos/${projectId}`}>Informações do projeto</Link>{canEditProject && <Link className="button small secondary" href={`/projetos/${projectId}/editar`}><Icon name="edit" size={14} />Editar projeto</Link>}</div></div>
       <div className="panel-content"><Details values={[[ 'Equipamento', project.descricao_equipamento_exibicao || project.nome ], ['Chegada', date(project.chegada_do_equipamento, true)], ['Início previsto', date(project.data_prevista_inicio)], ['Entrega prevista', date(project.data_prevista_final)], ['Data contratual', date(project.data_contratual)], ['Escopo', project.escopo_abreviado]]} /></div>
     </section>

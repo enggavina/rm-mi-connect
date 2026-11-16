@@ -7,7 +7,7 @@ export type ScheduleTab = 'fotos' | 'formularios' | 'etapas';
 export function scheduleView(params: ScheduleParams, canReadProjects: boolean): 'project' | 'gantt' {
   if (!canReadProjects || params.view === 'gantt') return 'gantt';
   if (params.view !== 'project' && !params.project && ['start', 'cell', 'status'].some(key => typeof params[key] === 'string')) return 'gantt';
-  return 'project';
+  return params.view === 'project' || !!params.project ? 'project' : 'gantt';
 }
 export function scheduleId(value: unknown): string | undefined {
   return uuid.safeParse(value).success ? (value as string).toLowerCase() : undefined;

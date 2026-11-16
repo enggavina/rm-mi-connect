@@ -14,7 +14,7 @@ const groups: { label: string; items: PortalNavigationItem[] }[] = [
     { href: '/aprovacoes', label: 'Aprovações de etapas', description: 'Consulte, libere e avalie as etapas conforme sua autorização.', icon: 'check', capability: 'em.approvals.read', shortcutOrder: 6 },
   ] },
   { label: 'Planejamento', items: [
-    { href: '/cronograma', label: 'Cronograma', description: 'Organize o roteiro do projeto e acompanhe cada célula e seus prazos.', icon: 'calendar', capability: 'em.planning.read', shortcutOrder: 4 },
+    { href: '/cronograma', label: 'Gantt e cronograma', description: 'Planeje prazos e etapas nas visões geral, por célula e por projeto.', icon: 'calendar', capability: 'em.planning.read', shortcutOrder: 4 },
     { href: '/planejamento', label: 'Planejamento', description: 'Consulte as alocações e acompanhe responsáveis, horas e bloqueios.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/fila', label: 'Fila da célula', description: 'Defina a prioridade e a sequência dos trabalhos de uma célula.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/carga', label: 'Carga planejada', description: 'Veja horas informadas, bloqueios e prazos por célula.', icon: 'clock', capability: 'em.planning.read' },

@@ -72,7 +72,9 @@ function stage(n: number, link: string | null = allocation): StageApprovalListIt
 }
 
 test('schedule preserves Gantt access and old filters while project selection uses independent IDs', () => {
-  assert.equal(scheduleView({}, true), 'project');
+  assert.equal(scheduleView({}, true), 'gantt');
+  assert.equal(scheduleView({ view: 'project' }, true), 'project');
+  assert.equal(scheduleView({ project, allocation }, true), 'project');
   assert.equal(scheduleView({}, false), 'gantt');
   assert.equal(scheduleView({ start: '2026-10-29' }, true), 'gantt');
   assert.equal(scheduleView({ cell, status: 'pendente' }, true), 'gantt');

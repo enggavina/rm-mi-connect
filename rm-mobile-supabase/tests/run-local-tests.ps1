@@ -70,6 +70,8 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'mobile_receiving_drafts.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_template_delete.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_template_delete_concurrency.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_gantt_planning.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_gantt_planning_concurrency.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
@@ -145,6 +147,9 @@ try {
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '044_rm_web_project_document_folders.sql') {
       $executionFile = Join-Path $PSScriptRoot 'web_project_document_folders_upgrade.sql'
     }
+    if ([System.IO.Path]::GetFileName($sqlFile) -eq '047_rm_web_gantt_planning.sql') {
+      $executionFile = Join-Path $PSScriptRoot 'web_gantt_planning_upgrade.sql'
+    }
     $migration028Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\028_rm_web_cell_availability.sql'))
     $migration029Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\029_rm_web_project_dossier.sql'))
     $migration030Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\030_rm_web_project_dossier_search.sql'))
@@ -160,7 +165,8 @@ try {
     $migration042Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\042_rm_web_allocation_status.sql'))
     $migration043Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\043_rm_web_planning_export.sql'))
     $migration044Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\044_rm_web_project_document_folders.sql'))
-    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -v "rm_migration_033_path=$migration033Path" -v "rm_migration_036_path=$migration036Path" -v "rm_migration_037_path=$migration037Path" -v "rm_migration_038_path=$migration038Path" -v "rm_migration_039_path=$migration039Path" -v "rm_migration_040_path=$migration040Path" -v "rm_migration_041_path=$migration041Path" -v "rm_migration_042_path=$migration042Path" -v "rm_migration_043_path=$migration043Path" -v "rm_migration_044_path=$migration044Path" -c 'SET client_min_messages=warning' -f $executionFile
+    $migration047Path = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations\047_rm_web_gantt_planning.sql'))
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -v "rm_migration_028_path=$migration028Path" -v "rm_migration_029_path=$migration029Path" -v "rm_migration_030_path=$migration030Path" -v "rm_migration_031_path=$migration031Path" -v "rm_migration_032_path=$migration032Path" -v "rm_migration_033_path=$migration033Path" -v "rm_migration_036_path=$migration036Path" -v "rm_migration_037_path=$migration037Path" -v "rm_migration_038_path=$migration038Path" -v "rm_migration_039_path=$migration039Path" -v "rm_migration_040_path=$migration040Path" -v "rm_migration_041_path=$migration041Path" -v "rm_migration_042_path=$migration042Path" -v "rm_migration_043_path=$migration043Path" -v "rm_migration_044_path=$migration044Path" -v "rm_migration_047_path=$migration047Path" -c 'SET client_min_messages=warning' -f $executionFile
     if ($LASTEXITCODE -ne 0) { throw "Falha em $sqlFile" }
   }
   # The production switch must refuse accidental execution without the explicit
