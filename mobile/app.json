@@ -3,7 +3,7 @@
     "name": "EM",
     "slug": "em-mi-electric-brasil",
     "scheme": "rm-mi-connect",
-    "version": "1.2.7",
+    "version": "1.2.8",
     "icon": "./assets/icon.png",
     "orientation": "default",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "br.com.mielectric.rmconnect",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/brand/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"

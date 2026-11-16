@@ -81,6 +81,7 @@ export async function handleProjectAttachmentUpload(request: Request, projectId:
       || !timestamp.safeParse(reserve.data.updated_at).success || typeof reserve.data.idempotent_replay !== 'boolean'
       || !reservation || typeof reservation !== 'object' || reservation.upload_id !== submissionId || reservation.projeto_id !== projectId || reservation.path !== expectedPath
       || reservation.sha256 !== input.sha256 || reservation.byte_size !== input.byte_size || reservation.mime_type !== input.mime_type) return response(unavailable());
+    if (input.folder_id !== undefined && reservation.folder_id !== input.folder_id) return response(unavailable());
     await dependencies.storeAttachment(input, bytes);
     const final = await dependencies.mutate(access.client, 'finalize_project_attachment', {
       submissionId, projeto_id: projectId, upload_id: submissionId,

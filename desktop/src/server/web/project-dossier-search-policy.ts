@@ -15,7 +15,7 @@ const period = (value: { from_date: string | null; to_date: string | null }, con
 };
 export const projectCommentFiltersSchema = z.object({ ...common, cell_id: optionalId, page }).strict().superRefine(period);
 export const projectDocumentFiltersSchema = z.object({ ...common, source: z.enum(['all', 'documents', 'docs']).default('all'),
-  status: z.enum(['all', 'No prazo', 'Vencido', 'other']).default('all'), page }).strict().superRefine(period);
+  status: z.enum(['all', 'No prazo', 'Vencido', 'other']).default('all'), folder_id: uuid.nullable().optional(), page }).strict().superRefine(period);
 export type ProjectCommentFilters = z.infer<typeof projectCommentFiltersSchema>;
 export type ProjectDocumentFilters = z.infer<typeof projectDocumentFiltersSchema>;
 
@@ -30,11 +30,15 @@ export const projectCommentPageSchema = z.object({ ...resultCommon,
 }).strict();
 export const projectDocumentPageSchema = z.object({ ...resultCommon,
   filters: z.object({ search: z.string(), author_id: uuid.nullable(), source: z.enum(['all', 'documents', 'docs']),
-    status: z.enum(['all', 'No prazo', 'Vencido', 'other']), from_date: day.nullable(), to_date: day.nullable() }).strict(),
+    status: z.enum(['all', 'No prazo', 'Vencido', 'other']), folder_id: uuid.nullable().optional(), from_date: day.nullable(), to_date: day.nullable() }).strict(),
   items: z.array(z.object({ id: uuid, source: z.enum(['documents', 'docs']), projeto_id: uuid, nome: text, descricao: text,
     tipo_arquivo: text, tipo_documento: text, status: text, data_vencimento: timestamp.nullable(), created_by: uuid.nullable(),
     author_name: text, author_registration: text, created_at: timestamp, has_file: z.boolean(), visivel_cliente: z.boolean().nullable() }).strict()).max(25),
   facets: z.object({ authors: z.array(author).max(10_000), statuses: z.array(z.object({ value: z.enum(['No prazo', 'Vencido', 'other']), label: z.string() }).strict()).max(3) }).strict(),
+  navigation: z.object({ current_folder_id: uuid.nullable(),
+    breadcrumbs: z.array(z.object({ id: uuid, parent_id: uuid.nullable(), nome: z.string(), updated_at: timestamp }).strict()).max(10_000),
+    folders: z.array(z.object({ id: uuid, parent_id: uuid.nullable(), nome: z.string(), updated_at: timestamp }).strict()).max(10_000),
+  }).strict().optional(),
 }).strict();
 export type ProjectCommentPage = z.infer<typeof projectCommentPageSchema>;
 export type ProjectDocumentPage = z.infer<typeof projectDocumentPageSchema>;

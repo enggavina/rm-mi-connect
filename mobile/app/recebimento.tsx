@@ -9,7 +9,8 @@ import { useApp, useRows } from '../src/ui/state';
 import { Badge, Button, C, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
 import { MediaImage } from '../src/ui/media';
 import { DocumentField } from '../src/ui/documents';
-import { newReceiving, receivingPayload, receivingPhotoTitle, restoreReceiving, setArrivalPart,
+import type { ReceivingDraftMeta } from '../src/core/receiving-drafts';
+import { newReceiving, receivingPhotoTitle, setArrivalPart,
   validateReceiving, RECEIVING_PHOTO_TITLES, RECEIVING_STEPS, type Receiving, type ReceivingPhoto } from '../src/domain/receiving';
 
 function ArrivalField({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) {
@@ -35,6 +36,7 @@ export default function Recebimento() {
   const owner = useRef(key), pending = useRef(Promise.resolve()), saveError = useRef(''), submitting = useRef(false);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [saving, setSaving] = useState(0);
   const [mediaBusy, setMediaBusy] = useState(false), [loading, setLoading] = useState(true), [reload, setReload] = useState(0);
+  const [cloud, setCloud] = useState<ReceivingDraftMeta | null>(null);
   const fresh = () => newReceiving(Crypto.randomUUID(), new Date().toISOString());
 
   useEffect(() => {
@@ -42,8 +44,7 @@ export default function Recebimento() {
     saveError.current = ''; pending.current = Promise.resolve(); setSaving(0);
     if (!app.operator?.operador_id) { setLoading(false); return; }
     void (async () => {
-      const saved = await service.getLocal<unknown>(key);
-      const value = restoreReceiving(saved, Crypto.randomUUID(), new Date().toISOString());
+      const value = await service.openReceivingDraft();
       // Recover a successful enqueue even if the subsequent draft save was interrupted.
       if (await service.operation(value.id)) value.submitted = true;
       if (live) { current.current = value; setData(value); }
@@ -52,11 +53,18 @@ export default function Recebimento() {
     return () => { live = false; };
   }, [key, app.operator?.operador_id, reload]);
 
+  useEffect(() => {
+    let live = true;
+    void service.receivingDraftInfo().then(value => { if (live) setCloud(value); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [app.revision, key]);
+
   function update(patch: Partial<Receiving>) {
     if (!current.current || submitting.current || current.current.submitted) return;
     const next = { ...current.current, ...patch }, saveKey = key;
     current.current = next; setData(next); setSaving(count => count + 1);
-    pending.current = pending.current.then(() => service.saveLocal(saveKey, next)).then(() => {
+    const saveActor = app.operator?.operador_id;
+    pending.current = pending.current.then(() => service.saveReceivingDraft(next, saveActor)).then(() => {
       if (owner.current === saveKey) {
         saveError.current = '';
         setError(previous => previous.startsWith('Falha ao salvar o rascunho:') ? '' : previous);
@@ -111,19 +119,35 @@ export default function Recebimento() {
       }
       if (saveError.current) throw new Error(saveError.current);
       const draft = current.current;
-      const id = await service.enqueue('rm_submit_recebimento_v1', receivingPayload(draft), draft.id);
-      const sent = { ...draft, submitted: true }; current.current = sent; setData(sent);
-      // The durable queue is authoritative; never unlock an already enqueued draft.
-      await service.saveLocal(key, sent).catch(() => undefined);
+      const id = await service.submitReceivingDraft();
+      const sent = { ...await service.getLocal<Receiving>(key) ?? draft, submitted: true }; current.current = sent; setData(sent);
+      // The draft marker and durable queue were committed in the same transaction.
       router.replace({ pathname: '/confirmacao', params: { id, tipo: 'Recebimento' } });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao salvar o recebimento.'); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar o recebimento.');
+      if (['RECEIVING_FINALIZED', 'RECEIVING_CHANGED'].includes((e as {code?: string})?.code ?? '')) setReload(value => value + 1);
+    }
     finally { submitting.current = false; setBusy(false); }
   }
   async function startAnother() {
     if (submitting.current) return; submitting.current = true; setBusy(true); setError('');
-    try { const value = fresh(); await pending.current; await service.saveLocal(key, value); current.current = value; setData(value); saveError.current = ''; }
+    try { const value = fresh(); await pending.current; await service.saveReceivingDraft(value, app.operator?.operador_id); current.current = value; setData(value); saveError.current = ''; }
     catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível iniciar outro recebimento.'); }
     finally { submitting.current = false; setBusy(false); }
+  }
+  function recoverCloud() {
+    Alert.alert('Retomar versão do banco', 'A versão local será preservada para recuperação neste dispositivo. Deseja abrir os dados salvos no banco?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Retomar do banco', onPress: () => {
+        if (submitting.current) return;
+        submitting.current = true; setBusy(true); setError('');
+        const recoverKey = key;
+        void pending.current.then(() => service.recoverReceivingDraft()).then(value => {
+          if (owner.current === recoverKey) { current.current = value; setData(value); saveError.current = ''; }
+        }).catch(e => setError(e instanceof Error ? e.message : 'Não foi possível recuperar a versão do banco.'))
+          .finally(() => { submitting.current = false; setBusy(false); });
+      } },
+    ]);
   }
   const disabled = busy || mediaBusy;
   function photoContent(photo: ReceivingPhoto, unassigned = false) {
@@ -141,10 +165,13 @@ export default function Recebimento() {
   return <Screen title="Recebimento de equipamento" subtitle="Registre a chegada, a nota fiscal e as fotos do equipamento." backHref="/celula" backLabel="Voltar às células">
     {!!error && <Notice error>{error}</Notice>}
     {!data ? <Card><Notice>{loading ? 'Carregando rascunho…' : 'O rascunho não foi aberto. Seus dados não foram substituídos.'}</Notice>{!loading && <Button secondary title="Tentar novamente" onPress={() => setReload(value => value + 1)} />}</Card>
-      : data.submitted ? <Card><Notice>Este recebimento já está na fila. O protocolo foi preservado para evitar duplicações.</Notice><Button title="Consultar envio" onPress={() => router.push({ pathname: '/confirmacao', params: { id: data.id, tipo: 'Recebimento' } })} /><Button secondary title="Iniciar outro recebimento" busy={busy} onPress={() => { void startAnother(); }} /></Card>
+      : data.submitted ? <Card><Notice>{cloud?.state === 'finalized' ? 'Este recebimento já foi concluído no banco. O protocolo original foi preservado.' : 'Este recebimento já está na fila. O protocolo foi preservado para evitar duplicações.'}</Notice>{cloud?.state !== 'finalized' && <Button title="Consultar envio" onPress={() => router.push({ pathname: '/confirmacao', params: { id: data.id, tipo: 'Recebimento' } })} />}<Button secondary title="Iniciar outro recebimento" busy={busy} onPress={() => { void startAnother(); }} /></Card>
         : <>
           <View style={{ flexDirection: 'row', gap: 10 }}>{RECEIVING_STEPS.map((title, index) => <View key={title} style={{ flex: 1, gap: 8 }}><View style={{ height: 4, borderRadius: 3, backgroundColor: index <= data.step ? C.brand : C.line }} /><Text style={{ color: index === data.step ? C.primary : C.muted, fontSize: 12, lineHeight: 18, fontWeight: '700' }}>{index + 1}. {title}</Text></View>)}</View>
-          <View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>{RECEIVING_STEPS[data.step]}</Text><Badge text={saving ? 'Salvando…' : 'Rascunho local'} /></View>
+          <View style={[s.row, { justifyContent: 'space-between' }]}><Text style={s.h2}>{RECEIVING_STEPS[data.step]}</Text><Badge text={saving ? 'Salvando…' : cloud?.state === 'saved' ? 'Salvo no banco' : cloud?.state === 'conflict' ? 'Conferir versões' : 'Salvo no dispositivo'} /></View>
+          {cloud?.state === 'pending' && <Text style={s.muted}>{app.online ? 'Rascunho salvo neste dispositivo. Envio automático ao banco em andamento.' : 'Rascunho salvo neste dispositivo. Será enviado ao banco quando a conexão voltar.'}</Text>}
+          {!!cloud?.error && <Notice error>{cloud.error}</Notice>}
+          {cloud?.state === 'conflict' && <Button secondary title="Retomar versão do banco" onPress={recoverCloud} disabled={disabled || !app.online} />}
           {data.step === 0 && <Card>
             {!!clients.error && <Notice error>{clients.error}</Notice>}
             <Select label="Cliente *" value={data.cliente} options={clients.rows.map(client => ({ value: client.id, label: client.nome }))} onChange={values => update({ cliente: values[0] })} disabled={disabled} />
@@ -182,7 +209,7 @@ export default function Recebimento() {
           <View style={[s.row, { justifyContent: 'space-between' }]}>
             <Button secondary title="Voltar" disabled={data.step === 0 || disabled} onPress={() => { setError(''); update({ step: data.step - 1 }); }} />
             {data.step < 2 ? <Button title={data.step === 0 ? 'Continuar para fotos' : 'Conferir recebimento'} disabled={disabled} onPress={next} />
-              : <Button title="Solicitar abertura" busy={busy} disabled={!!saving || mediaBusy} onPress={() => { void submit(); }} />}
+              : <Button title="Solicitar abertura" busy={busy} disabled={!!saving || mediaBusy || cloud?.state === 'conflict'} onPress={() => { void submit(); }} />}
           </View>
         </>}
   </Screen>;

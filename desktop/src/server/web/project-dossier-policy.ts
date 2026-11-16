@@ -11,6 +11,7 @@ export const addProjectCommentSchema = z.object({
 }).strict();
 export const projectAttachmentSchema = z.object({
   submissionId: uuid, projeto_id: uuid, expected_project_updated_at: timestamp,
+  folder_id: uuid.nullable().optional(),
   nome: text(200).refine(value => value.length > 0), descricao: text(2000).nullable().transform(value => value || null),
   filename: z.string().min(1).max(180).regex(/^[^/\\\x00-\x1f\x7f]+$/),
   mime_type: z.enum(PROJECT_ATTACHMENT_MIME_TYPES), byte_size: z.number().int().positive().max(MAX_PROJECT_ATTACHMENT_BYTES),

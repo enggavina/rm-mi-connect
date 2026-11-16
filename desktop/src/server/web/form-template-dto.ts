@@ -46,7 +46,8 @@ export function publishedFormSnapshotDto(value: unknown) {
   if (value == null) return null;
   const raw = object(value), form = object(raw.form);
   return { form: { id: uuid.parse(form.id), titulo: form.titulo as string, descricao: form.descricao as string | null,
-    title: form.title as string | null, description: form.description as string | null, tipo: form.tipo as string | null, ativo: form.ativo as boolean },
+    title: form.title as string | null, description: form.description as string | null, tipo: form.tipo as string | null, ativo: form.ativo as boolean,
+    updated_at: typeof form.updated_at === 'string' ? form.updated_at : null },
     content: formTemplateContentSchema.parse(raw.content), source_snapshot: formSourceMetadata(raw.source_snapshot),
     version: (raw.version ?? 1) as number, family_id: (raw.family_id ?? null) as string | null };
 }

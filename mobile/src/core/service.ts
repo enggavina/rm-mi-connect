@@ -8,6 +8,8 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
+import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
+import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
@@ -37,6 +39,17 @@ class MobileService {
   private identityBusy = false;
   private mediaWork = new Set<Promise<string>>();
   private catalogRevision = 0;
+  private receivingDebounce?: ReturnType<typeof setTimeout>;
+  private receivingDrafts = new ReceivingDraftCoordinator({
+    load: async actor => { await this.database.idle(); return this.readReceivingEntry(this.database.connection(), actor); },
+    change: async (actor, change) => this.database.write(async db => {
+      const next = change(await this.readReceivingEntry(db, actor));
+      await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${actor}`, JSON.stringify(next.data));
+      await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `receiving-sync:${actor}`, JSON.stringify(next.meta));
+      return next;
+    }),
+    archive: async (actor, entry) => this.database.saveLocal(`receiving-recovery:${actor}:${entry.data.id}:${Crypto.randomUUID()}`, entry),
+  }, () => Crypto.randomUUID());
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.snapshot;
@@ -72,7 +85,7 @@ class MobileService {
       this.client.channel('rm-mobile-updates').on('postgres_changes', { event: '*', schema: 'public' }, () => this.scheduleSync()).subscribe();
       AppState.addEventListener('change', state => {
         if (state === 'active') { this.client?.auth.startAutoRefresh(); this.scheduleSync(); }
-        else this.client?.auth.stopAutoRefresh();
+        else { void this.syncReceivingDraft().catch(() => undefined); this.client?.auth.stopAutoRefresh(); }
       });
     }
     NetInfo.addEventListener(state => {
@@ -158,6 +171,106 @@ class MobileService {
   get = (table: string, id: string) => this.database.get(table, id);
   getLocal = <T = unknown>(key: string) => this.database.local<T>(key);
   async saveLocal(key: string, value: unknown) { await this.database.saveLocal(key, value); this.update({}); }
+  private async readReceivingEntry(db: ReturnType<LocalDatabase['connection']>, actor: string): Promise<ReceivingDraftEntry | null> {
+    const rows = await db.getAllAsync<{key: string; value: string}>('SELECT key,value FROM local_meta WHERE key IN (?,?)', `recebimento:${actor}`, `receiving-sync:${actor}`);
+    const raw = rows.find(row => row.key === `recebimento:${actor}`);
+    if (!raw) return null;
+    const data = restoreReceiving(JSON.parse(raw.value), '', timestamp());
+    const stored = rows.find(row => row.key === `receiving-sync:${actor}`);
+    const meta = stored ? JSON.parse(stored.value) as ReceivingDraftMeta : null;
+    return { data, meta: meta?.id === data.id ? meta : receivingDraftMeta(data) };
+  }
+  private receivingTransport(token: string): ReceivingDraftTransport {
+    const invoke = async (params: Record<string, unknown>): Promise<ReceivingDraftRemote | null> => {
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 8_000);
+      try {
+        const { data, error } = await this.supabase().rpc('rm_receiving_draft_v1', { p_operator_token: token, ...params }).abortSignal(controller.signal);
+        if (error) throw error;
+        if (data == null) return null;
+        if (typeof data.id !== 'string' || !Number.isSafeInteger(data.revision) || data.revision < 1 || !['draft', 'finalized'].includes(data.state) || data.payload?.id !== data.id) throw new Error('Resposta de rascunho inválida.');
+        return { ...data, payload: restoreReceiving(data.payload, '', timestamp()) } as ReceivingDraftRemote;
+      } finally { clearTimeout(timeout); }
+    };
+    return {
+      read: id => invoke({ p_action: 'read', p_draft_id: id }),
+      save: async (id, request) => {
+        const saved = await invoke({ p_action: 'save', p_draft_id: id, p_payload: request.payload,
+          p_expected_revision: request.expectedRevision, p_save_id: request.saveId });
+        if (!saved) throw new Error('O banco não confirmou o salvamento do rascunho.');
+        return saved;
+      },
+    };
+  }
+  async openReceivingDraft(): Promise<Receiving> {
+    const actor = this.actor(), token = this.operatorToken!;
+    const entry = await this.receivingDrafts.open(actor.operador_id, () => newReceiving(Crypto.randomUUID(), timestamp()),
+      this.snapshot.online ? this.receivingTransport(token) : undefined);
+    if (await this.operation(entry.data.id)) {
+      entry.data = { ...entry.data, submitted: true };
+      await this.database.saveLocal(`recebimento:${actor.operador_id}`, entry.data);
+    }
+    this.scheduleReceivingSync(); this.update({});
+    return entry.data;
+  }
+  async saveReceivingDraft(data: Receiving, operatorId = this.snapshot.operator?.operador_id): Promise<void> {
+    // Local writes keep the actor captured when editing began, even if the turn
+    // expires or the operator changes while SQLite is draining pending writes.
+    if (!operatorId) throw new Error('O responsável pelo rascunho não foi identificado.');
+    await this.receivingDrafts.save(operatorId, data);
+    this.update({}); this.scheduleReceivingSync();
+  }
+  async receivingDraftInfo(): Promise<ReceivingDraftMeta | null> {
+    const actor = this.snapshot.operator;
+    if (!actor) return null;
+    await this.database.idle();
+    return (await this.readReceivingEntry(this.database.connection(), actor.operador_id))?.meta ?? null;
+  }
+  async recoverReceivingDraft(): Promise<Receiving> {
+    const actor = this.actor(), token = this.operatorToken!;
+    if (!this.snapshot.online) throw new Error('Conecte para consultar a versão do banco. Seu rascunho local está salvo.');
+    await this.database.idle();
+    const local = await this.readReceivingEntry(this.database.connection(), actor.operador_id);
+    if (local && await this.operation(local.data.id)) throw new Error('Consulte o recebimento já colocado na fila antes de trocar o rascunho.');
+    const entry = await this.receivingDrafts.recover(actor.operador_id, this.receivingTransport(token));
+    this.update({}); return entry.data;
+  }
+  private scheduleReceivingSync() {
+    if (this.receivingDebounce) clearTimeout(this.receivingDebounce);
+    this.receivingDebounce = setTimeout(() => { void this.syncReceivingDraft().catch(() => undefined); }, 1_200);
+  }
+  private async syncReceivingDraft(): Promise<void> {
+    const actor = this.snapshot.operator, token = this.operatorToken;
+    if (!actor || !token || !this.snapshot.online || !this.client) return;
+    // A newly opened slot can coexist locally with an older confirmed receiving
+    // in FIFO. Let those receipts finalize first instead of treating its still
+    // active cloud draft as a permanent version conflict for the new slot.
+    if ((await this.listQueue()).some(row => row.actor_id === actor.operador_id && row.rpc_name === 'rm_submit_recebimento_v1')) return;
+    const media = await this.database.connection().getAllAsync<{local_uri: string; public_url: string}>("SELECT local_uri,public_url FROM local_media_upload_queue WHERE status='uploaded'");
+    const uploaded = new Map(media.map(row => [row.local_uri, row.public_url]));
+    try {
+      await this.receivingDrafts.sync(actor.operador_id, this.receivingTransport(token), value => replaceMedia(value, uploaded), async id => !!await this.operation(id));
+    } finally { this.update({}); }
+  }
+  async submitReceivingDraft(): Promise<string> {
+    const actor = this.actor();
+    return this.receivingDrafts.submission(actor.operador_id, async entry => {
+      if (this.snapshot.operator?.operador_id !== actor.operador_id) throw new Error('O operador mudou. Retome com o responsável antes de enviar.');
+      if (await this.operation(entry.data.id)) return entry.data.id;
+      if (this.snapshot.online) {
+        const transport = this.receivingTransport(this.operatorToken!);
+        const cloud = await transport.read(entry.data.id).catch(() => null);
+        if (cloud?.state === 'finalized') {
+          await this.receivingDrafts.open(actor.operador_id, () => entry.data, transport);
+          this.update({});
+          throw Object.assign(new Error('Este recebimento já foi concluído no banco. O protocolo original foi preservado.'), { code: 'RECEIVING_FINALIZED' });
+        }
+      }
+      if (this.snapshot.operator?.operador_id !== actor.operador_id) throw new Error('O operador mudou. Retome com o responsável antes de enviar.');
+      return this.enqueue('rm_submit_recebimento_v1', { ...receivingPayload(entry.data), p_receiving_draft_id: entry.data.id,
+        p_receiving_draft_revision: entry.meta.revision, p_receiving_draft_save_id: entry.meta.pending?.saveId ?? null,
+        p_receiving_draft_snapshot: { ...entry.data, submitted: false } }, entry.data.id, undefined, entry);
+    });
+  }
   private actor() {
     if (!this.snapshot.operator || !this.operatorToken) throw new Error('Identifique o operador antes de registrar dados.');
     if (Date.now() - Date.parse(this.snapshot.operator.authenticated_at) >= 86_400_000 || Date.parse(this.snapshot.operator.token_expires_at ?? '') < Date.now()) {
@@ -241,7 +354,7 @@ class MobileService {
       : { p_client_submission_id: draft.client_submission_id, p_projeto_id: draft.projeto_id, p_celula_id: draft.celula_id, p_form_id: draft.form_id, p_tablet_user_id: this.tabletUserId, p_tempo_de_vida: Math.max(0, Math.floor((Date.now() - Date.parse(draft.started_at)) / 1000)), p_respostas: draft.answers };
     return this.enqueue(rpc, params, draft.client_submission_id, draftId);
   }
-  async enqueue(rpc: RpcName, params: Record<string, unknown>, id = Crypto.randomUUID(), draftId?: string) {
+  async enqueue(rpc: RpcName, params: Record<string, unknown>, id = Crypto.randomUUID(), draftId?: string, receiving?: ReceivingDraftEntry) {
     if (!(RPC_NAMES as readonly string[]).includes(rpc)) throw new Error('Operação não permitida.');
     const actor = this.actor(), tokenKey = `rm.operation.${id}`, token = this.operatorToken!;
     const payload = {...params,p_operador_id:actor.operador_id};
@@ -251,10 +364,15 @@ class MobileService {
         if (already.rpc_name !== rpc || canonicalJson(JSON.parse(already.params_json)) !== canonicalJson(payload)) throw new Error('Este protocolo já foi enviado com outros dados. Consulte o envio antes de alterar o registro.');
         return;
       }
+      if (receiving) {
+        if (rpc !== 'rm_submit_recebimento_v1' || receiving.data.id !== id) throw new Error('Contexto de recebimento inválido.');
+        assertReceivingDraftUnchanged(await this.readReceivingEntry(db, actor.operador_id), receiving);
+      }
       await secureStorage.setItem(tokenKey,token);
       await db.runAsync(`INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES (?,?,?,?)`, id, rpc, JSON.stringify(payload), timestamp());
       await db.runAsync('INSERT INTO local_queue_meta(id,actor_id,token_key,draft_id) VALUES (?,?,?,?)', id, actor.operador_id, tokenKey, draftId ?? null);
       if (draftId) await db.runAsync("UPDATE local_form_drafts SET status='ready_to_sync' WHERE draft_id=?", draftId);
+      if (receiving) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${actor.operador_id}`, JSON.stringify({ ...receiving.data, submitted: true }));
     });
     await this.refreshCounts();
     this.scheduleSync();
@@ -294,6 +412,7 @@ class MobileService {
     });
     await this.database.saveLocal(`document:${destination}`, { name, mimeType: type.mimeType });
     await this.refreshCounts();
+    this.scheduleSync();
     return destination;
   }
   async documentInfo(uri: string): Promise<{name: string; mimeType?: string}> {
@@ -347,6 +466,7 @@ class MobileService {
       await db.runAsync('INSERT INTO local_queue_meta(id) VALUES (?)', id);
     });
     await this.refreshCounts();
+    this.scheduleSync();
     return destination;
   }
   async getMediaUrl(uri: string): Promise<string> {
@@ -369,7 +489,10 @@ class MobileService {
       if (data.session.user.id !== await secureStorage.getItem('rm.device.owner')) throw new Error('A sessão pertence a outra conta.');
       await this.refreshOperatorPermissions();
       let pushError: unknown;
-      try { await uploadThenMutate(() => this.pushMedia(force), () => this.pushMutations(force)); }
+      try { await uploadThenMutate(() => this.pushMedia(force), async () => {
+        await this.syncReceivingDraft().catch(() => undefined);
+        await this.pushMutations(force);
+      }); }
       catch (error) {
         pushError = error;
         if (isConnectivityError(error)) this.update({ syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, { type: 'interrupted-send' }) });
@@ -450,6 +573,13 @@ class MobileService {
           await db.runAsync("UPDATE local_rpc_outbox SET status='completed',last_error=NULL WHERE id=?", row.id);
           await db.runAsync('UPDATE local_queue_meta SET result_json=? WHERE id=?', JSON.stringify(data), row.id);
           if (row.draft_id) await db.runAsync("UPDATE local_form_drafts SET status='synced' WHERE draft_id=?", row.draft_id);
+          if (row.rpc_name === 'rm_submit_recebimento_v1') {
+            const receiving = await this.readReceivingEntry(db, row.actor_id);
+            if (receiving?.data.id === row.id) {
+              await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${row.actor_id}`, JSON.stringify({ ...receiving.data, submitted: true }));
+              await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `receiving-sync:${row.actor_id}`, JSON.stringify({ ...receiving.meta, state: 'finalized', pending: undefined, error: undefined, result: data }));
+            }
+          }
         });
         await secureStorage.removeItem(row.token_key).catch(() => undefined);
       } catch (error) {

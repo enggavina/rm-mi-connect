@@ -5,7 +5,7 @@ export const DOSSIER_FILE_ACCEPT = '.pdf,.jpg,.jpeg,.png,application/pdf,image/j
 export type DossierDocumentStatus = 'No prazo' | 'Vencido';
 export type DossierCommentAllocation = { id: string; projeto_id: string; celula_id: string; updated_at: string; retirada?: boolean; visibilidade?: boolean; name: string };
 export type DossierCommentRequest = { submissionId: string; projeto_id: string; celula_projeto_id: string; expected_project_updated_at: string; expected_allocation_updated_at: string; evento: string };
-export type DossierAttachmentRequest = { submissionId: string; projeto_id: string; expected_project_updated_at: string; nome: string; descricao: string | null; filename: string; mime_type: string; byte_size: number; sha256: string; data_vencimento: string | null; status: DossierDocumentStatus };
+export type DossierAttachmentRequest = { submissionId: string; projeto_id: string; expected_project_updated_at: string; folder_id?: string | null; nome: string; descricao: string | null; filename: string; mime_type: string; byte_size: number; sha256: string; data_vencimento: string | null; status: DossierDocumentStatus };
 
 export function dossierCommentRequest(projectId: string, projectVersion: string, allocation: DossierCommentAllocation | undefined, text: string, submissionId: string): DossierCommentRequest {
   if (!allocation || allocation.projeto_id !== projectId || allocation.retirada) throw new Error('Selecione uma célula ativa deste projeto.');
@@ -33,7 +33,7 @@ export function dossierExpiry(value: string): string | null {
 }
 
 export function dossierAttachmentRequest(projectId: string, projectVersion: string, file: Pick<File, 'name' | 'size' | 'type'>,
-  draft: { nome: string; descricao: string; status: string; expiry: string }, sha256: string, submissionId: string): DossierAttachmentRequest {
+  draft: { nome: string; descricao: string; status: string; expiry: string; folder_id?: string | null }, sha256: string, submissionId: string): DossierAttachmentRequest {
   const error = dossierFileError(file); if (error) throw new Error(error);
   const nome = draft.nome.trim(), descricao = draft.descricao.trim();
   if (!nome || nome.length > 200) throw new Error('Informe um título de até 200 caracteres para o anexo.');
@@ -42,5 +42,6 @@ export function dossierAttachmentRequest(projectId: string, projectVersion: stri
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('Não foi possível conferir o arquivo. Selecione-o novamente.');
   return freezeEngineeringRequest({ submissionId, projeto_id: projectId, expected_project_updated_at: projectVersion, nome,
     descricao: descricao || null, filename: file.name, mime_type: file.type, byte_size: file.size, sha256,
-    data_vencimento: dossierExpiry(draft.expiry), status: draft.status as DossierDocumentStatus });
+    data_vencimento: dossierExpiry(draft.expiry), status: draft.status as DossierDocumentStatus,
+    ...(draft.folder_id !== undefined ? { folder_id: draft.folder_id } : {}) });
 }

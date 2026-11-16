@@ -62,3 +62,30 @@ test('definitive conflicts remain distinct from uncertain malformed responses fo
   const malformed = await setup('administrador', { ok: true, data: { operation: 'publish_form_template', id: id(1), projeto_id: null, updated_at: version, record: {}, idempotent_replay: false } }).publishFormTemplate(body);
   assert.ok(!malformed.ok); assert.equal(malformed.code, 'UNAVAILABLE');
 });
+
+test('template deletion requires explicit confirmation, exact target/version, capability and administrator', async () => {
+  const body = { submissionId: id(9), id: id(1), kind: 'form', expected_updated_at: version, confirmed: true };
+  for (const fixture of [setup('auditor'), setup('padr_o'), setup('administrador', undefined, true)]) {
+    assert.equal((await fixture.deleteFormTemplate(body)).ok, false); assert.deepEqual(fixture.calls, []);
+    assert.deepEqual(fixture.auth, ['em.form_templates.manage']);
+  }
+  const fixture = setup();
+  for (const bad of [{ ...body, confirmed: false }, { ...body, confirmed: undefined }, { ...body, kind: 'family' }, { ...body, expected_updated_at: '' }, { ...body, actor_id: id(4) }]) {
+    assert.equal((await fixture.deleteFormTemplate(bad)).ok, false);
+  }
+  assert.deepEqual(fixture.calls, []);
+});
+
+test('deletion keeps frozen retry context and never forwards private deletion audit or source URLs', async () => {
+  const body = { submissionId: id(9), id: id(1), kind: 'form', expected_updated_at: version, confirmed: true };
+  const fixture = setup('administrador', { ok: true, data: { operation: 'delete_form_template', id: id(1), projeto_id: null,
+    updated_at: version, idempotent_replay: true, record: { id: id(1), kind: 'form', deleted: true, private_audit: draft } } });
+  const result = await fixture.deleteFormTemplate(body); assert.ok(result.ok);
+  assert.deepEqual(result.data.record, { id: id(1), kind: 'form', deleted: true });
+  assert.equal(result.data.idempotent_replay, true);
+  assert.ok((await fixture.deleteFormTemplate(body)).ok); assert.deepEqual(fixture.calls[0], fixture.calls[1]);
+  const invalid = setup('administrador', { ok: true, data: { ...result.data, record: { id: id(2), kind: 'form', deleted: true } } });
+  assert.equal((await invalid.deleteFormTemplate(body)).ok, false);
+  const used = await setup('administrador', { ok: false, code: '23503', error: 'raw' }).deleteFormTemplate(body);
+  assert.ok(!used.ok); assert.equal(used.code, '23503'); assert.match(used.error, /histórico/);
+});

@@ -203,3 +203,12 @@ test('attachment input keeps exact dates and allows only registered media types 
   assert.equal(projectAttachmentSchema.safeParse({ ...input, byte_size: MAX_PROJECT_ATTACHMENT_BYTES }).success, true);
   assert.equal(projectAttachmentSchema.safeParse({ ...input, sha256: input.sha256.toUpperCase() }).success, false);
 });
+test('folder-aware upload reserves the selected real directory and refuses an unacknowledged destination before Storage', async () => {
+  for (const folder_id of [null, id(44)]) {
+    const f = fixture({ reservePatch: result => result.ok ? { ok: true, data: { ...result.data, record: { ...result.data.record, folder_id } } } : result });
+    assert.equal((await f.handle(request({ ...input, folder_id }))).status, 200);
+    assert.equal(f.calls[0][2].folder_id, folder_id); assert.equal(f.uploads[0].input.folder_id, folder_id);
+    assert.equal('folder_id' in f.calls[1][2], false, 'Publication uses the frozen reservation instead of accepting a new folder.');
+  }
+  const missing = fixture(); assert.equal((await missing.handle(request({ ...input, folder_id: id(44) }))).status, 503); assert.equal(missing.uploads.length, 0);
+});

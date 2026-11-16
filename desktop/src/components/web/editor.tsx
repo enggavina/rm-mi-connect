@@ -13,6 +13,7 @@ import equipmentStyles from './project-equipment.module.css';
 import { equipmentTypeLabel } from './engineering-model';
 import { canChangeProjectEquipmentType, canUseProjectEquipmentBundle, projectEquipmentType } from './project-equipment-type-model';
 import { allocationStatusOptions, cellStatusLabels } from '@/server/web/cell-statuses';
+import { ProjectClientFields } from './project-client-fields';
 
 // A retry repeats the frozen request after an ambiguous transport response.
 function useSave(action: (input: unknown) => Promise<WebActionResult>, done: (result: Extract<WebActionResult, { ok: true }>) => void) {
@@ -92,8 +93,7 @@ export function ProjectEditor({ project, clients, types, users, statuses, hasAll
     <div className="tabs" aria-label="Cadastro do projeto"><button type="button" aria-pressed={tab === 'project'} onClick={() => setTab('project')}>Projeto</button><button type="button" aria-pressed={tab === 'equipment'} onClick={() => setTab('equipment')}>Equipamento</button></div>
     <fieldset disabled={save.busy || save.uncertain} style={{ margin: 0, padding: 0, border: 0 }}><div className="form-grid" style={{ display: tab === 'project' ? undefined : 'none' }}>
       <div className="field"><label htmlFor="numero">Número da OS / projeto</label><input id="numero" name="numero" defaultValue={project?.numero || ''} maxLength={100} placeholder="Atribuído pelo planejamento" /></div>
-      <div className="field"><label htmlFor="nome">Nome do projeto</label><input id="nome" name="nome" defaultValue={project?.nome || ''} maxLength={500} placeholder="Identificação do projeto" /></div>
-      <div className="field"><label htmlFor="cliente_id">Cliente</label><select id="cliente_id" name="cliente_id" defaultValue={project?.cliente_id || ''}><option value="">Selecione o cliente</option>{clients.map(row => <option key={row.id} value={row.id}>{row.nome}</option>)}</select></div>
+      <ProjectClientFields clients={clients as { id: string; nome: string | null }[]} initialName={project?.nome || ''} initialClientId={project?.cliente_id || ''} autoFill={!project} disabled={save.busy || save.uncertain} />
       <div className="field"><label htmlFor="equipment-type">Tipo de equipamento{!project || equipmentSnapshot?.binding_state === 'missing' ? ' *' : ''}</label><select id="equipment-type" value={equipmentType} required={!project || equipmentSnapshot?.binding_state === 'missing'} disabled={!usableEquipment || !canChangeType} onChange={event => setEquipmentType(event.target.value)}>
         <option value="">Não informado</option>{equipmentType && !types.some(type => type.id === equipmentType) && <option value={equipmentType} disabled>Tipo atual indisponível</option>}{types.map(type => <option key={type.id} value={type.id}>{equipmentTypeLabel(type)}</option>)}
       </select><p className="form-note">{!usableEquipment ? 'O vínculo precisa ser confirmado antes de alterar o tipo.' : !canChangeType ? 'O tipo permanece preservado porque já existe roteiro ou trabalho operacional.' : 'O tipo é vinculado ao equipamento. O roteiro inicial é copiado para este projeto e pode ser planejado independentemente.'}</p></div>

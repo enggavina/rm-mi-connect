@@ -10,7 +10,7 @@ test('comment and document queries have independent pages and retain literal sea
   const query = { comment_q: `  ${comments.search}  `, comment_author: id(2), comment_cell: id(3), comment_from: comments.from_date, comment_to: comments.to_date, comment_page: '3',
     doc_q: documents.search, doc_author: id(2), doc_source: 'docs', doc_status: 'No prazo', doc_from: documents.from_date, doc_to: documents.to_date, document_page: '2', page: '9' };
   assert.deepEqual(readDossierSearchQuery('comments', query), { filters: comments, errors: [] });
-  assert.deepEqual(readDossierSearchQuery('documents', query), { filters: documents, errors: [] });
+  assert.deepEqual(readDossierSearchQuery('documents', query), { filters: { ...documents, folder_id: null }, errors: [] });
   assert.equal(readDossierSearchQuery('comments', { page: '99' }).filters.page, 1, 'The gallery page never selects a comment page.');
   assert.equal(readDossierSearchQuery('documents', { comment_page: '99' }).filters.page, 1);
 });

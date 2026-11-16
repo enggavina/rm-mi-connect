@@ -5,3 +5,4 @@ const actions = createFormTemplateActions({ actionUser, mutate });
 export async function createFormTemplate(input: unknown) { return actions.createFormTemplate(input); }
 export async function saveFormTemplate(input: unknown) { return actions.saveFormTemplate(input); }
 export async function publishFormTemplate(input: unknown) { return actions.publishFormTemplate(input); }
+export async function deleteFormTemplate(input: unknown) { return actions.deleteFormTemplate(input); }

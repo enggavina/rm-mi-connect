@@ -29,9 +29,9 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
     revalidatePath('/engenharia', 'layout');
     revalidatePath('/cadastros');
   }
-  if (['create_form_template', 'save_form_template', 'publish_form_template'].includes(operation)) {
+  if (['create_form_template', 'save_form_template', 'publish_form_template', 'delete_form_template'].includes(operation)) {
     revalidatePath('/modelos-formularios', 'layout');
-    if (operation === 'publish_form_template') { revalidatePath('/engenharia', 'layout'); revalidatePath('/cadastros'); }
+    if (operation === 'publish_form_template' || operation === 'delete_form_template') { revalidatePath('/engenharia', 'layout'); revalidatePath('/cadastros'); }
   }
   revalidatePath('/painel'); revalidatePath('/projetos'); revalidatePath('/planejamento'); revalidatePath('/formularios');
   if (['plan_cell', 'save_project', 'save_project_with_equipment', 'save_cell_queue', 'transition_stage_approval', 'save_project_route'].includes(operation)) {
@@ -56,7 +56,7 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
     revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga');
     revalidatePath('/recebimentos'); revalidatePath('/aprovacoes', 'layout');
   }
-  if (operation === 'add_project_comment' || operation === 'edit_project_comment' || operation === 'finalize_project_attachment' || operation === 'finalize_project_attachment_version') {
+  if (operation === 'add_project_comment' || operation === 'edit_project_comment' || operation === 'finalize_project_attachment' || operation === 'finalize_project_attachment_version' || operation === 'manage_project_documents') {
     revalidatePath('/projetos', 'layout');
   }
   if (operation === 'save_project_equipment') {

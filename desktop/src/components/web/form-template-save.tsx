@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { createFormTemplate, saveFormTemplate, publishFormTemplate } from '@/server/web/form-template-actions';
+import { createFormTemplate, saveFormTemplate, publishFormTemplate, deleteFormTemplate } from '@/server/web/form-template-actions';
 import type { TemplateContent } from './form-template-model';
 import { catalogFailureState } from './catalog-model';
 import { freezeEngineeringRequest } from './engineering-model';
 
 export type TemplateAttempt = { action: 'create'; payload: { submissionId: string; id: string; source_form_id: string | null; kind: 'new' | 'copy' | 'version' } }
   | { action: 'save'; payload: { submissionId: string; id: string; expected_updated_at: string; content: TemplateContent } }
-  | { action: 'publish'; payload: { submissionId: string; id: string; expected_updated_at: string } };
+  | { action: 'publish'; payload: { submissionId: string; id: string; expected_updated_at: string } }
+  | { action: 'delete'; payload: { submissionId: string; id: string; kind: 'draft' | 'form'; expected_updated_at: string; confirmed: true } };
 export function useTemplateSave() {
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [stale, setStale] = useState(false), [unauthorized, setUnauthorized] = useState(false), [error, setError] = useState('');
   const attempt = useRef<TemplateAttempt | null>(null), inFlight = useRef(false), navigationAllowed = useRef(false);
@@ -17,8 +18,8 @@ export function useTemplateSave() {
     inFlight.current = true; setBusy(true); setError(''); attempt.current ??= freezeEngineeringRequest(value);
     try {
       const current = attempt.current;
-      const result = await (current.action === 'create' ? createFormTemplate(current.payload) : current.action === 'save' ? saveFormTemplate(current.payload) : publishFormTemplate(current.payload));
-      if (result.ok) { attempt.current = null; navigationAllowed.current = true; setUncertain(false); setBusy(false); setTimeout(() => window.location.assign(`/modelos-formularios/${current.payload.id}?resultado=${current.action === 'publish' ? 'publicado' : current.action === 'save' ? 'salvo' : 'criado'}`), 0); }
+      const result = await (current.action === 'create' ? createFormTemplate(current.payload) : current.action === 'save' ? saveFormTemplate(current.payload) : current.action === 'delete' ? deleteFormTemplate(current.payload) : publishFormTemplate(current.payload));
+      if (result.ok) { attempt.current = null; navigationAllowed.current = true; setUncertain(false); setBusy(false); setTimeout(() => window.location.assign(current.action === 'delete' ? '/modelos-formularios?resultado=excluido' : `/modelos-formularios/${current.payload.id}?resultado=${current.action === 'publish' ? 'publicado' : current.action === 'save' ? 'salvo' : 'criado'}`), 0); }
       else { const state = catalogFailureState(result); setError(result.error); setUncertain(state.uncertain); setStale(state.stale); setUnauthorized(state.unauthorized); if (!state.uncertain) attempt.current = null; }
     } catch { setUncertain(true); setError('Não foi possível confirmar o envio. Tente novamente com os mesmos dados para evitar duplicação.'); }
     finally { inFlight.current = false; setBusy(false); }

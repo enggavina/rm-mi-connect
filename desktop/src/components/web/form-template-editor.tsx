@@ -5,6 +5,7 @@ import { Icon } from './icons';
 import { blankQuestion, decimal, dimensionTypes, choiceTypes, normalizeTemplatePositions, ordered, positionBetween, templateWarnings, type TemplateChoices, type TemplateContent, type TemplateDraft, type TemplateQuestion } from './form-template-model';
 import { FormTemplatePreview } from './form-template-preview';
 import { TemplateSaveNotice, useTemplateSave } from './form-template-save';
+import { FormTemplateDelete } from './form-template-delete';
 import s from './form-template.module.css';
 
 const textOrNull = (value: string) => value === '' ? null : value;
@@ -73,5 +74,6 @@ export function FormTemplateEditor({ draft, choices }: { draft: TemplateDraft; c
     <section className={s.publish}><h2>Publicar nova versão</h2><p className={s.notes}>A publicação cria um formulário imutável com novas questões e opções. Os modelos anteriores continuam disponíveis para registros e rascunhos offline. Depois de publicar, use a Engenharia para vincular a nova versão aos roteiros desejados.</p>{dirty && <div className="notice">Salve o rascunho antes de publicar. Apenas o conteúdo já salvo será publicado.</div>}
       {!publishing ? <button type="button" className="button secondary" disabled={save.locked || dirty || warnings.length > 0} onClick={() => { setPublishing(true); setAcknowledged(false); }}>Preparar publicação</button> : <div className="notice"><strong>Publicar “{content.titulo}”?</strong><p>O formulário publicado terá sua própria sequência de numeração de registros. A publicação não substitui automaticamente formulários nos roteiros ou projetos.</p><label className="check-label"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} disabled={save.locked} />Conferi a prévia e entendo que esta publicação cria uma nova versão imutável.</label><div className={s.actions}><button type="button" className="button secondary" disabled={save.busy || save.uncertain} onClick={() => setPublishing(false)}>Continuar editando</button><button type="button" className="button" disabled={save.locked || dirty || warnings.length > 0 || !acknowledged} onClick={() => void save.send({ action: 'publish', payload: { submissionId: crypto.randomUUID(), id: draft.id, expected_updated_at: draft.updated_at } })}>Publicar versão</button></div></div>}
     </section>
+    <FormTemplateDelete id={draft.id} kind="draft" title={content.titulo} version={draft.updated_at} state={save} />
   </>;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addProjectComment } from '@/server/web/project-dossier-actions';
 import type { WebActionResult } from '@/server/web/mutation';
 import { EngineeringSaveNotice, useEngineeringSave } from './engineering-save';
@@ -8,8 +8,9 @@ import { Icon } from './icons';
 import { DOSSIER_FILE_ACCEPT, dossierAttachmentRequest, dossierCommentRequest, dossierFileError,
   type DossierAttachmentRequest, type DossierCommentAllocation, type DossierCommentRequest } from './project-dossier-model';
 import s from './project-dossier.module.css';
+import { documentDirectoryHref, documentFolderPaths, type ProjectDocumentFolder } from './project-document-folder-model';
 
-function useDossierExitGuard(dirty: boolean, pending: boolean, stale: boolean, leaving: { current: boolean }) {
+export function useDossierExitGuard(dirty: boolean, pending: boolean, stale: boolean, leaving: { current: boolean }) {
   useEffect(() => {
     if (!dirty && !pending) return;
     const unload = (event: BeforeUnloadEvent) => { if (!leaving.current) { event.preventDefault(); event.returnValue = ''; } };
@@ -71,15 +72,17 @@ async function sendAttachment(projectId: string, input: DossierAttachmentRequest
   return { ok: false, code: 'UNAVAILABLE', error: 'Não foi possível confirmar o registro do anexo. Tente novamente com o mesmo arquivo nesta tela.' };
 }
 
-export function ProjectAttachmentEditor({ projectId, projectVersion }: { projectId: string; projectVersion: string }) {
+export function ProjectAttachmentEditor({ projectId, projectVersion, folderId, folders }: { projectId: string; projectVersion: string; folderId?: string | null; folders?: ProjectDocumentFolder[] }) {
   const [open, setOpen] = useState(false), [nome, setName] = useState(''), [description, setDescription] = useState(''), [status, setStatus] = useState(''), [expiry, setExpiry] = useState('');
+  const [destination, setDestination] = useState(folderId ?? '');
+  const folderPaths = useMemo(() => documentFolderPaths(folders ?? []), [folders]), reload = documentDirectoryHref(projectId, destination || null);
   const [file, setFile] = useState<File | null>(null), [hashing, setHashing] = useState(false), [saved, setSaved] = useState(false);
   const retainedFile = useRef<File | null>(null), computing = useRef(false), leaving = useRef(false), heading = useRef<HTMLHeadingElement>(null);
   const save = useEngineeringSave<DossierAttachmentRequest>(async input => {
     const selected = retainedFile.current;
     if (!selected || selected.name !== input.filename || selected.type !== input.mime_type || selected.size !== input.byte_size) return { ok: false, code: 'UNAVAILABLE', error: 'Mantenha o arquivo selecionado para confirmar o mesmo envio.' };
     const result = await sendAttachment(projectId, input, selected); if (result.ok) { leaving.current = true; setSaved(true); } return result;
-  }, `/projetos/${projectId}?tab=documentos`);
+  }, reload);
   const locked = hashing || save.locked || saved;
   useDossierExitGuard(open && !!(nome || description || file || status || expiry), hashing || save.busy || save.uncertain, save.stale, leaving);
   useEffect(() => { if (open) heading.current?.focus(); }, [open]);
@@ -94,18 +97,19 @@ export function ProjectAttachmentEditor({ projectId, projectVersion }: { project
       try { digest = await crypto.subtle.digest('SHA-256', await selected.arrayBuffer()); }
       catch { throw new Error('Não foi possível conferir o arquivo. Selecione-o novamente e tente enviar.'); }
       const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-      await save.send(dossierAttachmentRequest(projectId, projectVersion, selected, { nome, descricao: description, status, expiry }, sha256, crypto.randomUUID()));
+      await save.send(dossierAttachmentRequest(projectId, projectVersion, selected, { nome, descricao: description, status, expiry, ...(folderId !== undefined ? { folder_id: destination || null } : {}) }, sha256, crypto.randomUUID()));
     } catch (error) { save.setError(error instanceof Error ? error.message : 'Não foi possível conferir o arquivo. Tente novamente.'); }
     finally { computing.current = false; setHashing(false); }
   }
   if (!open) return <div className={s.editor} data-project-attachment-editor><button type="button" className="button secondary" onClick={() => setOpen(true)}><Icon name="plus" size={14} />Adicionar anexo privado</button></div>;
   return <div className={s.editor} data-project-attachment-editor><form className={s.form} onSubmit={event => { event.preventDefault(); void submit(); }}>
     <h3 tabIndex={-1} ref={heading}>Novo anexo privado</h3><p>O arquivo ficará disponível aos usuários internos com acesso aos documentos deste projeto.</p>
-    <EngineeringSaveNotice state={save} reload={`/projetos/${projectId}?tab=documentos`} />
+    <EngineeringSaveNotice state={save} reload={reload} />
     {save.uncertain && <p className="notice">O arquivo selecionado e os dados deste envio continuam nesta tela. Confirme o mesmo envio antes de selecionar outro arquivo.</p>}
     {(hashing || save.busy) && <p role="status" className="notice">{hashing && !save.busy ? 'Conferindo arquivo…' : 'Enviando e registrando o anexo…'}</p>}
     {saved && <p role="status" className="notice success">Anexo registrado. Atualizando os documentos…</p>}
     <fieldset className={s.fields} disabled={locked}><div className="form-grid">
+      {folders && <div className="field span-all"><label htmlFor="dossier-attachment-folder">Salvar na pasta</label><select id="dossier-attachment-folder" value={destination} onChange={event => setDestination(event.target.value)}><option value="">Documentos (raiz do projeto)</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folderPaths.get(folder.id)}</option>)}</select></div>}
       <div className="field span-all"><label htmlFor="dossier-attachment-file">Arquivo *</label><input id="dossier-attachment-file" type="file" accept={DOSSIER_FILE_ACCEPT} required onChange={event => {
         const selected = event.target.files?.[0] ?? null, error = selected ? dossierFileError(selected) : null;
         save.setError(error ?? '');
@@ -117,6 +121,6 @@ export function ProjectAttachmentEditor({ projectId, projectVersion }: { project
       <div className="field"><label htmlFor="dossier-attachment-expiry">Data de vencimento</label><input id="dossier-attachment-expiry" type="date" value={expiry} onChange={event => setExpiry(event.target.value)} /></div>
       <div className="field span-all"><label htmlFor="dossier-attachment-description">Observação</label><textarea id="dossier-attachment-description" rows={3} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} /></div>
     </div></fieldset>
-    <div className={s.actions}><button type="button" className="button secondary" disabled={locked} onClick={() => { setName(''); setDescription(''); setStatus(''); setExpiry(''); setFile(null); retainedFile.current = null; save.setError(''); setOpen(false); }}>Cancelar anexo</button><button type="submit" className="button" disabled={hashing || save.busy || save.stale || save.unauthorized || saved || !save.uncertain && (!file || !nome.trim() || !status)}>{hashing || save.busy ? 'Enviando…' : save.uncertain ? 'Tentar confirmar envio' : 'Registrar anexo privado'}</button></div>
+    <div className={s.actions}><button type="button" className="button secondary" disabled={locked} onClick={() => { setName(''); setDescription(''); setStatus(''); setExpiry(''); setFile(null); setDestination(folderId ?? ''); retainedFile.current = null; save.setError(''); setOpen(false); }}>Cancelar anexo</button><button type="submit" className="button" disabled={hashing || save.busy || save.stale || save.unauthorized || saved || !save.uncertain && (!file || !nome.trim() || !status)}>{hashing || save.busy ? 'Enviando…' : save.uncertain ? 'Tentar confirmar envio' : 'Registrar anexo privado'}</button></div>
   </form></div>;
 }

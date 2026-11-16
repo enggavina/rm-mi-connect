@@ -325,6 +325,23 @@ test('project editor type choices include abbreviation and retain the ID without
   assert.equal(db.calls.find(call => call.table === 'rm_tipos_equipamento')?.columns, 'id,nome,sigla');
 });
 
+test('project client suggestions receive the complete paginated authorized catalogue once', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.manage']);
+  db.tables.set('rm_clientes', Array.from({ length: 1_003 }, (_, n) => ({ id: id(n + 1), nome: `Cliente ${n + 1}`, descricao: 'Excluded', codigo: 'Excluded' })));
+  const choices = await data.editorChoices('project');
+  assert.equal(choices.clients.length, 1_003);
+  assert.deepEqual(choices.clients[1_002], { id: id(1_003), nome: 'Cliente 1003' });
+  const calls = db.calls.filter(call => call.table === 'rm_clientes');
+  assert.deepEqual(calls.map(call => call.range), [[0, 499], [500, 999], [1000, 1499]]);
+  assert.ok(calls.every(call => call.columns === 'id,nome'));
+});
+
+test('an oversized project client catalogue fails explicitly instead of suggesting from a truncated list', async () => {
+  const { db, data } = setup(['em.portal.read', 'em.projects.manage']);
+  db.tables.set('rm_clientes', Array.from({ length: 20_001 }, (_, n) => ({ id: id(n + 1), nome: `Cliente ${n + 1}` })));
+  await assert.rejects(data.editorChoices('project'), /excedeu o limite/);
+});
+
 test('catalog permission alone excludes user images, and every domain still requires portal permission', async () => {
   const { db, data } = setup(['em.portal.read', 'em.catalogs.read']);
   db.tables.set('rm_users', [{ id: id(1), nome: 'Operador', foto_url: 'https://private.test/photo' }]);

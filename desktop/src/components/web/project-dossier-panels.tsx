@@ -6,6 +6,7 @@ import { ProjectAttachmentEditor, ProjectCommentEditor } from './project-dossier
 import { ProjectDossierFilters, ProjectDossierPagination } from './project-dossier-search-filters';
 import { dossierSearchActive } from './project-dossier-search-model';
 import type { DossierCommentAllocation } from './project-dossier-model';
+import { ProjectDocumentFolderExplorer } from './project-document-folder-editor';
 import s from './project-dossier.module.css';
 
 export function ProjectDocumentsPanel({ projectId, projectVersion, data, filters, error, canAdd, closed }: {
@@ -14,10 +15,11 @@ export function ProjectDocumentsPanel({ projectId, projectVersion, data, filters
   const currentFilters = data?.filters ?? filters, filtered = dossierSearchActive(currentFilters);
   return <section className="panel" data-project-documents><div className="panel-header"><h2>Documentos e anexos {data && <span className="inline-count">{data.unfiltered_total}</span>}</h2></div>
     {closed && <div className={s.readonly}><p className="notice">Este projeto está encerrado. Os documentos permanecem disponíveis para consulta.</p></div>}
-    {canAdd && !closed && <ProjectAttachmentEditor projectId={projectId} projectVersion={projectVersion} />}
+    {data?.navigation && <ProjectDocumentFolderExplorer projectId={projectId} projectVersion={projectVersion} navigation={data.navigation} documents={data.items} canEdit={canAdd && !closed} />}
+    {canAdd && !closed && data?.navigation && <ProjectAttachmentEditor projectId={projectId} projectVersion={projectVersion} folderId={data.navigation.current_folder_id} folders={data.navigation.folders} />}
     <ProjectDossierFilters projectId={projectId} kind="documents" filters={currentFilters} facets={data?.facets ?? { authors: [], statuses: [] }} error={error} />
     {!data ? <div className={s.readonly}><p className="notice" role="status">Não foi possível carregar a consulta de documentos. Confira os filtros ou recarregue a página para tentar novamente.</p></div>
-      : !data.items.length ? <Empty title={filtered ? 'Nenhum documento encontrado com esses filtros' : 'Nenhum documento vinculado'} detail={filtered ? 'Altere ou limpe os filtros para consultar os documentos e anexos preservados no projeto.' : 'Os documentos e anexos disponíveis neste projeto serão exibidos aqui.'} icon="file" />
+      : !data.items.length ? <Empty title={filtered ? 'Nenhum documento encontrado com esses filtros' : data.navigation ? 'Nenhum arquivo neste diretório' : 'Nenhum documento vinculado'} detail={filtered ? 'Altere ou limpe os filtros para consultar os documentos e anexos preservados no projeto.' : data.navigation ? 'Os arquivos deste diretório serão exibidos aqui. Use as pastas acima para consultar outros documentos.' : 'Os documentos e anexos disponíveis neste projeto serão exibidos aqui.'} icon="file" />
       : data.items.map(document => <div className="document-row" key={`${document.source}:${document.id}`} data-project-document={document.id} data-document-source={document.source}>
         <span className="document-icon"><Icon name="file" size={20} /></span><div className="document-copy"><h3 className={s.documentTitle}>{document.nome || (document.tipo_documento ? display(document.tipo_documento) : 'Documento do projeto')}</h3>
           <p>{document.source === 'docs' ? document.visivel_cliente === false ? 'Anexo interno' : 'Anexo' : 'Documento'} · {date(document.created_at)}{document.descricao ? ` · ${document.descricao}` : ''}</p>

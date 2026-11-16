@@ -9,6 +9,27 @@ const base: CorporateCapability[] = ['em.portal.read', 'em.projects.read'];
 const unavailable = () => new Error('Não foi possível consultar este histórico. Tente novamente.');
 export class DossierSearchInputError extends Error { constructor() { super('Confira os filtros e o período informado.'); } }
 function unique(values: string[]) { return new Set(values).size === values.length; }
+function directoryConsistent(page: ProjectDocumentPage, requested: { folder_id?: string | null }) {
+  if (!Object.prototype.hasOwnProperty.call(requested, 'folder_id')) return true;
+  const navigation = page.navigation;
+  if (!navigation || navigation.current_folder_id !== requested.folder_id || !unique(navigation.folders.map(folder => folder.id))) return false;
+  const folders = new Map(navigation.folders.map(folder => [folder.id, folder]));
+  const visited = new Set<string>();
+  for (const folder of navigation.folders) {
+    let current: typeof folder | undefined = folder; const seen = new Set<string>();
+    while (current && !visited.has(current.id)) {
+      if (seen.has(current.id)) return false; seen.add(current.id);
+      if (current.parent_id && !folders.has(current.parent_id)) return false;
+      current = current.parent_id ? folders.get(current.parent_id) : undefined;
+    }
+    for (const id of seen) visited.add(id);
+  }
+  const path: typeof navigation.breadcrumbs = []; let current = requested.folder_id ? folders.get(requested.folder_id) : undefined;
+  if (requested.folder_id && !current) return false;
+  while (current) { path.push(current); current = current.parent_id ? folders.get(current.parent_id) : undefined; }
+  path.reverse();
+  return path.length === navigation.breadcrumbs.length && path.every((folder, index) => Object.entries(folder).every(([key, value]) => navigation.breadcrumbs[index][key as keyof typeof folder] === value));
+}
 function consistent(page: ProjectCommentPage | ProjectDocumentPage, projectId: string, requested: { page: number; [key: string]: unknown }) {
   const { page: requestedPage, ...filters } = requested;
   return page.project_id === projectId && page.total <= page.unfiltered_total
@@ -45,7 +66,7 @@ export function createProjectDossierSearchData(client: SupabaseClient, capabilit
     const input = projectDocumentFiltersSchema.safeParse(filters); if (!input.success) throw new DossierSearchInputError();
     const data = await read('rm_web_project_documents_v1', projectId, input.data); if (data === null) return null;
     const parsed = projectDocumentPageSchema.safeParse(data);
-    if (!parsed.success || !consistent(parsed.data, projectId, input.data)
+    if (!parsed.success || !consistent(parsed.data, projectId, input.data) || !directoryConsistent(parsed.data, input.data)
       || !unique(parsed.data.items.map(item => `${item.source}:${item.id}`)) || !unique(parsed.data.facets.statuses.map(status => status.value))) throw unavailable();
     return parsed.data;
   }
