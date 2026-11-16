@@ -1,0 +1,32 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: blur(5px);
+}
+
+.content {
+  width: min(100%, 360px);
+  padding: 32px 16px;
+}
+
+.brand {
+  margin: 20px 0 0;
+  color: #637083;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  line-height: 1.5;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
