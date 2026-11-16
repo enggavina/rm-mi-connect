@@ -4,7 +4,7 @@ create function pg_temp.fd_id(n int) returns uuid language sql immutable as $$ s
 create function pg_temp.fd_check(v boolean,msg text) returns void language plpgsql as $$ begin if v is distinct from true then raise exception 'FAIL: %',msg;end if;end $$;
 create function pg_temp.fd_call(rid uuid,op text,p jsonb,cap text default 'em.form_templates.manage') returns jsonb language plpgsql as $$
 declare r jsonb;begin
- perform public.rm_sso_action_permit_v1(repeat('6',64),rid,op,p,cap);
+ perform public.rm_sso_action_permit_v1(encode(sha256(convert_to('em.test.046.form-template-delete','UTF8')),'hex'),rid,op,p,cap);
  set local role authenticated;r:=public.rm_web_mutate_v1(rid,op,p);reset role;return r;
 exception when others then reset role;raise;end $$;
 create function pg_temp.fd_payload(n int,kind text default 'form') returns jsonb language sql as $$
@@ -22,7 +22,7 @@ insert into public.rm_users(id,auth_user_id,nome,perfil) values(pg_temp.fd_id(2)
 insert into auth.sessions(id,user_id) values(pg_temp.fd_id(3),pg_temp.fd_id(1));
 insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at)
  values(pg_temp.fd_id(4),'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',pg_temp.fd_id(5),pg_temp.fd_id(2),pg_temp.fd_id(1),true,pg_temp.fd_id(2),clock_timestamp());
-select public.rm_sso_session_put_v1(repeat('6',64),pg_temp.fd_id(4),pg_temp.fd_id(3),'opaque-template-delete-fixture',clock_timestamp()+interval '45 minutes');
+select public.rm_sso_session_put_v1(encode(sha256(convert_to('em.test.046.form-template-delete','UTF8')),'hex'),pg_temp.fd_id(4),pg_temp.fd_id(3),'opaque-template-delete-fixture',clock_timestamp()+interval '45 minutes');
 update rm_private.sso_settings set require_sso=true;
 select set_config('request.jwt.claim.sub',pg_temp.fd_id(1)::text,true);
 select set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.fd_id(3),'aal','aal1')::text,true);

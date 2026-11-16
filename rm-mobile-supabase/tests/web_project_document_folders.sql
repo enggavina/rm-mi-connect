@@ -132,12 +132,12 @@ select set_config('request.jwt.claim.sub',pg_temp.df_id(1)::text,true);
 insert into auth.sessions(id,user_id) values(pg_temp.df_id(7),pg_temp.df_id(1));
 insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at)
  values(pg_temp.df_id(8),'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',pg_temp.df_id(9),pg_temp.df_id(4),pg_temp.df_id(1),true,pg_temp.df_id(4),clock_timestamp());
-select public.rm_sso_session_put_v1(repeat('f',64),pg_temp.df_id(8),pg_temp.df_id(7),'opaque-folder-fixture',clock_timestamp()+interval '45 minutes');
+select public.rm_sso_session_put_v1(encode(sha256(convert_to('em.test.044.document-folders','UTF8')),'hex'),pg_temp.df_id(8),pg_temp.df_id(7),'opaque-folder-fixture',clock_timestamp()+interval '45 minutes');
 select set_config('request.jwt.claims',jsonb_build_object('role','authenticated','aal','aal1','session_id',pg_temp.df_id(7))::text,true);
 update rm_private.sso_settings set require_sso=true;
 do $$ declare p jsonb:=pg_temp.df_payload('create_folder','{"parent_id":null,"nome":"SSO authorized"}');r jsonb;begin
  begin perform pg_temp.df_call(p,pg_temp.df_id(61));raise exception 'FAIL: SSO permit bypassed';exception when insufficient_privilege then null;end;
- perform public.rm_sso_action_permit_v1(repeat('f',64),pg_temp.df_id(61),'manage_project_documents',p,'em.projects.manage');
+ perform public.rm_sso_action_permit_v1(encode(sha256(convert_to('em.test.044.document-folders','UTF8')),'hex'),pg_temp.df_id(61),'manage_project_documents',p,'em.projects.manage');
  r:=pg_temp.df_call(p,pg_temp.df_id(61));perform pg_temp.df_check(r->>'id'=pg_temp.df_id(61)::text,'same corporate permit flow accepts document folder management');
 end $$;
 update rm_private.sso_settings set require_sso=false;
@@ -148,7 +148,7 @@ select set_config('request.jwt.claims',jsonb_build_object('role','authenticated'
 do $$ declare c jsonb;r jsonb;p jsonb;begin
  c:=public.rm_web_project_delete_snapshot_v1(pg_temp.df_id(11));perform pg_temp.df_check((c->>'can_delete')::boolean,'owned folder graph does not block legitimate project deletion');
  p:=jsonb_build_object('id',pg_temp.df_id(11),'expected_updated_at',c->'project'->>'updated_at','expected_context_version',c->>'context_version','confirm_delete',true,'justificativa','Delete local folder test fixture');
- perform public.rm_sso_action_permit_v1(repeat('f',64),pg_temp.df_id(51),'delete_project',p,'em.projects.manage');
+ perform public.rm_sso_action_permit_v1(encode(sha256(convert_to('em.test.044.document-folders','UTF8')),'hex'),pg_temp.df_id(51),'delete_project',p,'em.projects.manage');
  set local role authenticated;r:=public.rm_web_mutate_v1(pg_temp.df_id(51),'delete_project',p);reset role;
 end $$;
 select pg_temp.df_check(not exists(select 1 from public.rm_project_document_folders where projeto_id=pg_temp.df_id(11)) and not exists(select 1 from public.rm_project_document_locations where projeto_id=pg_temp.df_id(11)),'project deletion removes exclusively owned folder metadata');
