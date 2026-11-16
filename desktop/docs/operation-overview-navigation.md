@@ -21,3 +21,11 @@ Os testes de navegação conferem os 12 cards originais, os sete atalhos, as cap
 O QA com React/CSS reais cobriu nove cenários em desktop, celular e orientação horizontal. A renderização das páginas foi conferida em quatro escopos: legado, somente portal, somente documentos e somente formulários. Na home, o leitor de indicadores não é chamado; no acompanhamento, é chamado uma vez. Os artefatos ficam ignorados em `desktop/.tmp/overview-navigation-qa/`.
 
 Esta entrega não altera tabelas, migrações, usuários, recebimentos, respostas ou trabalhos offline, nem exige um novo APK.
+
+## Publicação
+
+Publicado em 16/11/2026 no [EM web](https://em-web-production.up.railway.app), consumidor **`760630a5b003cec1ab51cc9f8fd8246fbf60bae6`**, Railway **`c39f392d-712f-423f-aa65-3c5211bd5384`** com **SUCCESS**. O [CI Node 22](https://github.com/enggavina/rm-mi-connect/actions/runs/43933609545) aprovou 490 testes web, 116 mobile, dois contratos QR, tipos, build e os dois smokes. Os mesmos gates web foram aprovados localmente; não há comando independente de lint e `git diff --check` passou.
+
+A conferência de produção validou health/login 200 e seis recusas com redirecionamento ao login para Início/Acompanhamento, incluindo cookie forjado e query string. As páginas privadas preservam `no-store`. O endereço externo do Workshop respondeu 200, a API anônima continuou 401 e a proteção de iframe permaneceu ativa. Não houve login humano automatizado, uso de credenciais ou escrita de negócio na produção. A auditoria conferiu 82 JavaScripts do build local contra dez segredos locais conhecidos, sem ocorrências.
+
+Provas ignoradas: `.tmp/operation-overview-{ci-proof,deployment-proof,environment-proof,browser-secret-audit,public-checks}.json`, `.tmp/operation-overview-web-tests.log`, `desktop/.tmp/operation-overview-*-final.log` e os resultados/screenshots em `desktop/.tmp/overview-navigation-qa/`.
