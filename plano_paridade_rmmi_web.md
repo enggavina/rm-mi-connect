@@ -1,5 +1,7 @@
 # Revisão de paridade RMMI → EM e plano de implementação
 
+**Incremento publicado em 16/11/2026:** organização hierárquica de documentos, escolha de pasta no upload, autosave/retomada do recebimento mobile, identificação segura de Cliente e exclusão protegida de Modelos de Formulários. **044–046 aplicadas**, 489 testes web, 116 mobile, dois contratos QR e 40 suítes SQL aprovados; APK **1.2.8/código 11**. Portal Railway EM com `SUCCESS`, consumidor `6acadb548c8f3256ee0a0c1c3001e41ab0879aff`. [Relatório de entrega e inventário de schema](docs/relatorio_documentos_rascunhos_clientes_modelos_044_046.md). A paridade global continua em andamento e a ponte Bubble permanece desativada.
+
 Revisão: 29/10/2026. Referência funcional: aplicativo Bubble `rmmi`, versão **Live**, consultado somente para leitura. Destino: este repositório EM, Supabase `oficina-em-mi-off` e portal Railway existente. Baseline local: `bf41b04`, migrações 001–016, SSO Microsoft validado pelo titular.
 
 Revisão ampliada em andamento: [plano de execução por funcionalidade](docs/plano_execucao_paridade_rmmi.md) e [relatório da execução](docs/relatorio_entrega_paridade_rmmi.md). Inclui os contratos do Group `Gestao_projeto_redesign`, seleção de fotos/Report Building, Cadastros, Templates Word, Autorizações e Comercial. As lacunas e a cobertura das leituras Live são registradas explicitamente; esta revisão não declara paridade completa por ter acrescentado novas telas.
@@ -137,7 +139,7 @@ Os pacotes são dependências e critérios de conclusão, não uma promessa de d
 ## Regras transversais da execução
 
 - Bubble será fonte de consulta nesta revisão. O desenvolvimento ocorre no EM; nenhuma alteração do Bubble é necessária para os pacotes 1A/1B.1.
-- Migrações novas e aditivas; não editar migrações já aplicadas (atualmente 001–033 e 035–043; 034 não teve SQL). Novas mutações mantêm o envelope web e a permissão SSO de uso único, com UUID, conteúdo e sessão vinculados. Nenhum JWT administrativo vai ao navegador.
+- Migrações novas e aditivas; não editar migrações já aplicadas (atualmente 001–033 e 035–046; 034 não teve SQL). Novas mutações mantêm o envelope web e a permissão SSO de uso único, com UUID, conteúdo e sessão vinculados. Nenhum JWT administrativo vai ao navegador.
 - Registrar a nova capacidade na Central separadamente da concessão. Atualizar primeiro o contrato EM que aceita a capacidade; depois conceder aos administradores autorizados. Em 29/10/2026, o usuário também autorizou `softdev05` como administrador do EM, junto de `mgavina`; isso não concede administração global da Central ou de outros aplicativos.
 - Após cada desenvolvimento validado, publicar em produção e confirmar o deploy, conforme instrução permanente do usuário. Falhas de validação devem ser corrigidas antes da publicação.
 - Não apagar cadastro referenciado por projeto, modelo, usuário, foto ou outro histórico. Exclusão não pode causar cascatas silenciosas ou invalidar o offline. Não limpar dados reais para testar.

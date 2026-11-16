@@ -1,6 +1,8 @@
 # Relatório de execução — revisão de paridade RMMI
 
-Revisão iniciada em 29/10/2026; atualização de entrega em 12/11/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
+**Entrega de 16/11/2026 publicada:** pastas do projeto, autosave/retomada do recebimento, Cliente automático seguro e exclusão confirmada de modelos sem uso. Migrações **044–046 aplicadas**, Railway `97e1e44a-fff0-453e-ba0e-18447662ab5c` com **SUCCESS** e consumidor `6acadb548c8f3256ee0a0c1c3001e41ab0879aff`. 489 testes web, 116 mobile, dois contratos QR, 40 suítes SQL e CI aprovados. APK interno 1.2.8/código 11, sem alteração em dispositivos. [Relatório completo](relatorio_documentos_rascunhos_clientes_modelos_044_046.md).
+
+Revisão iniciada em 29/10/2026; atualização de entrega em 16/11/2026. Complemento ao [plano de execução](plano_execucao_paridade_rmmi.md) e ao [plano geral](../plano_paridade_rmmi_web.md). A recriação continua no mesmo repositório, no Supabase `oficina-em-mi-off` e no Railway EM.
 
 ## Situação
 
