@@ -1,5 +1,7 @@
 # SSO corporativo do EM
 
+**Gêmeo digital interno — 16/11/2026:** `/gemeo-digital` e sua API usam a sessão do EM, sem segunda lista nominal ou login. Exigem `em.portal.read`, `em.projects.read` e `em.planning.read`. A identidade de Igor Nascimento foi confirmada como `softdev05@mielectric.com.br`, com os vínculos corporativo/web ativos e as 18 capacidades EM existentes. Nenhuma nova concessão ou identidade foi criada; o cadastro mobile legado permanece preservado. [Contrato e publicação](digital-twin.md).
+
 O portal usa Microsoft Azure pelo Supabase corporativo da Central de Acessos (`kxoriwvzmxhatzqcgnht`), aplicativo `em`. A base operacional continua no Supabase EM (`ellpxfbsrbhblyizvbbk`). O endereço do portal é https://em-web-production.up.railway.app. A Central administra concessões; sua interface atual não oferece um lançador de aplicativos.
 
 ## Identidades autorizadas

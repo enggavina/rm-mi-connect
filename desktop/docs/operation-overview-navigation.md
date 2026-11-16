@@ -1,5 +1,7 @@
 # Início, acompanhamento e gêmeo digital
 
+**Atualização de 16/11/2026 — 048:** o gêmeo digital foi incorporado ao portal em `/gemeo-digital`, com o mesmo login, Supabase EM e serviço Railway. O menu e o botão de Acompanhamento abrem a rota interna e exigem as leituras de portal, projetos e planejamento. O Igor (`softdev05`) já possui essas capacidades e o vínculo web ativo. [Integração, critérios e validação](digital-twin.md). A descrição do Workshop externo abaixo registra a entrega anterior e foi substituída no menu pela integração interna; o outro serviço não foi alterado.
+
 O Início (`/painel`) concentra os 12 cards de trabalho existentes. Indicadores, projetos atualizados recentemente e pendências foram movidos para **Acompanhamento da operação** (`/acompanhamento`), acessível pelo menu lateral. O Início não chama mais `getOverview`; o atalho dessa consulta tem prefetch desabilitado para não antecipar as agregações.
 
 A nova página reutiliza o mesmo leitor, contagens e limites anteriores: consultas com JWT/RLS, contagens sem carregar registros completos e até oito registros recentes por consulta. As capacidades atuais de projetos, formulários, planejamento e documentos continuam independentes. Quem possui somente acesso ao portal recebe uma explicação de ausência de indicadores, sem valores fictícios nem acesso adicional.
