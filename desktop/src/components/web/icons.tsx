@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 const paths = {
   dashboard: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'],
+  chart: ['M4 3v17h17', 'm7 14 4-4 4 3 5-8'],
+  cube: ['m12 2 9 5v10l-9 5-9-5V7Z', 'm3 7 9 5 9-5', 'M12 12v10'],
   folder: ['M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'],
   board: ['M4 4h16v16H4z', 'M9 4v16', 'M15 4v16', 'M6 8h1', 'M11 12h2', 'M17 8h1'],
   calendar: ['M4 5h16v15H4z', 'M8 3v4', 'M16 3v4', 'M4 10h16', 'M8 14h3', 'M13 17h3'],

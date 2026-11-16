@@ -14,7 +14,7 @@ export function HomeModules({ capabilities }: { capabilities?: readonly Corporat
   if (!groups.length) return null;
   return <div className={s.groups} data-home-modules>{groups.map(group => <section className={s.group} key={group.label} aria-label={group.label}>
     <div className={s.heading}><div><h2>{group.label}</h2><p>{descriptions[group.label]}</p></div><span>{group.items.length} {group.items.length === 1 ? 'funcionalidade' : 'funcionalidades'}</span></div>
-    <div className={s.cards}>{group.items.map(item => <a className={s.card} href={item.href} key={item.href} data-home-module={item.href}>
+    <div className={s.cards}>{group.items.map(item => <a className={s.card} href={item.href} key={item.href} data-home-module={item.href} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined} aria-label={item.external ? `${item.label} (abre em nova aba)` : undefined}>
       <span className={s.icon}><Icon name={item.icon} size={22} /></span><div className={s.copy}><h3>{item.label}</h3><p>{item.description}</p></div><span className={s.arrow}><Icon name="arrow" size={17} /></span>
     </a>)}</div>
   </section>)}</div>;

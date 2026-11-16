@@ -36,8 +36,12 @@ export function PortalShell({ profile, capabilities, children }: { profile: { no
     <aside ref={sidebar} id="navegacao-principal" className={`sidebar ${open ? 'is-open' : ''}`} aria-label="Navegação principal" role={open ? 'dialog' : undefined} aria-modal={open ? true : undefined}>
       <Link href="/painel" className="sidebar-brand" onClick={() => setOpen(false)}><span className="brand-symbol"><Image src="/mi-electric-brasil.svg" alt="" width={43} height={43} priority /></span><span><strong>EM</strong><small>MI Electric Brasil</small></span></Link>
       <div className={s.sidebarHeading}><div className="sidebar-label">Atalhos</div><button className={`icon-button ${s.sidebarClose}`} type="button" aria-label="Fechar menu" onClick={closeNavigation}><Icon name="close" size={17} /></button></div>
-      <nav aria-label="Atalhos do EM">{shortcuts.map(item => <Link key={item.href} href={item.href} aria-current={current?.href === item.href ? 'page' : undefined} onClick={() => setOpen(false)}><Icon name={item.icon} /><span>{item.label}</span>{current?.href === item.href && <span className="nav-mark" />}</Link>)}</nav>
-      <p className={s.sidebarHint}>Todas as funcionalidades estão nos cards da página inicial.</p>
+      <nav aria-label="Atalhos do EM">{shortcuts.map(item => {
+        const content = <><Icon name={item.icon} /><span>{item.label}</span>{item.external ? <Icon name="external" size={13} /> : current?.href === item.href && <span className="nav-mark" />}</>;
+        return item.external ? <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" aria-label={`${item.label} (abre em nova aba)`} onClick={closeNavigation}>{content}</a>
+          : <Link key={item.href} href={item.href} prefetch={item.href === '/acompanhamento' ? false : undefined} aria-current={current?.href === item.href ? 'page' : undefined} onClick={() => setOpen(false)}>{content}</Link>;
+      })}</nav>
+      <p className={s.sidebarHint}>Os cards do Início reúnem os módulos de trabalho.</p>
       <div className="sidebar-note"><span className="connection-dot" /><span>Uma operação conectada<small>Web e mobile na mesma base</small></span></div>
       <div className="sidebar-bottom"><span className="avatar">{initials || 'EM'}</span><span className="user-copy"><strong>{profile.nome}</strong><small>{profile.cargo || (profile.perfil === 'administrador' ? 'Administrador' : 'Equipe MI Electric')}</small></span><form action="/auth/logout" method="post"><button className="icon-button" aria-label="Sair da plataforma" title="Sair da plataforma"><Icon name="logout" size={18} /></button></form></div>
     </aside>

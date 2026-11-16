@@ -1,17 +1,20 @@
 import type { CorporateCapability } from '@/server/web/sso-policy';
 import type { IconName } from './icons';
 
-export type PortalNavigationItem = { href: string; label: string; description: string; icon: IconName; capability: CorporateCapability; shortcutOrder?: number };
+export type PortalNavigationItem = { href: string; label: string; description: string; icon: IconName; capability: CorporateCapability; shortcutOrder?: number; home?: false; external?: true };
+export const WORKSHOP_3D_URL = 'https://workshop-production-46d3.up.railway.app';
 const groups: { label: string; items: PortalNavigationItem[] }[] = [
   { label: 'Operação', items: [
-    { href: '/painel', label: 'Início', description: 'Encontre as funcionalidades e acompanhe a operação.', icon: 'dashboard', capability: 'em.portal.read', shortcutOrder: 0 },
-    { href: '/projetos', label: 'Projetos', description: 'Equipamentos, células, formulários, fotos e documentos de cada projeto.', icon: 'folder', capability: 'em.projects.read', shortcutOrder: 1 },
+    { href: '/painel', label: 'Início', description: 'Encontre as funcionalidades da oficina.', icon: 'dashboard', capability: 'em.portal.read', shortcutOrder: 0, home: false },
+    { href: '/acompanhamento', label: 'Acompanhamento da operação', description: 'Consulte os indicadores, projetos recentes e pendências da operação.', icon: 'chart', capability: 'em.portal.read', shortcutOrder: 1, home: false },
+    { href: WORKSHOP_3D_URL, label: 'Gêmeo digital 3D', description: 'Abra o dashboard Workshop 3D da oficina em uma nova aba.', icon: 'cube', capability: 'em.portal.read', shortcutOrder: 2, home: false, external: true },
+    { href: '/projetos', label: 'Projetos', description: 'Equipamentos, células, formulários, fotos e documentos de cada projeto.', icon: 'folder', capability: 'em.projects.read', shortcutOrder: 3 },
     { href: '/recebimentos', label: 'Recebimentos', description: 'Confira os equipamentos recebidos e as pendências para o planejamento.', icon: 'download', capability: 'em.projects.read' },
-    { href: '/formularios', label: 'Formulários e aprovações', description: 'Consulte as respostas e avalie os registros enviados pela equipe.', icon: 'clipboard', capability: 'em.forms.read', shortcutOrder: 3 },
-    { href: '/aprovacoes', label: 'Aprovações de etapas', description: 'Consulte, libere e avalie as etapas conforme sua autorização.', icon: 'check', capability: 'em.approvals.read', shortcutOrder: 4 },
+    { href: '/formularios', label: 'Formulários e aprovações', description: 'Consulte as respostas e avalie os registros enviados pela equipe.', icon: 'clipboard', capability: 'em.forms.read', shortcutOrder: 5 },
+    { href: '/aprovacoes', label: 'Aprovações de etapas', description: 'Consulte, libere e avalie as etapas conforme sua autorização.', icon: 'check', capability: 'em.approvals.read', shortcutOrder: 6 },
   ] },
   { label: 'Planejamento', items: [
-    { href: '/cronograma', label: 'Cronograma', description: 'Organize o roteiro do projeto e acompanhe cada célula e seus prazos.', icon: 'calendar', capability: 'em.planning.read', shortcutOrder: 2 },
+    { href: '/cronograma', label: 'Cronograma', description: 'Organize o roteiro do projeto e acompanhe cada célula e seus prazos.', icon: 'calendar', capability: 'em.planning.read', shortcutOrder: 4 },
     { href: '/planejamento', label: 'Planejamento', description: 'Consulte as alocações e acompanhe responsáveis, horas e bloqueios.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/fila', label: 'Fila da célula', description: 'Defina a prioridade e a sequência dos trabalhos de uma célula.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/carga', label: 'Carga planejada', description: 'Veja horas informadas, bloqueios e prazos por célula.', icon: 'clock', capability: 'em.planning.read' },
@@ -29,9 +32,9 @@ export function portalNavigation(capabilities?: readonly CorporateCapability[]) 
     .filter(group => group.items.length > 0);
 }
 
-/** Every module remains reachable from the home, independently of shortcuts. */
+/** Work modules stay on the home; monitoring has dedicated sidebar entries. */
 export function portalHomeModules(capabilities?: readonly CorporateCapability[]) {
-  return portalNavigation(capabilities).map(group => ({ ...group, items: group.items.filter(item => item.href !== '/painel') }))
+  return portalNavigation(capabilities).map(group => ({ ...group, items: group.items.filter(item => item.home !== false) }))
     .filter(group => group.items.length > 0);
 }
 
@@ -42,5 +45,5 @@ export function portalShortcuts(capabilities?: readonly CorporateCapability[]) {
 }
 
 export function activePortalItem(path: string, items: readonly PortalNavigationItem[]) {
-  return items.filter(item => path === item.href || path.startsWith(item.href + '/')).sort((a, b) => b.href.length - a.href.length)[0];
+  return items.filter(item => !item.external && (path === item.href || path.startsWith(item.href + '/'))).sort((a, b) => b.href.length - a.href.length)[0];
 }
