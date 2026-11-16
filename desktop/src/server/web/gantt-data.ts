@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pageNumber, searchTerm, uuid } from './policy';
 import { GANTT_MAX_ITEMS, GANTT_MAX_LINKS, ganttFiltersSchema, ganttRevision, type GanttFilters } from './gantt-policy';
 import type { CorporateCapability } from './sso-policy';
+import { ganttProjectSettingsSchema } from './gantt-settings-policy';
 
 const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
@@ -28,6 +29,7 @@ export const ganttSnapshotSchema = z.object({
   as_of: timestamp, filters: ganttFiltersSchema, total: z.number().int().nonnegative(), complete: z.boolean(),
   items: z.array(itemSchema).max(GANTT_MAX_ITEMS), projects: z.array(projectSchema).max(GANTT_MAX_ITEMS),
   cells: z.array(cellSchema).max(GANTT_MAX_ITEMS), links: z.array(linkSchema).max(GANTT_MAX_LINKS), baseline: baselineSchema.nullable(),
+  settings: z.array(ganttProjectSettingsSchema).max(GANTT_MAX_ITEMS).default([]),
 });
 export type GanttSnapshot = z.infer<typeof ganttSnapshotSchema>;
 export type GanttItem = GanttSnapshot['items'][number];
@@ -61,9 +63,11 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
     const data = parsed.data;
     if (data.filters.project_id !== filters.project_id || data.filters.cell_id !== filters.cell_id || data.filters.include_closed !== filters.include_closed
       || (data.complete ? data.total > GANTT_MAX_ITEMS || data.items.length !== data.total
-        : data.total <= GANTT_MAX_ITEMS || !!(data.items.length || data.projects.length || data.cells.length || data.links.length || data.baseline))) throw unavailable();
+        : data.total <= GANTT_MAX_ITEMS || !!(data.items.length || data.projects.length || data.cells.length || data.links.length || data.settings.length || data.baseline))) throw unavailable();
     const items = new Map(data.items.map(item => [key(item.id), item])), projects = new Map(data.projects.map(project => [key(project.id), project]));
     const cells = new Set(data.cells.map(cell => key(cell.id)));
+    if (new Set(data.settings.map(settings => key(settings.projeto_id))).size !== data.settings.length
+      || data.settings.some(settings => !projects.has(key(settings.projeto_id)))) throw unavailable();
     if (items.size !== data.items.length || projects.size !== data.projects.length || cells.size !== data.cells.length
       || filters.project_id && data.projects.some(project => key(project.id) !== key(filters.project_id!))
       || filters.cell_id && data.cells.some(cell => key(cell.id) !== key(filters.cell_id!))
@@ -88,6 +92,7 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
       numero: data.items.find(item => key(item.projeto_id) === key(project.id))?.numero_projeto ?? null,
       nome: null, planned_start: null, planned_end: null, contract_date: null, renegotiated_date: null,
     }));
+    if (!allowed('em.projects.read')) data.settings = data.settings.map(settings => ({ ...settings, milestones: [] }));
     return data;
   }
   async function listGanttProjects(query?: string, requestedPage?: number | string): Promise<GanttProjectChoices> {

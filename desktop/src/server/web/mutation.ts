@@ -41,7 +41,7 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
   if (operation === 'review_form') revalidatePath(`/formularios/${result.id}`);
   if (operation === 'transition_stage_approval') { revalidatePath('/aprovacoes'); revalidatePath(`/aprovacoes/${result.id}`); }
   if (operation === 'save_cell_queue') revalidatePath('/projetos', 'layout');
-  if (operation === 'save_gantt_plan') {
+  if (operation === 'save_gantt_plan' || operation === 'save_gantt_settings') {
     revalidatePath('/cronograma'); revalidatePath('/projetos', 'layout');
     revalidatePath('/planejamento/fila'); revalidatePath('/planejamento/carga'); revalidatePath('/acompanhamento');
   }

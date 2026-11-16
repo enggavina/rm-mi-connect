@@ -78,6 +78,21 @@
 .issueList { margin: 8px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; }
 .issueList li { margin: 6px 0; font-size: 12px; }
 .noResults { padding: 35px 20px; font-size: 13px; color: var(--muted); }
+.analysis { margin-bottom: 18px; padding: 18px; }
+.analysisHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; flex-wrap: wrap; }
+.analysisHeading h3 { margin: 0; font-size: 15px; }.analysisHeading h3 small { color: var(--brand-strong); font-size: 11px; }
+.analysisHeading p,.analysisHeading label { font-size: 12px; color: var(--muted); line-height: 1.6; }.analysisHeading label { max-width: 330px; }
+.analysisMetrics { display: flex; gap: 15px 28px; flex-wrap: wrap; padding: 15px 0; margin-bottom: 12px; border-block: 1px solid var(--line); }
+.analysisMetrics span { font-size: 11px; color: var(--muted); }.analysisMetrics strong { display: block; margin-top: 5px; font-size: 14px; color: var(--ink); }
+.analysis summary { font-size: 12px; cursor: pointer; font-weight: 600; }.analysisTable { max-height: 380px; overflow: auto; margin-top: 12px; }
+.analysisTable table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }.analysisTable th,.analysisTable td { padding: 10px; text-align: left; border-bottom: 1px solid var(--line); }
+.stageLink { border: 0; color: var(--brand-strong); background: transparent; font: inherit; padding: 3px 0; cursor: pointer; text-align: left; text-decoration: underline; }
+.criticalBadge,.riskBadge { display: block; font-size: 10px; color: #623f91; }.riskBadge { color: #ab3820; }
+.stageAnalysis { border-block: 1px solid var(--line); padding-bottom: 12px; }.stageAnalysis h4 { margin-top: 14px; }.stageAnalysis dl { font-size: 11px; }.stageAnalysis dt { color: var(--muted); margin-top: 8px; }.stageAnalysis dd { margin: 3px 0 0; }
+.bar.critical { outline: 2px solid #654388; outline-offset: 3px; }.legend .criticalLegend { background: transparent; outline: 2px solid #654388; outline-offset: 1px; }
+.legend .nonWorkingLegend { background: #e7e9ed; }.nonWorking { position: absolute; top: 0; bottom: 0; background: #65718212; pointer-events: none; }
+.marker { position: absolute; top: 48px; z-index: 1; border-left: 1px dashed #627184; pointer-events: none; color: #627184; }.marker span { position: absolute; top: 3px; left: -6px; font-size: 11px; }.customMarker { color: #8e3864; border-color: #8e3864; }
+.markerList { border-top: 1px solid var(--line); padding: 12px 18px; font-size: 12px; }.markerList summary { cursor: pointer; font-weight: 600; }.markerList ul { list-style: none; padding: 0; max-height: 240px; overflow: auto; }.markerList li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 0; }.markerList small { color: var(--muted); }
 @media (min-width: 1550px) { .workspace { --label-width: 285px; }.axis,.row,.group { grid-template-columns: 285px minmax(0,1fr); } }
 @media (max-width: 1100px) { .withDetails { grid-template-columns: minmax(0,1fr); }.detail { position: static; border-left: 0; border-top: 1px solid var(--line); max-height: none; }.detail fieldset { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14px; } }
 @media (max-width: 600px) { .workspace { --label-width: 175px; }.toolbar { padding: 14px; gap: 10px; }.toolbar label { flex: 1; min-width: 120px; }.period { width: 100%; }.period strong { font-size: 11px; }.axis,.row,.group { grid-template-columns: 175px minmax(0,1fr); }.rowTitle { padding-left: 9px; }.rowTitle strong { font-size: 11px; }.detail fieldset { display: block; }.saveBar { padding: 14px; }.scopeNav a { padding: 9px; font-size: 12px; }.projectDates { gap: 13px; }.chartScroll { max-height: 520px; } }
