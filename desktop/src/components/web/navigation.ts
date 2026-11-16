@@ -1,13 +1,13 @@
 import type { CorporateCapability } from '@/server/web/sso-policy';
 import type { IconName } from './icons';
 
-export type PortalNavigationItem = { href: string; label: string; description: string; icon: IconName; capability: CorporateCapability; shortcutOrder?: number; home?: false; external?: true };
-export const WORKSHOP_3D_URL = 'https://workshop-production-46d3.up.railway.app';
+export type PortalNavigationItem = { href: string; label: string; description: string; icon: IconName; capability: CorporateCapability; requires?: readonly CorporateCapability[]; shortcutOrder?: number; home?: false; external?: true };
+export const WORKSHOP_3D_PATH = '/gemeo-digital';
 const groups: { label: string; items: PortalNavigationItem[] }[] = [
   { label: 'Operação', items: [
     { href: '/painel', label: 'Início', description: 'Encontre as funcionalidades da oficina.', icon: 'dashboard', capability: 'em.portal.read', shortcutOrder: 0, home: false },
     { href: '/acompanhamento', label: 'Acompanhamento da operação', description: 'Consulte os indicadores, projetos recentes e pendências da operação.', icon: 'chart', capability: 'em.portal.read', shortcutOrder: 1, home: false },
-    { href: WORKSHOP_3D_URL, label: 'Gêmeo digital 3D', description: 'Abra o dashboard Workshop 3D da oficina em uma nova aba.', icon: 'cube', capability: 'em.portal.read', shortcutOrder: 2, home: false, external: true },
+    { href: WORKSHOP_3D_PATH, label: 'Gêmeo digital 3D', description: 'Visualize a oficina em 3D com os projetos e células do EM.', icon: 'cube', capability: 'em.planning.read', requires: ['em.projects.read', 'em.portal.read'], shortcutOrder: 2, home: false },
     { href: '/projetos', label: 'Projetos', description: 'Equipamentos, células, formulários, fotos e documentos de cada projeto.', icon: 'folder', capability: 'em.projects.read', shortcutOrder: 3 },
     { href: '/recebimentos', label: 'Recebimentos', description: 'Confira os equipamentos recebidos e as pendências para o planejamento.', icon: 'download', capability: 'em.projects.read' },
     { href: '/formularios', label: 'Formulários e aprovações', description: 'Consulte as respostas e avalie os registros enviados pela equipe.', icon: 'clipboard', capability: 'em.forms.read', shortcutOrder: 5 },
@@ -28,7 +28,7 @@ const groups: { label: string; items: PortalNavigationItem[] }[] = [
 ];
 
 export function portalNavigation(capabilities?: readonly CorporateCapability[]) {
-  return groups.map(group => ({ ...group, items: group.items.filter(item => capabilities === undefined || capabilities.includes(item.capability)) }))
+  return groups.map(group => ({ ...group, items: group.items.filter(item => capabilities === undefined || capabilities.includes(item.capability) && (item.requires ?? []).every(capability => capabilities.includes(capability))) }))
     .filter(group => group.items.length > 0);
 }
 

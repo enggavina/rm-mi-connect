@@ -1,0 +1,17 @@
+.em-workshop .pcp-cell-tag{--cell-color:var(--muted);appearance:none;display:flex;align-items:center;gap:4px;min-width:66px;max-width:148px;padding:4px 5px 4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--surface);box-shadow:0 2px 4px rgb(14 23 36 / 8%);color:var(--text);font-family:inherit;font-size:9px;line-height:1.13;text-align:left;cursor:pointer;white-space:normal;transition:background .15s,border-color .15s}
+.em-workshop .pcp-cell-tag .pcp-cell-name{font-weight:650;max-width:108px;overflow-wrap:normal}
+.em-workshop .pcp-cell-tag .pcp-cell-dot{height:4px;width:4px;flex:none;border-radius:50%;background:var(--cell-color)}
+.em-workshop .pcp-cell-tag b{display:grid;place-items:center;align-self:center;min-width:17px;min-height:17px;margin-left:2px;padding:1px 3px;border-radius:3px;background:var(--info-soft);color:var(--info);font-size:9px;font-weight:750;font-variant-numeric:tabular-nums}
+.em-workshop .pcp-cell-tag.is-empty{background:var(--surface-soft);color:var(--muted);border-color:var(--line)}
+.em-workshop .pcp-cell-tag.is-empty b{background:var(--surface);color:var(--muted)}
+.em-workshop .pcp-cell-tag:hover{background:var(--surface);border-color:var(--brand-strong)}
+.em-workshop .pcp-cell-tag.is-selected{background:var(--ink);border-color:var(--brand);color:var(--surface);box-shadow:0 3px 9px rgb(14 23 36 / 18%)}
+.em-workshop .pcp-cell-tag.is-selected b{background:var(--brand-soft);color:var(--brand-strong)}
+.em-workshop .pcp-cell-tag:focus-visible{outline:2px solid var(--brand-strong);outline-offset:2px}
+.em-workshop .pcp-cell-tag.is-contextual{max-width:220px;min-width:110px;font-size:11px;padding:7px 10px;background:var(--surface);color:var(--ink);border-color:var(--line);box-shadow:0 4px 14px rgb(14 23 36 / 15%);pointer-events:none}
+.em-workshop .pcp-cell-tag.is-contextual .pcp-cell-name{max-width:170px}
+.em-workshop .pcp-cell-tag.is-contextual b{background:var(--info-soft);color:var(--info)}
+.em-workshop .pcp-cell-tag.is-contextual.is-selected{background:var(--ink);color:var(--surface);border-color:var(--brand)}
+.em-workshop .pcp-cell-tag.is-contextual.is-selected b{background:var(--brand-soft);color:var(--brand-strong)}
+@media(max-width:900px){.em-workshop .pcp-cell-tag{font-size:8px;max-width:124px;gap:3px;padding:3px 4px}.em-workshop .pcp-cell-tag b{font-size:8px;min-width:15px;min-height:15px}.em-workshop .pcp-cell-tag .pcp-cell-name{max-width:91px}}
+@media(prefers-reduced-motion:reduce){.em-workshop .pcp-cell-tag{transition:none}}

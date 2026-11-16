@@ -60,6 +60,8 @@ globalThis.fetch = (input, init) => {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     assert.equal(ready, true, 'Servidor não iniciou em 30 segundos.');
+    assert.equal((await request('/api/web/workshop')).status, 401);
+    assert.equal((await request('/api/web/workshop', { headers: { Cookie: 'em-sso-session=forged' } })).status, 401);
     const login = await request('/login'), html = await login.text();
     assert.equal(login.status, 200); noStore(login);
     assert.equal(login.headers.get('referrer-policy'), 'same-origin', 'Native login POST must retain its first-party Origin header.');
@@ -68,7 +70,7 @@ globalThis.fetch = (input, init) => {
     assert.doesNotMatch(html, /name="(?:email|password)"/);
 
     for (const headers of [{}, { Cookie: 'em-sso-session=forged' }] as Record<string, string>[]) {
-      for (const path of ['/', '/painel', '/acompanhamento', '/projetos', '/planejamento', '/cronograma', '/cronograma?view=gantt&scope=general', '/cronograma?view=gantt&scope=project&project=00000000-0000-4000-8000-000000000001', '/cronograma?view=gantt&scope=cell&cell=00000000-0000-4000-8000-000000000001', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/types/00000000-0000-4000-8000-000000000001/editar',
+      for (const path of ['/', '/painel', '/acompanhamento', '/gemeo-digital', '/projetos', '/planejamento', '/cronograma', '/cronograma?view=gantt&scope=general', '/cronograma?view=gantt&scope=project&project=00000000-0000-4000-8000-000000000001', '/cronograma?view=gantt&scope=cell&cell=00000000-0000-4000-8000-000000000001', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/types/00000000-0000-4000-8000-000000000001/editar',
         '/engenharia', '/engenharia/novo', '/engenharia/00000000-0000-4000-8000-000000000001', '/engenharia/00000000-0000-4000-8000-000000000001/editar',
         '/engenharia/titulos', '/engenharia/titulos/novo', '/engenharia/titulos/00000000-0000-4000-8000-000000000001/editar',
         '/modelos-formularios', '/modelos-formularios/novo', '/modelos-formularios/00000000-0000-4000-8000-000000000001',

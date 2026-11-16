@@ -72,6 +72,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_form_template_delete_concurrency.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_gantt_planning.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_gantt_planning_concurrency.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'web_workshop_snapshot.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile

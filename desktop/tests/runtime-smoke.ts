@@ -45,6 +45,8 @@ async function main() {
     const health = await request('/api/health');
     assert.equal(health.status, 200); assert.equal((await health.json()).status, 'ok');
 
+    assert.equal((await request('/api/web/workshop')).status, 401);
+    assert.equal((await request('/api/web/workshop', { headers: { Cookie: 'em-sso-session=forged' } })).status, 401);
     const login = await request('/login'), html = await login.text();
     assert.equal(login.status, 200);
     assert.match(html, /MI Electric Brasil/); assert.match(html, /\bEM\b/);
@@ -57,7 +59,7 @@ async function main() {
     const cssUrl = new URL(css, origin); assert.equal(cssUrl.origin, origin);
     assert.equal((await request(cssUrl.pathname + cssUrl.search)).status, 200, 'CSS ausente no standalone.');
 
-    for (const path of ['/', '/painel', '/acompanhamento', '/projetos', '/planejamento', '/cronograma', '/cronograma?view=gantt&scope=general', '/cronograma?view=gantt&scope=project&project=00000000-0000-4000-8000-000000000001', '/cronograma?view=gantt&scope=cell&cell=00000000-0000-4000-8000-000000000001', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/cells/00000000-0000-4000-8000-000000000001/editar', '/login/mfa']) {
+    for (const path of ['/', '/painel', '/acompanhamento', '/gemeo-digital', '/projetos', '/planejamento', '/cronograma', '/cronograma?view=gantt&scope=general', '/cronograma?view=gantt&scope=project&project=00000000-0000-4000-8000-000000000001', '/cronograma?view=gantt&scope=cell&cell=00000000-0000-4000-8000-000000000001', '/formularios', '/cadastros', '/cadastros/novo?kind=clients', '/cadastros/cells/00000000-0000-4000-8000-000000000001/editar', '/login/mfa']) {
       let current = path, arrived = false;
       for (let hop = 0; hop < 4; hop++) {
         const response = await request(current);

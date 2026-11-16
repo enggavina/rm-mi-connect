@@ -1,0 +1,21 @@
+.em-workshop .workshop-canvas { position:absolute; inset:0; background:var(--surface-soft); overflow:hidden; }
+.em-workshop .workshop-canvas canvas { display:block; outline:none; touch-action:none; }
+.em-workshop .motor-tag { --marker-color:var(--muted); appearance:none; border:1px solid var(--line); border-radius:5px; background:var(--surface); color:var(--text); box-shadow:0 2px 5px rgb(14 23 36 / 12%); padding:5px 7px; display:flex; align-items:center; gap:5px; white-space:nowrap; font-family:inherit; font-size:10px; line-height:1; cursor:pointer; transition:background .15s,border-color .15s; position:relative; }
+.em-workshop .motor-tag strong { font-size:10px; font-weight:700; letter-spacing:.15px; }
+.em-workshop .motor-tag-dot { width:5px; height:5px; border-radius:50%; background:var(--marker-color); flex-shrink:0; }
+.em-workshop .motor-tag.is-selected { background:var(--ink); color:var(--surface); border-color:var(--brand); box-shadow:0 3px 10px rgb(14 23 36 / 20%); }
+.em-workshop .motor-tag.is-selected .motor-tag-dot { box-shadow:0 0 0 1px var(--surface); }
+.em-workshop .motor-tag.is-hovered:not(.is-selected) { border-color:var(--brand-strong); background:var(--surface); }
+.em-workshop .motor-tag.is-unlocated { border-style:dashed; }
+.em-workshop .motor-tag.is-unlocated:not(.is-selected) { border-color:var(--muted); }
+.em-workshop .motor-tag-detail { position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%); background:var(--ink); color:var(--surface); border-radius:3px; padding:5px 7px; font-size:9px; font-weight:400; }
+.em-workshop .motor-tag-lock { width:12px; height:12px; background:var(--danger-soft); color:var(--danger); border-radius:50%; font-size:9px; font-weight:800; line-height:12px; }
+.em-workshop .resource-tag { display:flex; gap:5px; align-items:center; border:1px solid var(--line); border-radius:3px; background:var(--surface); color:var(--text); font-family:inherit; font-size:9px; font-weight:700; padding:3px 5px; white-space:nowrap; cursor:pointer; }
+.em-workshop .resource-tag span { padding-left:5px; border-left:1px solid var(--line); font-weight:400; }
+.em-workshop .resource-tag.is-selected { background:var(--brand-soft); border-color:var(--brand-strong); color:var(--brand-strong); }
+.em-workshop .motor-tag:focus-visible,.em-workshop .resource-tag:focus-visible { outline:2px solid var(--brand-strong); outline-offset:2px; }
+.em-workshop .unlocated-label { text-align:center; color:var(--muted); white-space:nowrap; pointer-events:none; }
+.em-workshop .unlocated-label span { font-size:9px; font-weight:800; letter-spacing:1px; }
+.em-workshop .unlocated-label small { display:block; font-size:8px; margin-top:3px; }
+.em-workshop .webgl-fallback { min-height:300px; display:grid; place-items:center; max-width:420px; margin:auto; padding:40px; color:var(--muted); text-align:center; }
+@media (prefers-reduced-motion: reduce) { .em-workshop .motor-tag { transition:none; } }

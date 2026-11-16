@@ -3,14 +3,14 @@ import { getOverview } from '@/server/web/data';
 import { PageHeading, Stat, Status, Empty, date } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
 import { requireWebUser } from '@/server/web/auth';
-import { WORKSHOP_3D_URL } from '@/components/web/navigation';
+import { WORKSHOP_3D_PATH } from '@/components/web/navigation';
 
 export default async function Acompanhamento() {
   const [{ access, counts, recentProjects, tasks }] = await Promise.all([getOverview(), requireWebUser('em.portal.read')]);
   return <>
     <PageHeading eyebrow="VISÃO DA OFICINA" title="Acompanhamento da operação" description="Indicadores, projetos recentes e pendências nas áreas autorizadas para sua conta." actions={<>
       <Link className="button secondary" href="/painel"><Icon name="back" size={15} />Voltar ao Início</Link>
-      <a className="button" href={WORKSHOP_3D_URL} target="_blank" rel="noopener noreferrer" aria-label="Gêmeo digital 3D (abre em nova aba)"><Icon name="cube" size={16} />Gêmeo digital 3D<Icon name="external" size={13} /></a>
+      {access.projects && access.planning && <Link className="button" href={WORKSHOP_3D_PATH} prefetch={false}><Icon name="cube" size={16} />Gêmeo digital 3D</Link>}
     </>} />
     {Object.values(access).some(Boolean) && <div className="stats-grid">
       {access.projects && <Stat label="Projetos em operação" value={counts.activeProjects ?? 0} detail={`${counts.projects} projetos na base`} icon="folder" />}
