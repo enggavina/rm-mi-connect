@@ -29,7 +29,7 @@ do $$declare sid uuid:='70520000-0000-4000-8000-000000000001';p jsonb;r jsonb;ag
  r:=public.rm_mobile_open_receiving_v1(sid,p,'opening-token');pid:=(r->>'projeto_id')::uuid;eid:=(r->>'equipamento_id')::uuid;
  perform pg_temp.opening_check(r->>'receiving_id'=sid::text and r->>'opening_created'='true' and r->>'attachments_pending'='true' and r->>'idempotent_replay'='false' and (select count(*)=6 from jsonb_object_keys(r)),'exact early opening DTO');
  perform pg_temp.opening_check(exists(select 1 from public.rm_projetos where id=pid and numero is null and tipo_equipamento_id is null and nota_fiscal='NF-original'),'effective project exists without synthetic OS/type before media');
- perform pg_temp.opening_check(exists(select 1 from jsonb_array_elements(public.rm_web_receivings_v1('all','',1,100)->'items') x where x->>'id'=pid::text),'effective project visible in web receivings immediately');
+ perform pg_temp.opening_check(exists(select 1 from jsonb_array_elements(public.rm_web_receivings_v1('all','Original mobile motor',1,100)->'items') x where x->>'id'=pid::text),'effective project visible in web receivings immediately');
  again:=public.rm_mobile_open_receiving_v1(sid,p,'opening-token');
  perform pg_temp.opening_check(again->>'projeto_id'=pid::text and again->>'idempotent_replay'='true','lost opening response same binding');
  begin perform public.rm_mobile_open_receiving_v1(sid,p||'{"p_nota_fiscal":"changed"}','opening-token');raise exception 'FAIL: altered frozen opening';exception when invalid_parameter_value then null;end;

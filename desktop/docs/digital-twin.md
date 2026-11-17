@@ -2,6 +2,12 @@
 
 O gêmeo digital está em `/gemeo-digital`, dentro do portal EM. A cena, a visão gerencial e a API usam a mesma origem, login, serviço Railway e base operacional Supabase do restante do sistema. O item do menu lateral abre uma rota interna, com estado ativo e a navegação do portal; o acesso em Acompanhamento segue o mesmo caminho.
 
+## Recebimentos sem OS — correção publicada em 17/11/2026
+
+Um recebimento mobile novo tinha `numero = null`, válido antes da atribuição da OS. O contrato bruto do BFF exigia texto e rejeitava o snapshot inteiro, fazendo a página mostrar “Dados não atualizados”. O contrato aceita agora a ausência de OS e apresenta **Recebimento sem OS**, com o UUID e link reais do projeto. A leitura continua completa; nenhum projeto é descartado e nenhum número é inventado. Valores de outros tipos, projeções parciais e referências inválidas continuam recusados.
+
+Consumidor web `4552e19af4c2bd45751de1bc3ec752d5e2aca010`, Railway `a5440176-95cf-497b-9948-78222e86bee2` com **SUCCESS**, [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/44088109414). 596 testes web, tipos/build/smokes e dois contratos QR aprovados. Nove cenários Chromium com cena real, incluindo recebimento sem OS e WebGL indisponível, passaram sem erro JavaScript ou rede externa; capturas desktop/celular foram conferidas. Leituras reais pelos dois administradores passaram no BFF e no schema da interface: 181 projetos, 1.461 alocações e 29 células, com os timestamps preservados. Health 200, 156 recusas públicas e início SSO até Microsoft conferidos. A correção não exige migração nem alteração de dados.
+
 ## Acesso do Igor
 
 A identidade corporativa de Igor Nascimento foi conferida como `softdev05@mielectric.com.br`. O cadastro corporativo está ativo, vinculado ao Azure, com vínculo profissional vigente. O vínculo SSO dedicado do EM está ativo e resolve o perfil `WEB-SOFTDEV05`, já administrador do EM com as 18 capacidades existentes. As três leituras necessárias — `em.portal.read`, `em.projects.read` e `em.planning.read` — já estavam concedidas.
