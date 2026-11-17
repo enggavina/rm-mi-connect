@@ -1,4 +1,18 @@
-# Rascunhos de recebimento mobile (045)
+# Recebimento mobile: rascunhos e abertura antecipada (045/052)
+
+## Solicitação de abertura antes dos anexos — 052
+
+No aplicativo 1.2.10/código 13, **Solicitar abertura** continua gravando primeiro o recebimento completo no SQLite, com UUID, autoria, token e conteúdo originais. Com conexão, um envio independente solicita a criação do projeto e equipamento antes dos uploads de fotos e nota fiscal, mesmo que outro lote de mídia esteja lento ou tenha falhado. Offline, o pedido permanece salvo e essa abertura é tentada quando a conexão retorna. O autosave continua sendo somente um rascunho e não cria projetos.
+
+`rm_mobile_open_receiving_v1` recebe o protocolo e envelope originais, valida a delegação e a revisão do rascunho e retorna os IDs efetivos. O vínculo privado `receiving_openings` conserva conta, operador, hashes e IDs; retentativas, resposta perdida e reinício reutilizam o mesmo projeto. O protocolo fica reservado e não pode ser consumido por outra operação mobile. A ausência do projeto após exclusão retorna PT410, mantendo o trabalho local para conferência. A instalação é aditiva e não converte automaticamente rascunhos antigos em projetos.
+
+O recibo de abertura é salvo separadamente em `local_meta`, isolado por conta/operador/protocolo, e **não conclui a fila de recebimento**. A confirmação diferencia projeto disponível no web de anexos ainda pendentes. A fila original conserva sua ordem e só termina depois do upload e da confirmação final. **Sincronizar agora** pode retentar a abertura mesmo durante outro upload, sem criar um segundo lote de mídia. O fluxo anterior de clientes sem abertura antecipada continua compatível.
+
+A finalização dos recebimentos previamente abertos acrescenta fotos e nota fiscal ao projeto vinculado. Ela não repõe OS, cliente, tipo, dados do equipamento ou roteiro a partir do snapshot mobile antigo. Uma nota fiscal já consolidada no web é preservada; o arquivo recebido pelo aplicativo fica também nos documentos. A identidade da finalização desconsidera somente a substituição de URLs locais por remotas, mantendo IDs, títulos, comentários e demais dados originais. Depois da solicitação, um autosave divergente exige conferência em vez de alterar silenciosamente o protocolo.
+
+Em **Recebimentos** no web, a consulta é atualizada a cada cinco segundos enquanto a aba está visível e conectada, ao voltar à aba/conexão e pelo botão **Atualizar agora**. Filtros, digitação e posição são preservados. Um recebimento sem OS e sem roteiro pode receber seu primeiro tipo de equipamento: fotos exclusivamente de recebimento, sem célula/alocação/modelo, deixam de ser consideradas uso do roteiro. Alocações, roteiros já copiados, fotos operacionais, formulários e aprovações mantêm a proteção do tipo. A classificação preserva o projeto, equipamento, fotos e documentos existentes.
+
+Os testes usam banco e navegador isolados: abertura antes dos anexos, ausência de duplicação, alterações web durante upload, notas fiscais divergentes, revisão de draft, reserva de UUID, tombstones e concorrência. A publicação e o APK final são registrados em [web-platform.md](../desktop/docs/web-platform.md). As seções seguintes registram a base 045 reaproveitada, incluindo o instalador histórico 1.2.8.
 
 ## Estrutura encontrada e reaproveitada
 

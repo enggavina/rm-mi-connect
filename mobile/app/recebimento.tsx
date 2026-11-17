@@ -204,7 +204,7 @@ export default function Recebimento() {
             {!!data.eventualidades && <Text style={s.body}>Eventualidades: {data.eventualidades}</Text>}
             <Text style={s.h2}>{data.fotos.filter(photo => photo.uri).length} fotos anexadas</Text>
             {data.fotos.filter(photo => photo.uri).map((photo, index) => <View key={photo.id} style={{ gap: 3 }}><Text style={s.body}>{index + 1}. {receivingPhotoTitle(photo.tipo) || 'Título a selecionar'}</Text>{!!photo.comentario.trim() && <Text style={s.muted}>{photo.comentario}</Text>}</View>)}
-            <Notice>Ao concluir, o recebimento ficará salvo na fila. A nota fiscal e as fotos serão enviadas antes do pedido de abertura, quando houver conexão.</Notice>
+            <Notice>Ao solicitar, o recebimento fica salvo neste dispositivo. Com conexão, o projeto é aberto no portal antes do envio das fotos e da nota fiscal. Os anexos continuam na fila até a confirmação do envio.</Notice>
           </Card>}
           <View style={[s.row, { justifyContent: 'space-between' }]}>
             <Button secondary title="Voltar" disabled={data.step === 0 || disabled} onPress={() => { setError(''); update({ step: data.step - 1 }); }} />

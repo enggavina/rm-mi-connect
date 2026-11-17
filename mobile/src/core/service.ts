@@ -16,7 +16,8 @@ import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
-import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
+import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningState, receivingOpeningKey, storeReceivingOpening, type ReceivingOpeningState } from './receiving-opening';
+import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -53,6 +54,31 @@ class MobileService {
     }),
     archive: async (actor, entry) => this.database.saveLocal(`receiving-recovery:${actor}:${entry.data.id}:${Crypto.randomUUID()}`, entry),
   }, () => Crypto.randomUUID());
+  private receivingOpenings = new ReceivingOpeningCoordinator({
+    assertOwner: owner => { if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante a abertura. O recebimento original foi preservado.'); },
+    list: () => this.listQueue(),
+    read: async (owner, row) => parseReceivingOpeningState(await this.database.local(receivingOpeningKey(owner, row.actor_id, row.id)), owner, row.actor_id, row.id),
+    write: async (row, state) => {
+      await this.database.write(async db => {
+        if (this.snapshot.sessionUserId !== state.owner) throw new Error('A conta mudou durante a abertura.');
+        await storeReceivingOpening(db, row, state);
+        if (this.snapshot.sessionUserId !== state.owner) throw new Error('A conta mudou durante a abertura.');
+      });
+      this.update({});
+    },
+    send: async (owner, row, params) => {
+      const { data: auth, error: authError } = await this.supabase().auth.getSession();
+      if (authError || !auth.session || auth.session.user.id !== owner || owner !== await secureStorage.getItem('rm.device.owner') || this.snapshot.sessionUserId !== owner) throw new Error('Renove o login da conta original para solicitar a abertura. O recebimento permanece salvo.');
+      const token = await secureStorage.getItem(row.token_key);
+      if (!token) throw new Error('Identifique novamente o operador responsável para autorizar a abertura.');
+      if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante a abertura.');
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const { data, error } = await this.supabase().rpc(RECEIVING_OPEN_RPC, { p_client_submission_id: row.id, p_params: params, p_operator_token: token }).abortSignal(controller.signal);
+        if (error) throw error; return data;
+      } finally { clearTimeout(timeout); }
+    },
+  });
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.snapshot;
@@ -105,6 +131,9 @@ class MobileService {
     this.scheduleSync();
   }
   private scheduleSync() {
+    // Independent of an already-running upload batch: a newly requested
+    // receiving must reach the portal before unrelated photos finish sending.
+    void this.prioritizeReceivingOpenings().catch(() => undefined);
     if (this.debounce) clearTimeout(this.debounce);
     this.debounce = setTimeout(() => { void this.sync().catch(error => this.update({ error: errorText(error) })); }, 600);
   }
@@ -383,6 +412,7 @@ class MobileService {
       if (receiving) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${actor.operador_id}`, JSON.stringify({ ...receiving.data, submitted: true }));
     });
     await this.refreshCounts();
+    if (rpc === 'rm_submit_recebimento_v1') void this.prioritizeReceivingOpenings().catch(() => undefined);
     this.scheduleSync();
     return id;
   }
@@ -438,6 +468,20 @@ class MobileService {
   async operation(id: string): Promise<(OutboxRow & { result?: unknown }) | null> {
     const row = await this.database.connection().getFirstAsync<OutboxRow>('SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
     return row ? { ...row, result: row.result_json ? JSON.parse(row.result_json) : undefined } : null;
+  }
+  async receivingOpeningInfo(id: string): Promise<ReceivingOpeningState | null> {
+    const owner = this.snapshot.sessionUserId, actor = this.snapshot.operator?.operador_id;
+    if (!owner || !actor) return null;
+    const row = await this.operation(id);
+    if (!row || row.rpc_name !== 'rm_submit_recebimento_v1' || row.actor_id !== actor) return null;
+    const raw = await this.database.local(receivingOpeningKey(owner, actor, id));
+    if (this.snapshot.sessionUserId !== owner || this.snapshot.operator?.operador_id !== actor) return null;
+    return parseReceivingOpeningState(raw, owner, actor, id);
+  }
+  private async prioritizeReceivingOpenings(force = false): Promise<void> {
+    const owner = this.snapshot.sessionUserId;
+    if (!owner || !this.snapshot.ready || !this.snapshot.online || !this.client) return;
+    return this.receivingOpenings.run(owner, force);
   }
   addMedia(uri: string, bucket: Bucket): Promise<string> {
     const work = this.persistMedia(uri,bucket);
@@ -530,7 +574,8 @@ class MobileService {
     return uri;
   }
   async sync(force = false): Promise<void> {
-    if (this.syncPromise) return this.syncPromise;
+    const active = busySyncWithPriority(this.syncPromise, force, () => this.prioritizeReceivingOpenings(true));
+    if (active) return active;
     if (!this.snapshot.ready || !this.snapshot.online || !this.client || !this.snapshot.sessionUserId) return;
     this.syncPromise = this.runSync(force).finally(() => { this.syncPromise = undefined; });
     return this.syncPromise;
@@ -541,6 +586,7 @@ class MobileService {
       const { data, error } = await this.supabase().auth.getSession();
       if (error || !data.session) throw new Error('Renove o login do dispositivo para sincronizar. Os dados continuam salvos.');
       if (data.session.user.id !== await secureStorage.getItem('rm.device.owner')) throw new Error('A sessão pertence a outra conta.');
+      await this.prioritizeReceivingOpenings(force).catch(() => undefined);
       await this.refreshOperatorPermissions();
       let pushError: unknown;
       try { await uploadThenMutate(() => this.pushMedia(force), async () => {

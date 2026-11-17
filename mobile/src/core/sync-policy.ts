@@ -4,6 +4,13 @@ export async function uploadThenMutate(upload: () => Promise<void>, mutate: () =
   await upload();
   await mutate();
 }
+/** Preserve the single upload batch while manual retry can independently wake
+ * the small receiving-opening worker, even during a long existing upload. */
+export function busySyncWithPriority(active: Promise<void> | undefined, force: boolean, prioritize: () => Promise<void>): Promise<void> | undefined {
+  if (!active) return undefined;
+  if (force) void prioritize().catch(() => undefined);
+  return active;
+}
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(v => canonicalJson(v === undefined ? null : v)).join(',')}]`;
   if (value && typeof value === 'object') return `{${Object.entries(value).filter(([,v]) => v !== undefined).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
