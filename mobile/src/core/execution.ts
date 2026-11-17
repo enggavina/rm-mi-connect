@@ -26,6 +26,11 @@ export type ExecutionSnapshot = {
 export type ExecutionParams = { p_session_id: string; p_allocation_id: string; p_previous_event_id: string | null; p_kind: ExecutionKind;
   p_occurred_at: string; p_pause_reason: PauseReason | null; p_note: string | null; p_effort_minutes: number | null };
 export type ExecutionReceipt = { event_id: string; session_id: string; disposition: 'accepted' | 'review'; review_reason: string | null; received_at: string; idempotent_replay: boolean };
+export type ExecutionContext = { as_of: string; allocation: ExecutionSnapshot['allocation']; session: ExecutionSummary | null; running_session: ExecutionSummary | null; review_session_ids: string[]; known_event_ids: string[] };
+export type ExecutionContexts = Readonly<Record<string, ExecutionContext>>;
+export function executionAllocationAllowsRecords(allocation: ExecutionSnapshot['allocation']): boolean {
+  return !allocation.retired && allocation.visible && !allocation.blocked && !allocation.project_closed && !['finalizado', 'n_a'].includes(allocation.status ?? '');
+}
 const invalid = () => new Error('Não foi possível validar os apontamentos. Os registros locais foram preservados.');
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const timestamp = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)) && value.slice(0, 4) >= '1900' && value.slice(0, 4) <= '2200'
@@ -99,11 +104,31 @@ export function executionReviewReasonLabel(reason: string | null): string {
 export type ExecutionProjection = { session: ExecutionSummary | null; runningSession: ExecutionSummary | null; pending: number; reviewOperations: { id: string; reason: string }[]; localEvents: { id: string; params: ExecutionParams; status: string; error?: string }[]; uncertain: boolean };
 /** The durable outbox is the only local intention journal. Completed review
  * receipts never become canonical execution, and other actors never project. */
-export function projectExecution(snapshot: ExecutionSnapshot, operations: readonly OutboxRow[], postAckRead = true): ExecutionProjection {
+export function projectExecution(snapshot: ExecutionSnapshot, operations: readonly OutboxRow[], postAckRead = true, contexts: ExecutionContexts = {}): ExecutionProjection {
   let selected = snapshot.session ? { ...snapshot.session } : null, running = snapshot.running_session ? { ...snapshot.running_session } : null;
   const known = new Set([...snapshot.events.map(e => e.id), snapshot.session?.last_event_id, snapshot.running_session?.last_event_id].filter((id): id is string => !!id)), reviewOperations: ExecutionProjection['reviewOperations'] = [], localEvents: ExecutionProjection['localEvents'] = [];
   let pending = 0, uncertain = false;
-  const currentAllocationAllowsRecords = !snapshot.allocation.retired && snapshot.allocation.visible && !snapshot.allocation.blocked && !snapshot.allocation.project_closed && !['finalizado', 'n_a'].includes(snapshot.allocation.status ?? '');
+  const currentAllocationAllowsRecords = executionAllocationAllowsRecords(snapshot.allocation);
+  // Only the cache boundary supplies these account/operator/ACK-checked contexts.
+  // Keep paused foreign sessions as well as the running one while replaying FIFO.
+  const sessions = new Map<string, ExecutionSummary>(), observedAt = new Map<string, string>();
+  let runningObservedAt = snapshot.as_of;
+  for (const context of Object.values(contexts)) {
+    // This page's complete canonical snapshot always replaces its compact map
+    // entry, including an explicit null session after management reconciliation.
+    if (context.allocation.id === snapshot.allocation.id) continue;
+    for (const eventId of context.known_event_ids) known.add(eventId);
+    if (context.session) { sessions.set(context.session.id, { ...context.session }); observedAt.set(context.session.id, context.as_of); }
+    // A read of A can confirm a start whose network ACK was lost while B's
+    // cache is still older. Known-event skipping must retain that occupation.
+    const newer = Date.parse(context.as_of) - Date.parse(runningObservedAt);
+    if (newer > 0 || newer === 0 && context.running_session && !running) {
+      running = context.running_session ? { ...context.running_session } : null; runningObservedAt = context.as_of;
+    }
+  }
+  for (const [row, at] of [[selected, snapshot.as_of], [running, runningObservedAt]] as const) if (row && (!observedAt.has(row.id) || Date.parse(at) >= Date.parse(observedAt.get(row.id)!))) {
+    sessions.set(row.id, row); observedAt.set(row.id, at);
+  }
   const unresolvedSessions = new Set(snapshot.review_sessions.map(row => row.id));
   if (snapshot.session?.needs_review) unresolvedSessions.add(snapshot.session.id);
   for (const operation of operations) {
@@ -119,21 +144,32 @@ export function projectExecution(snapshot: ExecutionSnapshot, operations: readon
     // Completed commands are never replayed over a canonical read. The cache
     // ACK epoch separately requires a post-ACK read before actions are enabled.
     if (operation.status === 'completed' || known.has(operation.id)) continue;
-    let current = relevant && selected?.id === params.p_session_id ? selected : running?.id === params.p_session_id ? running : null;
+    const context = relevant ? { as_of: snapshot.as_of, allocation: snapshot.allocation, session: snapshot.session, running_session: snapshot.running_session, review_session_ids: snapshot.review_sessions.map(row => row.id), known_event_ids: [] } : contexts[params.p_allocation_id];
+    let current = sessions.get(params.p_session_id) ?? null;
     if (params.p_kind === 'start') {
       if (current) { uncertain = true; continue; } // An unknown duplicate start never reopens a server session.
-      if (running || relevant && (!currentAllocationAllowsRecords || selected && ['running', 'paused'].includes(selected.state))) { uncertain = true; continue; }
-      current = { id: params.p_session_id, allocation_id: params.p_allocation_id, project_id: relevant ? snapshot.allocation.project_id : '', cell_id: relevant ? snapshot.allocation.cell_id : '', numero_projeto: relevant ? snapshot.allocation.numero_projeto : null, cell_name: relevant ? snapshot.allocation.cell_name : null,
-        operator_id: snapshot.operator_id, operator_name: null, state: 'running', needs_review: false, last_event_id: operation.id, last_captured_at: params.p_occurred_at, last_received_at: receipt?.received_at ?? null, version: '', confirmed_minutes: null, effort_source: null, clock_warning: false, has_review: false, can_record: relevant && currentAllocationAllowsRecords };
+      const open = [...sessions.values()].some(row => row.allocation_id === params.p_allocation_id && ['running', 'paused'].includes(row.state));
+      if (running || context && (!executionAllocationAllowsRecords(context.allocation) || open)) { uncertain = true; continue; }
+      if (!context) uncertain = true;
+      current = { id: params.p_session_id, allocation_id: params.p_allocation_id, project_id: context?.allocation.project_id ?? '', cell_id: context?.allocation.cell_id ?? '', numero_projeto: context?.allocation.numero_projeto ?? null, cell_name: context?.allocation.cell_name ?? null,
+        operator_id: snapshot.operator_id, operator_name: null, state: 'running', needs_review: false, last_event_id: operation.id, last_captured_at: params.p_occurred_at, last_received_at: receipt?.received_at ?? null, version: '', confirmed_minutes: null, effort_source: null, clock_warning: false, has_review: false, can_record: !!context && executionAllocationAllowsRecords(context.allocation) };
+      observedAt.set(current.id, context?.as_of ?? snapshot.as_of);
     } else {
       // A command the server is known to retain for review cannot release its
       // accepted running work locally. Foreign context uses its own summary.
-      if (current && (!current.can_record || current.needs_review || current.has_review || relevant && !currentAllocationAllowsRecords)) { uncertain = true; continue; }
+      const contextIsNewer = !!current && !!context && Date.parse(context.as_of) > Date.parse(observedAt.get(current.id) ?? snapshot.as_of);
+      const canRecord = contextIsNewer ? executionAllocationAllowsRecords(context!.allocation) : current?.can_record;
+      if (current && (!canRecord || current.needs_review || current.has_review || context?.review_session_ids.includes(current.id) || relevant && !currentAllocationAllowsRecords
+        || context && Date.parse(context.as_of) >= Date.parse(observedAt.get(current.id) ?? snapshot.as_of) && !executionAllocationAllowsRecords(context.allocation))) {
+        if (current.state === 'running' && !running) running = current;
+        uncertain = true; continue;
+      }
       if (!current || current.last_event_id !== params.p_previous_event_id || params.p_kind === 'pause' && current.state !== 'running' || params.p_kind === 'resume' && current.state !== 'paused'
         || params.p_kind === 'finish' && !['running', 'paused'].includes(current.state) || params.p_kind === 'resume' && running && running.id !== current.id) { uncertain = true; continue; }
       current = { ...current, state: params.p_kind === 'pause' ? 'paused' : params.p_kind === 'resume' ? 'running' : 'finished', last_event_id: operation.id, last_captured_at: params.p_occurred_at, last_received_at: receipt?.received_at ?? null,
         confirmed_minutes: params.p_kind === 'finish' ? params.p_effort_minutes : current.confirmed_minutes, effort_source: params.p_kind === 'finish' && params.p_effort_minutes !== null ? 'operator' : current.effort_source };
     }
+    sessions.set(current.id, current);
     if (relevant) selected = current;
     if (current.state === 'running') running = current; else if (running?.id === current.id) running = null;
   }

@@ -8,7 +8,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { RM_MOBILE_SQLITE_DDL } from '../src/core/schema';
 import { QUEUE_EXECUTION_MIGRATION } from '../src/core/execution-queue-migration';
 import { EXECUTION_RPC, executionCacheKey, executionMinutes, executionReviewReasonLabel, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, projectExecution, type ExecutionSnapshot, type ExecutionSummary, type ExecutionParams } from '../src/core/execution';
-import { acceptExecutionRead, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, newestExecutionView, parseExecutionCache, refreshExecutionRead, type ExecutionCache, type ExecutionEpoch, type ExecutionLocalView } from '../src/core/execution-cache';
+import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, newestExecutionView, parseExecutionCache, refreshExecutionRead, type ExecutionCache, type ExecutionEpoch, type ExecutionLocalView } from '../src/core/execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention, type ExecutionSql } from '../src/core/execution-store';
 import type { OutboxRow } from '../src/core/types';
 
@@ -237,5 +237,94 @@ test('authoritative failed writes fence the original queued author atomically wh
   } finally {
     db.close(); assert.equal(dirname(file), tmpdir()); assert.match(basename(file), /^em-execution-[0-9a-f-]+\.sqlite$/);
     for (const suffix of ['', '-wal', '-shm']) if (existsSync(file + suffix)) unlinkSync(file + suffix);
+  }
+});
+
+test('previously consulted own SQLite contexts preserve a wholly offline start A, pause A, start B sequence', () => {
+  const db = setup(), other = id(81), otherScope = { ...scope, allocationId: other };
+  const a = snapshot({ allocation: { ...snapshot().allocation, id: other, project_id: id(82), cell_id: id(83), numero_projeto: 'OS A', cell_name: 'Mecânica' } });
+  const cachedA: ExecutionCache = { schema: 1, scope: otherScope, epoch: { intent: 0, ack: 0 }, snapshot: a };
+  const cachedB: ExecutionCache = { schema: 1, scope, epoch: { intent: 0, ack: 0 }, snapshot: snapshot() };
+  for (const cache of [cachedA, cachedB]) db.prepare('INSERT INTO local_meta(key,value) VALUES(?,?)').run(executionCacheKey(cache.scope.owner, actor, cache.scope.allocationId), JSON.stringify(cache));
+  const startA = operation(31, parameters({ p_session_id: id(80), p_allocation_id: other }));
+  const pauseA = operation(32, parameters({ p_session_id: id(80), p_allocation_id: other, p_kind: 'pause', p_previous_event_id: startA.id, p_pause_reason: 'intervalo' }));
+  const startB = operation(33, parameters({ p_session_id: id(90) }));
+  const operations = [startA, pauseA, startB], epoch = { intent: 3, ack: 0 };
+  const rows = db.prepare(EXECUTION_CONTEXT_SQL).all(JSON.stringify(executionContextKeys(scope, cachedB, operations))) as { key: string; value: string }[];
+  const contexts = executionContexts(rows, scope, epoch), view = executionLocalView(cachedB, epoch, operations, contexts);
+  assert.equal(view.safeToAppend, true); assert.equal(contexts[other].allocation.project_id, id(82));
+  const result = projectExecution(view.snapshot!, view.operations, view.safeToAppend, view.contexts);
+  assert.equal(result.uncertain, false); assert.equal(result.session?.id, id(90)); assert.equal(result.runningSession?.allocation_id, allocation);
+  const atA = projectExecution(a, operations.slice(0, 2));
+  assert.equal(atA.session?.state, 'paused');
+  const withoutContext = projectExecution(snapshot(), operations); assert.equal(withoutContext.uncertain, true); assert.equal(withoutContext.runningSession?.id, id(80));
+  db.close();
+});
+
+test('foreign context metadata is account, actor, allocation and ACK fenced without copying event notes', () => {
+  const db = setup(), other = id(81), otherScope = { ...scope, allocationId: other };
+  const contextSnapshot = snapshot({ allocation: { ...snapshot().allocation, id: other }, session: session({ allocation_id: other }) });
+  const cache: ExecutionCache = { schema: 1, scope: otherScope, epoch: { intent: 1, ack: 2 }, snapshot: contextSnapshot };
+  const key = executionCacheKey(owner, actor, other), epoch = { intent: 3, ack: 2 };
+  db.prepare('INSERT INTO local_meta(key,value) VALUES(?,?)').run(key, JSON.stringify(cache));
+  const rows = () => db.prepare(EXECUTION_CONTEXT_SQL).all(JSON.stringify([key])) as { key: string; value: string }[];
+  assert.ok(executionContexts(rows(), scope, epoch)[other]);
+  for (const invalid of [{ ...cache, scope: { ...otherScope, owner: id(98) } }, { ...cache, scope: { ...otherScope, operatorId: id(98) } }, { ...cache, scope: { ...otherScope, allocationId: id(98) } }, { ...cache, epoch: { intent: 1, ack: 1 } }, { ...cache, epoch: { intent: 4, ack: 2 } }]) {
+    db.prepare('UPDATE local_meta SET value=? WHERE key=?').run(JSON.stringify(invalid), key);
+    assert.deepEqual(executionContexts(rows(), scope, epoch), {});
+  }
+  const privateEvent = { id: id(20), session_id: id(10), previous_event_id: null, kind: 'start', occurred_at: stamp, received_at: stamp, pause_reason: null, note: 'PRIVATE_EVENT_NOTE', effort_minutes: null, disposition: 'accepted', review_reason: null, operator_id: actor, operator_name: null };
+  db.prepare('UPDATE local_meta SET value=? WHERE key=?').run(JSON.stringify({ ...cache, snapshot: { ...contextSnapshot, events: [privateEvent], events_total: 1 } }), key);
+  assert.ok(!rows()[0].value.includes('PRIVATE_EVENT_NOTE')); assert.deepEqual(executionContexts(rows(), scope, epoch)[other].known_event_ids, [id(20), id(20)]);
+  db.close();
+});
+
+test('cached foreign restrictions and newer bad summaries retain occupancy, while confirmed foreign paused sessions can resume offline', () => {
+  const other = id(81), foreign = session({ id: id(80), allocation_id: other, project_id: id(82), cell_id: id(83) });
+  const a = snapshot({ allocation: { ...snapshot().allocation, id: other }, session: foreign });
+  const foreignScope = { ...scope, allocationId: other }, epoch = { intent: 2, ack: 0 };
+  const contextsFor = (source: ExecutionSnapshot) => executionContexts([{ key: executionCacheKey(owner, actor, other), value: JSON.stringify({ schema: 1, scope: foreignScope, epoch: { intent: 0, ack: 0 }, snapshot: source }) }], scope, epoch);
+  const pause = operation(31, parameters({ p_session_id: foreign.id, p_allocation_id: other, p_kind: 'pause', p_previous_event_id: foreign.last_event_id, p_pause_reason: 'material' }));
+  for (const source of [{ ...a, allocation: { ...a.allocation, project_closed: true } }, { ...a, session: { ...foreign, needs_review: true } }, { ...a, session: { ...foreign, has_review: true } }]) {
+    const result = projectExecution(snapshot(), [pause, operation(32)], true, contextsFor(source));
+    assert.equal(result.uncertain, true); assert.equal(result.runningSession?.id, foreign.id); assert.equal(result.session, null);
+  }
+  const newerBad = snapshot({ as_of: '2026-11-17T11:00:00Z', running_session: { ...foreign, can_record: false } });
+  const result = projectExecution(newerBad, [pause], true, contextsFor(a)); assert.equal(result.uncertain, true); assert.equal(result.runningSession?.id, foreign.id);
+  const paused = { ...a, session: { ...foreign, state: 'paused' as const } };
+  const resume = operation(33, parameters({ p_session_id: foreign.id, p_allocation_id: other, p_kind: 'resume', p_previous_event_id: foreign.last_event_id }));
+  const resumed = projectExecution(snapshot(), [resume], true, contextsFor(paused)); assert.equal(resumed.uncertain, false); assert.equal(resumed.runningSession?.project_id, id(82));
+  // A compact current-allocation entry from before manager reconciliation must
+  // never reintroduce its old session over the newly accepted null snapshot.
+  const staleCurrent = executionContexts([{ key: executionCacheKey(owner, actor, allocation), value: JSON.stringify({ schema: 1, scope, epoch: { intent: 0, ack: 0 }, snapshot: snapshot({ session: session() }) }) }], scope, epoch);
+  const currentResult = projectExecution(snapshot({ as_of: '2026-11-17T12:00:00Z' }), [operation(40, parameters({ p_session_id: id(99) }))], true, staleCurrent);
+  assert.equal(currentResult.uncertain, false); assert.equal(currentResult.session?.id, id(99));
+});
+
+test('a newer own read confirms global running occupation even when a lost-ACK start remains in the outbox of an older allocation', () => {
+  const other = id(81), foreign = session({ id: id(80), allocation_id: other, project_id: id(82), cell_id: id(83), last_event_id: id(31) });
+  const a = snapshot({ as_of: '2026-11-17T11:00:00Z', allocation: { ...snapshot().allocation, id: other }, session: foreign, running_session: foreign });
+  const row = { key: executionCacheKey(owner, actor, other), value: JSON.stringify({ schema: 1, scope: { ...scope, allocationId: other }, epoch: { intent: 1, ack: 0 }, snapshot: a }) };
+  const contexts = executionContexts([row], scope, { intent: 1, ack: 0 });
+  const lostAck = operation(31, parameters({ p_session_id: foreign.id, p_allocation_id: other }), 'failed');
+  const result = projectExecution(snapshot(), [lostAck], true, contexts);
+  assert.equal(result.uncertain, false); assert.equal(result.runningSession?.id, foreign.id); assert.equal(result.runningSession?.project_id, id(82));
+  const laterStart = projectExecution(snapshot(), [lostAck, operation(32, parameters({ p_session_id: id(99) }))], true, contexts);
+  assert.equal(laterStart.uncertain, true); assert.equal(laterStart.session, null); assert.equal(laterStart.runningSession?.id, foreign.id);
+});
+
+test('the timestamp of a newer global running observation defeats an older permissive own-session cache across three allocations', () => {
+  const yAllocation = id(81), aAllocation = id(91), y = session({ id: id(80), allocation_id: yAllocation, project_id: id(82), cell_id: id(83), last_event_id: id(30) });
+  const yRead = snapshot({ as_of: '2026-11-17T11:00:00Z', allocation: { ...snapshot().allocation, id: yAllocation }, session: y, running_session: y });
+  const aSession = session({ id: id(90), allocation_id: aAllocation, state: 'paused', last_event_id: id(32) });
+  const event = { id: id(31), session_id: aSession.id, previous_event_id: null, kind: 'start' as const, occurred_at: stamp, received_at: stamp, pause_reason: null, note: null, effort_minutes: null, disposition: 'accepted' as const, review_reason: null, operator_id: actor, operator_name: null };
+  const aRead = snapshot({ as_of: '2026-11-17T12:00:00Z', allocation: { ...snapshot().allocation, id: aAllocation }, session: aSession, running_session: { ...y, can_record: false }, events: [event], events_total: 1 });
+  const rows = [aRead, yRead].map(source => ({ key: executionCacheKey(owner, actor, source.allocation.id), value: JSON.stringify({ schema: 1, scope: { ...scope, allocationId: source.allocation.id }, epoch: { intent: 1, ack: 0 }, snapshot: source }) }));
+  const contexts = executionContexts(rows, scope, { intent: 3, ack: 0 });
+  const lostAckA = operation(31, parameters({ p_session_id: aSession.id, p_allocation_id: aAllocation }), 'failed');
+  const pauseY = operation(33, parameters({ p_session_id: y.id, p_allocation_id: yAllocation, p_kind: 'pause', p_previous_event_id: y.last_event_id, p_pause_reason: 'intervalo' }));
+  for (const map of [contexts, Object.fromEntries(Object.entries(contexts).reverse())]) {
+    const result = projectExecution(snapshot(), [lostAckA, pauseY, operation(34)], true, map);
+    assert.equal(result.uncertain, true); assert.equal(result.runningSession?.id, y.id); assert.equal(result.runningSession?.can_record, false); assert.equal(result.session, null);
   }
 });

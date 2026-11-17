@@ -1,4 +1,4 @@
-import { parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
+import { executionCacheKey, parseExecutionParams, parseExecutionSnapshot, type ExecutionContexts, type ExecutionSnapshot } from './execution';
 import type { OutboxRow } from './types';
 
 export type ExecutionScope = { owner: string; operatorId: string; allocationId: string };
@@ -6,7 +6,42 @@ export type ExecutionScope = { owner: string; operatorId: string; allocationId: 
 // a subsequent successful read before another action can use an old cache.
 export type ExecutionEpoch = { intent: number; ack: number };
 export type ExecutionCache = { schema: 1; scope: ExecutionScope; epoch: ExecutionEpoch; snapshot: ExecutionSnapshot };
-export type ExecutionLocalView = { snapshot: ExecutionSnapshot | null; safeToAppend: boolean; epoch: ExecutionEpoch; operations: OutboxRow[] };
+export type ExecutionLocalView = { snapshot: ExecutionSnapshot | null; safeToAppend: boolean; epoch: ExecutionEpoch; operations: OutboxRow[]; contexts: ExecutionContexts };
+/** Select only execution metadata and event IDs: photo/form text and full
+ * execution histories never cross the foreign-allocation context boundary. */
+export const EXECUTION_CONTEXT_SQL = `SELECT key,json_object('schema',json_extract(value,'$.schema'),'scope',json_extract(value,'$.scope'),'epoch',json_extract(value,'$.epoch'),
+  'snapshot',json_object('as_of',json_extract(value,'$.snapshot.as_of'),'operator_id',json_extract(value,'$.snapshot.operator_id'),
+    'allocation',json_extract(value,'$.snapshot.allocation'),'session',json_extract(value,'$.snapshot.session'),
+    'running_session',json_extract(value,'$.snapshot.running_session'),'review_sessions',json_extract(value,'$.snapshot.review_sessions'),
+    'review_sessions_total',json_extract(value,'$.snapshot.review_sessions_total'),'review_sessions_complete',json(CASE json_type(value,'$.snapshot.review_sessions_complete') WHEN 'true' THEN 'true' WHEN 'false' THEN 'false' ELSE 'null' END),
+    'events',json('[]'),'events_total',0,'events_complete',json('true'),'reviews',json('[]'),'reviews_total',0,'reviews_complete',json('true')),
+  'known_event_ids',(SELECT json_group_array(json_extract(e.value,'$.id')) FROM json_each(local_meta.value,'$.snapshot.events') e)) value
+  FROM local_meta WHERE key IN (SELECT value FROM json_each(?)) AND json_valid(value)`;
+export function executionContextKeys(scope: ExecutionScope, cache: ExecutionCache | null, operations: readonly OutboxRow[]): string[] {
+  const ids = new Set([scope.allocationId]);
+  if (cache?.snapshot.running_session) ids.add(cache.snapshot.running_session.allocation_id);
+  for (const row of operations) if (row.status !== 'completed' && row.actor_id === scope.operatorId) {
+    try { const raw = JSON.parse(row.params_json); if (raw.p_operador_id === scope.operatorId) ids.add(parseExecutionParams(raw).p_allocation_id); } catch { /* Invalid own commands are fenced by the projector. */ }
+  }
+  return [...ids].map(id => executionCacheKey(scope.owner, scope.operatorId, id));
+}
+export function executionContexts(rows: readonly { key: string; value: string }[], scope: ExecutionScope, current: ExecutionEpoch): ExecutionContexts {
+  const result: Record<string, ExecutionContexts[string]> = {};
+  for (const row of rows) {
+    try {
+      const raw = JSON.parse(row.value), allocationId = raw?.scope?.allocationId;
+      if (typeof allocationId !== 'string' || row.key !== executionCacheKey(scope.owner, scope.operatorId, allocationId)) continue;
+      const cache = parseExecutionCache(raw, { ...scope, allocationId });
+      if (!cache || cache.epoch.ack !== current.ack || cache.epoch.intent > current.intent) continue;
+      const known: unknown[] = raw.known_event_ids ?? cache.snapshot.events.map(event => event.id);
+      if (!Array.isArray(known) || known.length > 200 || known.some(value => typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))) continue;
+      const snapshot = cache.snapshot;
+      result[allocationId] = { as_of: snapshot.as_of, allocation: snapshot.allocation, session: snapshot.session, running_session: snapshot.running_session,
+        review_session_ids: snapshot.review_sessions.map(session => session.id), known_event_ids: [...known as string[], ...(snapshot.session?.last_event_id ? [snapshot.session.last_event_id] : [])] };
+    } catch { /* An invalid/foreign context grants no offline authority. */ }
+  }
+  return result;
+}
 export const executionEpochKey = (owner: string, actor: string) => `execution-epoch:${owner}:${actor}`;
 export function executionEpoch(value: unknown): ExecutionEpoch {
   if (value === null) return { intent: 0, ack: 0 };
@@ -35,8 +70,8 @@ export function acceptExecutionRead(prior: ExecutionCache | null, current: Execu
   if (prior && sameExecutionEpoch(prior.epoch, current) && Date.parse(prior.snapshot.as_of) >= Date.parse(snapshot.as_of)) return prior;
   return { schema: 1, scope: { ...scope }, epoch: { ...current }, snapshot };
 }
-export function executionLocalView(cache: ExecutionCache | null, current: ExecutionEpoch, operations: OutboxRow[]): ExecutionLocalView {
-  return { snapshot: cache?.snapshot ?? null, safeToAppend: !!cache && cache.epoch.ack === current.ack, epoch: { ...current }, operations };
+export function executionLocalView(cache: ExecutionCache | null, current: ExecutionEpoch, operations: OutboxRow[], contexts: ExecutionContexts = {}): ExecutionLocalView {
+  return { snapshot: cache?.snapshot ?? null, safeToAppend: !!cache && cache.epoch.ack === current.ack, epoch: { ...current }, operations, contexts };
 }
 /** The ticket is captured before issuing the read. Commit must compare it
  * atomically, rather than trusting server/device wall-clock timestamps. */

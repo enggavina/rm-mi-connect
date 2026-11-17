@@ -14,7 +14,7 @@ import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
-import { acceptExecutionRead, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
+import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
 import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
@@ -401,7 +401,8 @@ class MobileService {
       FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.rpc_name=? AND m.actor_id=? AND
       (o.status<>'completed' OR o.rowid IN(SELECT p.rowid FROM local_rpc_outbox p JOIN local_queue_meta a USING(id)
        WHERE p.rpc_name=? AND a.actor_id=? AND p.status='completed' ORDER BY p.created_at DESC,p.rowid DESC LIMIT 200)) ORDER BY o.created_at,o.rowid`, EXECUTION_RPC, scope.operatorId, EXECUTION_RPC, scope.operatorId);
-    return { cache, epoch, view: executionLocalView(cache, epoch, operations) };
+    const rows = await db.getAllAsync<{ key: string; value: string }>(EXECUTION_CONTEXT_SQL, JSON.stringify(executionContextKeys(scope, cache, operations)));
+    return { cache, epoch, view: executionLocalView(cache, epoch, operations, executionContexts(rows, scope, epoch)) };
   }
   async executionSnapshot(allocationId: string, refresh = true): Promise<ExecutionLocalView> {
     const operator = this.snapshot.operator, owner = this.snapshot.sessionUserId, token = this.operatorToken;
@@ -427,7 +428,8 @@ class MobileService {
       const accepted = acceptExecutionRead(state.cache, state.epoch, ticket, parsed, scope);
       if (accepted && accepted !== state.cache) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', executionCacheKey(owner, actorId, allocationId), JSON.stringify(accepted));
       guard();
-      return executionLocalView(accepted, state.epoch, state.view.operations);
+      const committed = await this.executionState(db, scope); guard();
+      return committed.view;
     }));
   }
   async listQueue(): Promise<OutboxRow[]> {

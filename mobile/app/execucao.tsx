@@ -51,7 +51,7 @@ export default function Execucao() {
   }, [focused, owner, actorId, allocationId, app.ready, app.revision, key]);
   const candidate = view?.snapshot;
   const current = loadedKey === key && candidate && candidate.operator_id === actorId ? candidate : null;
-  const projection = useMemo(() => current ? projectExecution(current, view?.operations ?? [], !!view?.safeToAppend) : null, [current, view?.operations, view?.safeToAppend]);
+  const projection = useMemo(() => current ? projectExecution(current, view?.operations ?? [], !!view?.safeToAppend, view?.contexts) : null, [current, view?.operations, view?.safeToAppend, view?.contexts]);
   const allowed = !!current && canAccessCell(app.operator, current.allocation.cell_id);
   const back = params.projeto && params.celula ? { pathname: '/projeto' as const, params: { projeto: params.projeto, celula: params.celula } } : '/celula' as const;
   const session = projection?.session;
@@ -98,6 +98,7 @@ export default function Execucao() {
     {current && allowed && projection && <>
       <Card><Text style={s.h2}>{current.allocation.numero_projeto ? `OS ${current.allocation.numero_projeto}` : 'Projeto sem OS'} · {current.allocation.cell_name || 'Célula'}</Text><Text style={s.body}>{app.operator?.nome}</Text><Badge text={session ? stateLabels[session.state] : 'Sem apontamento aberto nesta etapa'} alert={!!session?.needs_review} />
         <Text style={s.muted}>Consulta confirmada em {at(current.as_of)}.</Text>{session && <><Text style={s.muted}>Último horário informado: {at(session.last_captured_at)}</Text><Text style={s.muted}>Último recebimento confirmado: {at(session.last_received_at)}</Text>{session.confirmed_minutes !== null && <Text style={s.body}>{session.confirmed_minutes} minutos informados {session.effort_source === 'manager' ? 'pela gestão' : 'pelo operador'}.</Text>}</>}
+        {Object.values(view?.contexts ?? {}).filter(context => context.allocation.id !== current.allocation.id && canAccessCell(app.operator, context.allocation.cell_id)).map(context => <Text key={context.allocation.id} style={s.muted}>Contexto salvo: {context.allocation.numero_projeto ? `OS ${context.allocation.numero_projeto}` : 'Projeto'} · {context.allocation.cell_name || 'Célula'} · consulta de {at(context.as_of)}.</Text>)}
         {!!projection.pending && <Notice>{projection.pending} registro(s) deste dispositivo aguardam confirmação. O estado acima inclui sua prévia local.</Notice>}
         {!view?.safeToAppend && <Notice>Atualize a consulta com conexão antes de registrar outra ação. Os dados e protocolos anteriores permanecem preservados.</Notice>}
         {(session?.clock_warning || projection.uncertain) && <Notice error>Há horários ou envios que precisam de conferência. Os registros foram preservados; consulte a gestão para reconciliar divergências.</Notice>}
