@@ -143,7 +143,8 @@ CREATE TABLE IF NOT EXISTS local_rpc_outbox (
       'rm_transition_stage_approval_v1',
       'rm_record_cell_photo_v1',
       'rm_update_cell_status_v1',
-      'rm_add_cell_comment_v1'
+      'rm_add_cell_comment_v1',
+      'rm_record_execution_event_v1'
     )
   ),
   params_json TEXT NOT NULL,

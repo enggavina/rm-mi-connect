@@ -28,8 +28,8 @@ test('the most specific matching path owns the active entry without prefix colli
 test('home cards include resource capacity while the sidebar stays compact', () => {
   const modules = portalHomeModules(), cards = modules.flatMap(group => group.items), shortcuts = portalShortcuts();
   assert.deepEqual(modules.map(group => group.label), ['Operação', 'Planejamento', 'Cadastros']);
-  assert.equal(cards.length, 13); assert.equal(new Set(cards.map(item => item.href)).size, cards.length);
-  assert.deepEqual(cards.map(item => item.href).sort(), ['/projetos', '/recebimentos', '/formularios', '/aprovacoes', '/cronograma', '/planejamento', '/planejamento/fila', '/planejamento/carga', '/planejamento/capacidade', '/cadastros', '/engenharia', '/engenharia/titulos', '/modelos-formularios'].sort());
+  assert.equal(cards.length, 14); assert.equal(new Set(cards.map(item => item.href)).size, cards.length);
+  assert.deepEqual(cards.map(item => item.href).sort(), ['/projetos', '/recebimentos', '/formularios', '/aprovacoes', '/cronograma', '/planejamento', '/planejamento/fila', '/planejamento/carga', '/planejamento/capacidade', '/planejamento/execucao', '/cadastros', '/engenharia', '/engenharia/titulos', '/modelos-formularios'].sort());
   assert.deepEqual(shortcuts.map(item => item.href), ['/painel', '/acompanhamento', WORKSHOP_3D_PATH, '/projetos', '/cronograma', '/formularios', '/aprovacoes']);
   assert.equal(new Set(shortcuts.map(item => item.href)).size, shortcuts.length);
   for (const card of cards) { assert.ok(card.description.trim()); assert.ok(card.label.trim()); assert.ok(card.href.startsWith('/')); }

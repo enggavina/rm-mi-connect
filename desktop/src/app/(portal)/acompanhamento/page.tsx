@@ -11,6 +11,7 @@ export default async function Acompanhamento() {
     <PageHeading eyebrow="VISÃO DA OFICINA" title="Acompanhamento da operação" description="Indicadores, projetos recentes e pendências nas áreas autorizadas para sua conta." actions={<>
       <Link className="button secondary" href="/painel"><Icon name="back" size={15} />Voltar ao Início</Link>
       {access.projects && access.planning && <Link className="button" href={WORKSHOP_3D_PATH} prefetch={false}><Icon name="cube" size={16} />Gêmeo digital 3D</Link>}
+      {access.projects && access.planning && <Link className="button secondary" href="/planejamento/execucao"><Icon name="clock" size={16} />Apontamentos da oficina</Link>}
     </>} />
     {Object.values(access).some(Boolean) && <div className="stats-grid">
       {access.projects && <Stat label="Projetos em operação" value={counts.activeProjects ?? 0} detail={`${counts.projects} projetos na base`} icon="folder" />}

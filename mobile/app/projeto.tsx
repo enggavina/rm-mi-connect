@@ -21,6 +21,7 @@ export default function Projeto() {
   const params = { celula: context.cell.id, projeto: context.project.id };
   const menus = [
     { title: 'Informações do projeto', icon: 'info' as const, route: '/informacoes-projeto', detail: 'Cliente, equipamento, prazos e planejamento' },
+    { title: 'Apontamentos de execução', icon: 'activity' as const, route: '/execucao', detail: 'Início, pausas, retomada e encerramento do seu trabalho' },
     { title: 'Formulários', icon: 'clipboard' as const, route: '/formularios', detail: `${assigned.length} vinculados${revisions ? ` · ${revisions} revisões solicitadas` : ''}` },
     { title: 'Galeria', icon: 'image' as const, route: '/galeria', detail: `${galleryPhotos(context, photos.rows, queue).length} fotos registradas no projeto` },
     { title: 'Registrar fotos', icon: 'camera' as const, route: '/registro-fotos', detail: 'Fotos obrigatórias ou complementares' },

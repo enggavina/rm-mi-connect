@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import { RM_MOBILE_SQLITE_DDL } from './schema';
 import { TABLES, type CatalogFilter, type CatalogTable, type Row } from './types';
 import { QUEUE_DOCUMENTS_MIGRATION, QUEUE_DOCUMENTS_VERSION } from './queue-migration';
+import { QUEUE_EXECUTION_MIGRATION, QUEUE_EXECUTION_VERSION } from './execution-queue-migration';
 
 const EXTENSION_DDL = `
 CREATE TABLE IF NOT EXISTS local_catalog (
@@ -40,6 +41,7 @@ export class LocalDatabase {
     if ((await this.local<number>('queue_schema_version') ?? 0) < QUEUE_DOCUMENTS_VERSION) {
       await this.write(db => db.execAsync(QUEUE_DOCUMENTS_MIGRATION));
     }
+    if ((await this.local<number>('queue_schema_version') ?? 0) < QUEUE_EXECUTION_VERSION) await this.write(db => db.execAsync(QUEUE_EXECUTION_MIGRATION));
     await this.db.runAsync("UPDATE local_rpc_outbox SET status='pending' WHERE status='syncing'");
     await this.db.runAsync("UPDATE local_media_upload_queue SET status='pending' WHERE status='uploading'");
   }

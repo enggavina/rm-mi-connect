@@ -13,6 +13,9 @@ import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
+import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
+import { acceptExecutionRead, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
+import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
 import { canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
@@ -356,12 +359,12 @@ class MobileService {
   }
   async enqueue(rpc: RpcName, params: Record<string, unknown>, id = Crypto.randomUUID(), draftId?: string, receiving?: ReceivingDraftEntry) {
     if (!(RPC_NAMES as readonly string[]).includes(rpc)) throw new Error('Operação não permitida.');
-    const actor = this.actor(), tokenKey = `rm.operation.${id}`, token = this.operatorToken!;
+    const actor = this.actor(), tokenKey = `rm.operation.${id}`, token = this.operatorToken!, owner = this.snapshot.sessionUserId;
     const payload = {...params,p_operador_id:actor.operador_id};
     await this.database.write(async db => {
-      const already = await db.getFirstAsync<{id: string; rpc_name: string; params_json: string}>('SELECT id,rpc_name,params_json FROM local_rpc_outbox WHERE id=?', id);
+      const already = await db.getFirstAsync<{id: string; rpc_name: string; params_json: string; actor_id: string | null}>('SELECT o.id,o.rpc_name,o.params_json,m.actor_id FROM local_rpc_outbox o LEFT JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
       if (already) {
-        if (already.rpc_name !== rpc || canonicalJson(JSON.parse(already.params_json)) !== canonicalJson(payload)) throw new Error('Este protocolo já foi enviado com outros dados. Consulte o envio antes de alterar o registro.');
+        if (already.rpc_name !== rpc || canonicalJson(JSON.parse(already.params_json)) !== canonicalJson(payload) || rpc === EXECUTION_RPC && already.actor_id !== actor.operador_id) throw new Error('Este protocolo já foi enviado com outros dados. Consulte o envio antes de alterar o registro.');
         return;
       }
       if (receiving) {
@@ -369,14 +372,63 @@ class MobileService {
         assertReceivingDraftUnchanged(await this.readReceivingEntry(db, actor.operador_id), receiving);
       }
       await secureStorage.setItem(tokenKey,token);
-      await db.runAsync(`INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES (?,?,?,?)`, id, rpc, JSON.stringify(payload), timestamp());
-      await db.runAsync('INSERT INTO local_queue_meta(id,actor_id,token_key,draft_id) VALUES (?,?,?,?)', id, actor.operador_id, tokenKey, draftId ?? null);
+      if (rpc === EXECUTION_RPC) {
+        if (!owner) throw new Error('A conta do dispositivo não está disponível.');
+        await storeExecutionIntention(db, { id, owner, actor: actor.operador_id, tokenKey, params: payload, createdAt: timestamp() });
+      } else {
+        await db.runAsync(`INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES (?,?,?,?)`, id, rpc, JSON.stringify(payload), timestamp());
+        await db.runAsync('INSERT INTO local_queue_meta(id,actor_id,token_key,draft_id) VALUES (?,?,?,?)', id, actor.operador_id, tokenKey, draftId ?? null);
+      }
       if (draftId) await db.runAsync("UPDATE local_form_drafts SET status='ready_to_sync' WHERE draft_id=?", draftId);
       if (receiving) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${actor.operador_id}`, JSON.stringify({ ...receiving.data, submitted: true }));
     });
     await this.refreshCounts();
     this.scheduleSync();
     return id;
+  }
+  /** Execution intentions live only in the atomic outbox+author transaction.
+   * There is no independent submitted marker that can get ahead of the queue. */
+  async recordExecutionEvent(params: unknown, submissionId: string) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(submissionId)) throw new Error('Protocolo de apontamento inválido.');
+    return this.enqueue(EXECUTION_RPC, parseExecutionParams(params), submissionId);
+  }
+  private async executionState(db: ReturnType<LocalDatabase['connection']>, scope: ExecutionScope) {
+    const cacheKey = executionCacheKey(scope.owner, scope.operatorId, scope.allocationId), epochKey = executionEpochKey(scope.owner, scope.operatorId);
+    const values = await db.getAllAsync<{ key: string; value: string }>('SELECT key,value FROM local_meta WHERE key IN (?,?)', cacheKey, epochKey);
+    const epoch = executionEpoch(values.some(r => r.key === epochKey) ? JSON.parse(values.find(r => r.key === epochKey)!.value) : null);
+    const cache = parseExecutionCache(values.some(r => r.key === cacheKey) ? JSON.parse(values.find(r => r.key === cacheKey)!.value) : null, scope);
+    const operations = await db.getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json
+      FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.rpc_name=? AND m.actor_id=? AND
+      (o.status<>'completed' OR o.rowid IN(SELECT p.rowid FROM local_rpc_outbox p JOIN local_queue_meta a USING(id)
+       WHERE p.rpc_name=? AND a.actor_id=? AND p.status='completed' ORDER BY p.created_at DESC,p.rowid DESC LIMIT 200)) ORDER BY o.created_at,o.rowid`, EXECUTION_RPC, scope.operatorId, EXECUTION_RPC, scope.operatorId);
+    return { cache, epoch, view: executionLocalView(cache, epoch, operations) };
+  }
+  async executionSnapshot(allocationId: string, refresh = true): Promise<ExecutionLocalView> {
+    const operator = this.snapshot.operator, owner = this.snapshot.sessionUserId, token = this.operatorToken;
+    if (!operator || !owner || !token) throw new Error('Identifique o operador para consultar seus apontamentos.');
+    const actorId = operator.operador_id, scope = { owner, operatorId: actorId, allocationId };
+    const current = () => this.snapshot.sessionUserId === owner && this.snapshot.operator?.operador_id === actorId && this.operatorToken === token;
+    const guard = () => { if (!current()) throw new Error('O operador mudou durante a consulta. Seus registros foram preservados.'); };
+    const read = () => this.database.write(async db => { guard(); const state = await this.executionState(db, scope); guard(); return state.view; });
+    if (!refresh || !this.snapshot.online) return read();
+    return refreshExecutionRead(read, async () => {
+      guard();
+      const { data, error } = await this.supabase().rpc('rm_mobile_execution_snapshot_v1', { p_operator_token: token, p_allocation_id: allocationId });
+      guard(); if (error) {
+        if (executionReadRefused(error)) {
+          await this.database.write(async db => { guard(); await invalidateExecutionRead(db, owner, actorId); guard(); });
+          this.update({}); // SQLite-only consumers see the persistent read fence.
+        }
+        throw error;
+      }
+      return parseExecutionSnapshot(data, actorId, allocationId);
+    }, (ticket: ExecutionEpoch, parsed: ExecutionSnapshot) => this.database.write(async db => {
+      guard(); const state = await this.executionState(db, scope); guard();
+      const accepted = acceptExecutionRead(state.cache, state.epoch, ticket, parsed, scope);
+      if (accepted && accepted !== state.cache) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', executionCacheKey(owner, actorId, allocationId), JSON.stringify(accepted));
+      guard();
+      return executionLocalView(accepted, state.epoch, state.view.operations);
+    }));
   }
   async listQueue(): Promise<OutboxRow[]> {
     return this.database.connection().getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE status<>'completed' ORDER BY o.created_at,o.rowid`);
@@ -555,6 +607,8 @@ class MobileService {
     }
   }
   private async pushMutations(force: boolean) {
+    const owner = this.snapshot.sessionUserId;
+    if (!owner) throw new Error('A sessão do dispositivo não está disponível.');
     const media = await this.database.connection().getAllAsync<{local_uri: string; public_url: string}>("SELECT local_uri,public_url FROM local_media_upload_queue WHERE status='uploaded'");
     const uploaded = new Map(media.map(m => [m.local_uri, m.public_url]));
     for (const row of await this.listQueue()) {
@@ -563,15 +617,25 @@ class MobileService {
       try {
         const token = await secureStorage.getItem(row.token_key);
         if (!token) throw new Error('Identifique novamente o operador responsável para autorizar o envio.');
-        const params = replaceMedia(JSON.parse(row.params_json), uploaded);
+        // Execution has no media fields. A free-text note beginning with file:
+        // remains text and must not become a missing-upload dependency.
+        const raw = JSON.parse(row.params_json);
+        const params = row.rpc_name === EXECUTION_RPC ? raw : replaceMedia(raw, uploaded);
         const { data, error } = await this.supabase().rpc('rm_mobile_mutate_v1', {
           p_client_submission_id: row.id, p_rpc_name: row.rpc_name,
           p_params: params, p_operator_token: token,
         });
         if (error) throw error;
+        if (row.rpc_name === EXECUTION_RPC) {
+          const receipt = parseExecutionReceipt(data);
+          if (receipt.event_id !== row.id || receipt.session_id !== raw.p_session_id) throw new Error('Não foi possível confirmar o protocolo do apontamento. O envio foi preservado para nova tentativa.');
+        }
         await this.database.write(async db => {
-          await db.runAsync("UPDATE local_rpc_outbox SET status='completed',last_error=NULL WHERE id=?", row.id);
-          await db.runAsync('UPDATE local_queue_meta SET result_json=? WHERE id=?', JSON.stringify(data), row.id);
+          if (row.rpc_name === EXECUTION_RPC) await storeExecutionAck(db, owner, row.actor_id, row.id, parseExecutionReceipt(data));
+          else {
+            await db.runAsync("UPDATE local_rpc_outbox SET status='completed',last_error=NULL WHERE id=?", row.id);
+            await db.runAsync('UPDATE local_queue_meta SET result_json=? WHERE id=?', JSON.stringify(data), row.id);
+          }
           if (row.draft_id) await db.runAsync("UPDATE local_form_drafts SET status='synced' WHERE draft_id=?", row.draft_id);
           if (row.rpc_name === 'rm_submit_recebimento_v1') {
             const receiving = await this.readReceivingEntry(db, row.actor_id);
@@ -583,7 +647,10 @@ class MobileService {
         });
         await secureStorage.removeItem(row.token_key).catch(() => undefined);
       } catch (error) {
-        await this.fail('local_rpc_outbox', row.id, row.attempts, error);
+        if (row.rpc_name === EXECUTION_RPC) {
+          const fenced = await this.database.write(db => storeExecutionFailure(db, { owner, actor: row.actor_id, eventId: row.id, error, message: errorText(error), nextRetryAt: Date.now() + retryDelay(row.attempts + 1) }));
+          if (fenced) this.update({});
+        } else await this.fail('local_rpc_outbox', row.id, row.attempts, error);
         throw error; // Strict FIFO: later RPCs cannot overtake this operation.
       }
     }
