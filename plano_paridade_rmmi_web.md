@@ -18,6 +18,8 @@ Sempre informar o escopo e o denominador do percentual. O backlog de 42 itens é
 
 **Pacote Q01 — painel de qualidade: 100% dos marcos técnicos**, com publicação e conferências registradas em [web-platform.md](desktop/docs/web-platform.md). Critério adotado nesta entrega: diagnóstico 20%, implementação 30%, testes/tipos/build 20%, inspeção de interface 10%, publicação/conferência de produção 20%. É um indicador de marcos verificados, não uma estimativa de horas.
 
+**Pacote A01 — consumidor da autoridade HTTP de Acessos: 90/100 pontos dos marcos (90%)**. Diagnóstico 20, implementação 30, testes/tipos/build 20 e publicação/conferências públicas 20 concluídos; homologação autenticada 10 pendente. Publicado no Railway EM com 604 testes web e CI web/mobile aprovados; [evidências e limites](desktop/docs/web-platform.md). INT-01 segue parcial: faltam o contrato de oficina, o contexto das identidades locais mobile e o isolamento por oficina. INT-00 identificou a autoridade oficial para EM; não encerra o inventário dos demais aplicativos. Não há percentual global do software inferido desta entrega.
+
 **DAD-01: 1 de 3 entregas de aceite concluída (33,3% por contagem)**: painel de qualidade publicado; dicionário operacional completo e piloto/homologação com a oficina permanecem pendentes. Os percentuais exibidos no painel medem cobertura de dados, nunca avanço físico ou conclusão deste roadmap. A gestão e o isolamento entre oficinas ainda não foram ativados.
 
 ### Ordem de execução proposta
