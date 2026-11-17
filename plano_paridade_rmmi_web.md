@@ -8,7 +8,17 @@ O backlog está organizado em pacotes entregáveis, ainda sem estimativas de pra
 
 ### Base já entregue
 
+**Regra confirmada em 17/11/2026:** mobile usa login e senha, sem SSO; web usa SSO Microsoft. A autorização de oficina administrada em Acessos será resolvida separadamente, sem substituir a autenticação mobile nem pedir seleção de oficina. Identificação de operador, credenciais legadas e trabalhos offline serão preservados.
+
 SSO Microsoft pela Central de Acessos; gestão de projetos e recebimentos; cadastros básicos; Engenharia e roteiro próprio; modelos de formulário; fotos, documentos/pastas e comentários; aprovações e fila das células; Gantt geral/célula/projeto com datas, dependências, referência, calendários, marcos e caminho crítico; recursos/reservas diárias; apontamentos offline e revisão gerencial; gêmeo digital no portal; abertura antecipada de recebimentos e classificação inicial corrigidas. A integração atual com Acessos é real, mas não equivale à integração completa do ecossistema. Gerador PDF, CLI e isolamento entre oficinas ainda não estão entregues.
+
+### Medição de conclusão
+
+Sempre informar o escopo e o denominador do percentual. O backlog de 42 itens é o trabalho novo listado neste roadmap; a base já publicada até a 052 não está nesse denominador. Contagem integral nesta entrega: **0/42 itens = 0% integralmente concluído**, com DAD-01 parcialmente entregue. Essa contagem não representa o percentual do software inteiro nem de esforço/tempo restante.
+
+**Pacote Q01 — painel de qualidade: 100% dos marcos técnicos**, com publicação e conferências registradas em [web-platform.md](desktop/docs/web-platform.md). Critério adotado nesta entrega: diagnóstico 20%, implementação 30%, testes/tipos/build 20%, inspeção de interface 10%, publicação/conferência de produção 20%. É um indicador de marcos verificados, não uma estimativa de horas.
+
+**DAD-01: 1 de 3 entregas de aceite concluída (33,3% por contagem)**: painel de qualidade publicado; dicionário operacional completo e piloto/homologação com a oficina permanecem pendentes. Os percentuais exibidos no painel medem cobertura de dados, nunca avanço físico ou conclusão deste roadmap. A gestão e o isolamento entre oficinas ainda não foram ativados.
 
 ### Ordem de execução proposta
 
@@ -31,7 +41,7 @@ MOB-01, DAD-02 e a manutenção SEG-03 acompanham todas as ondas. O estudo de in
 | SEG-01 / P0 | Revisar acessos de Railway, Supabase e GitHub, MFA, credenciais e notificações do incidente Railway discutido em 17/11 | Inventário restrito ao EM; evidência de revisão/rotação quando aplicável, credenciais mínimas e nenhuma interrupção não planejada. Não assumir comprometimento nem rotação já executada. |
 | SEG-02 / P0 | Confirmar backups de banco e arquivos e ensaiar restauração | Destino e retenção definidos; restauração isolada comprovada, com procedimento e responsáveis por recuperação. |
 | SEG-03 / contínua | Monitoramento, alertas, atualização de dependências e revisão de segurança | Alertas de indisponibilidade/fila, trilha de alterações e diagnóstico sem segredos; revisão independente dos fluxos críticos antes da expansão. |
-| DAD-01 / P0 | Dicionário operacional, piloto e painel de qualidade dos dados | Oficina valida significados de status, prazos, esforço e conclusão; identificar dados sem origem/tipo/célula e definir responsável por sua conferência. Não inferir execução histórica nem corrigir em massa sem evidência. |
+| DAD-01 / P0 / parcial: 1 de 3 entregas (33,3%) | Dicionário operacional, piloto e painel de qualidade dos dados | Painel publicado em `/planejamento/qualidade` no pacote Q01. Pendentes: dicionário completo validado pela oficina e piloto com responsável pela conferência; validar significados de status, prazos, esforço e conclusão. Não inferir execução histórica nem corrigir em massa sem evidência. |
 | DAD-02 / contínua | Reconciliar referências legadas e homologar os fluxos reais | Engenharia/PCP revisam vínculos de tipos, equipamentos, avaliadores e registros; ambiguidades registradas, identidades e trabalhos offline preservados. |
 
 ### Oficinas e personalização
@@ -55,7 +65,7 @@ As responsabilidades abaixo são o desenho proposto para validar com os respons�
 | ID / prioridade / estado | Entrega e autoridade proposta | Dependências e aceite |
 | --- | --- | --- |
 | INT-00 / P0 / discovery | Inventariar aplicativos, responsáveis, ambientes, IDs canônicos e contratos de integração | Mapear APIs/eventos disponíveis, autenticação, campos permitidos, sistema responsável por cada dado e atualização/revogação esperada; decidir o que é link, consulta ou escrita. Nenhuma alteração de outros sistemas nesta organização do roadmap. |
-| INT-01 / P1 / evolução de integração existente | Acessos: preservar SSO/capacidades e administrar vínculos, oficina efetiva e concessão/revogação | INT-00, OFI-01. Contrato autenticado fornece o contexto determinado centralmente; EM valida e aplica o isolamento de OFI-02, sem pedir escolha ao usuário nem aceitar escopo autodeclarado. Usuário bloqueado não ganha acesso alternativo; testar mudança/revogação e preservar identidades legadas mobile. |
+| INT-01 / P1 / evolução de integração existente | Acessos: preservar SSO web/capacidades e administrar vínculos, oficina efetiva e concessão/revogação | INT-00, OFI-01. Mobile permanece com login e senha, sem SSO: autorização de oficina deve atender às identidades locais de tablet/operador. Contrato autenticado fornece o contexto determinado centralmente; EM valida o isolamento de OFI-02, sem escolha de oficina ou escopo autodeclarado. Testar revogação e preservar identidades/trabalhos offline. |
 | INT-02 / P1 / planejado | Mi Connect: disponibilizar entrada do EM, navegação contextual e retorno ao ambiente corporativo | INT-00–01, OFI-03. Abrir projeto/oficina somente se permitido, com sessão validada; esconder atalho não é controle de acesso. Perfil/notificações compartilhadas somente se houver contrato aprovado. |
 | INT-03 / P1 / planejado | Gente: relacionar colaboradores, vínculos, lotação/oficina e equipes por identificador estável | INT-00–01, OFI-01. Importar somente campos necessários; evitar cadastro duplicado e associação apenas por nome/e-mail. Desligamento/mudança de unidade segue o fluxo acordado com Acessos; preservar autoria e histórico, sem copiar dados salariais ou médicos. |
 | INT-04 / P2 / condicionado aos dados disponíveis | Gente + planejamento: competências, escalas e disponibilidade autorizadas | INT-03, OFI-02 e cadastro diário de recursos já entregue na 050. Confirmar se esses dados existem no Gente; definir relação com recursos da oficina e calendário, atualização e exceções locais. Ausência ou dado desatualizado não vira capacidade inventada. |
