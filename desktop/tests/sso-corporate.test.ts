@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createCorporateAuth, type CorporateDependencies } from '../src/server/web/sso-corporate';
 import {
-  corporateSettings, CorporateAuthError, CORPORATE_CAPABILITIES, CORPORATE_FLOW_TTL_MS, CORPORATE_ISSUER,
+  corporateSettings, CorporateAuthError, CORPORATE_AUTHORIZATION_URL, CORPORATE_CAPABILITIES, CORPORATE_FLOW_TTL_MS, CORPORATE_ISSUER,
   CORPORATE_SESSION_TTL_MS, CORPORATE_STORAGE_KEY, CORPORATE_SUPABASE_URL, validateCorporateFlow,
 } from '../src/server/web/sso-policy';
 
+const AUTHORIZATION_PATH = '/authorization/v1/me/access';
 const NOW = Date.parse('2026-10-29T12:00:00Z');
 const SUBJECT = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -34,7 +35,7 @@ function fixture(options: FixtureOptions = {}) {
   const consumed = new Set<string>(); let now = NOW; const token = options.token ?? jwt();
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input)); const headers = new Headers(init?.headers);
-    assert.equal(url.origin, CORPORATE_SUPABASE_URL);
+    assert.equal(url.origin, url.pathname === AUTHORIZATION_PATH ? new URL(CORPORATE_AUTHORIZATION_URL).origin : CORPORATE_SUPABASE_URL);
     assert.equal(init?.redirect, 'error'); assert.equal(init?.cache, 'no-store'); assert.ok(init?.signal);
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
     calls.push({ path: url.pathname, method: init?.method || 'GET', body, bearer: headers.get('authorization') === `Bearer ${token}` });
@@ -55,8 +56,13 @@ function fixture(options: FixtureOptions = {}) {
       assert.equal(url.searchParams.get('select'), 'id,email,auth_user_id,is_active');
       return Response.json(options.registry ?? [{ id: OTHER, auth_user_id: SUBJECT, email: user().email, is_active: true }]);
     }
-    if (url.pathname === '/rest/v1/rpc/cp_my_permissions_v1') {
-      assert.deepEqual(body, { p_app_slug: 'em' }); return Response.json(options.decision ?? decision());
+    if (url.pathname === AUTHORIZATION_PATH) {
+      assert.equal(url.href, CORPORATE_AUTHORIZATION_URL);
+      assert.equal(init?.method, 'GET'); assert.equal(body, undefined);
+      assert.deepEqual([...headers.keys()].sort(), ['accept', 'authorization']);
+      assert.equal(headers.get('accept'), 'application/json');
+      assert.equal(headers.get('authorization'), `Bearer ${token}`);
+      return Response.json(options.decision ?? decision());
     }
     assert.fail(`Unexpected corporate endpoint ${url.pathname}`);
   };
@@ -131,11 +137,11 @@ test('exchange uses its exact verifier then fresh identity, explicit registry an
   const result = await auth.finishCorporateFlow(flow, 'fictional-once-code', flow.flowId);
   assert.equal(result.user.id, SUBJECT); assert.equal(result.user.nome, 'Pessoa de teste'); assert.equal(result.expiresAt, NOW + 3600_000);
   assert.equal(result.decision.app_access, true); assert.equal('role' in result.user, false); assert.equal('refreshToken' in result, false);
-  assert.deepEqual(calls.map(call => call.path), ['/auth/v1/token', '/auth/v1/user', '/rest/v1/authorized_users', '/rest/v1/rpc/cp_my_permissions_v1']);
+  assert.deepEqual(calls.map(call => call.path), ['/auth/v1/token', '/auth/v1/user', '/rest/v1/authorized_users', AUTHORIZATION_PATH]);
   const expectedVerifier = JSON.parse(flow.entries.find(([key]) => key.includes(`-flow-${flow.flowId}-`))![1]);
   assert.equal(calls[0].body.code_verifier, expectedVerifier); assert.ok(calls.slice(1).every(call => call.bearer));
   await assert.rejects(auth.finishCorporateFlow(flow, 'fictional-once-code', flow.flowId), code('CORP_UNAUTHORIZED'));
-  assert.equal(calls.filter(call => call.path === '/rest/v1/rpc/cp_my_permissions_v1').length, 1);
+  assert.equal(calls.filter(call => call.path === AUTHORIZATION_PATH).length, 1);
 });
 
 test('wrong/expired flow, missing slot and callback tampering fail before any token exchange', async () => {
@@ -197,7 +203,7 @@ test('registry lookup requires one active account with the same UUID and never l
   for (const registry of [[], [row, row], [{ ...row, auth_user_id: null }], [{ ...row, auth_user_id: OTHER }], [{ ...row, is_active: false }]]) {
     const f = fixture({ registry });
     await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_FORBIDDEN'));
-    assert.ok(!f.calls.some(call => call.path.includes('/rpc/')));
+    assert.ok(!f.calls.some(call => call.path === AUTHORIZATION_PATH));
   }
 });
 
@@ -214,7 +220,7 @@ test('fresh Azure last_sign_in_at is accepted, while another provider cannot ref
 });
 
 test('a token that expires while the current permission check is in flight never reaches the bridge', async () => {
-  const f = fixture({ response: path => { if (path.includes('/rpc/')) f.advance(CORPORATE_SESSION_TTL_MS); return undefined; } });
+  const f = fixture({ response: path => { if (path === AUTHORIZATION_PATH) f.advance(CORPORATE_SESSION_TTL_MS); return undefined; } });
   await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_UNAUTHORIZED'));
 });
 
@@ -237,7 +243,7 @@ test('each protected validation rechecks grants; portal entry never implies mana
   await f.auth.validateCorporateSession(f.token, { subject: SUBJECT });
   access.app_access = false; access.capabilities = [];
   await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_FORBIDDEN'));
-  assert.equal(f.calls.filter(call => call.path.includes('/rpc/')).length, 4);
+  assert.equal(f.calls.filter(call => call.path === AUTHORIZATION_PATH).length, 4);
   const withoutPortal = fixture({ decision: { ...decision(), capabilities: ['em.projects.manage'] } });
   await assert.rejects(withoutPortal.auth.validateCorporateSession(withoutPortal.token, { subject: SUBJECT }, 'em.projects.manage'), code('CORP_FORBIDDEN'));
 });
@@ -266,7 +272,7 @@ test('transport failure, redirects, oversized and non-JSON responses fail closed
     () => new Response(' '.repeat(262145), { headers: { 'content-type': 'application/json' } }),
   ];
   for (const response of responses) {
-    const f = fixture({ response: path => path.includes('/rpc/') ? response() : undefined });
+    const f = fixture({ response: path => path === AUTHORIZATION_PATH ? response() : undefined });
     await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_UNAVAILABLE'));
   }
   const f = fixture({ fail: true });
@@ -279,5 +285,44 @@ test('an injected SDK cannot redirect OAuth to another host or degrade PKCE to p
       data: { provider: 'azure', url: address, flowId: 'fictional-flow-id' } }) } } as any);
     const auth = createCorporateAuth({ settings, clientFactory: factory, now: () => NOW });
     await assert.rejects(auth.beginCorporateFlow(), code('CORP_UNAVAILABLE'));
+  }
+});
+
+test('authorization HTTP denials and outages never fall back to database permissions', async () => {
+  for (const [status, expected] of [[401, 'CORP_UNAUTHORIZED'], [403, 'CORP_FORBIDDEN'], [422, 'CORP_UNAVAILABLE'], [503, 'CORP_UNAVAILABLE']] as const) {
+    const f = fixture({ response: path => path === AUTHORIZATION_PATH
+      ? Response.json({ detail: 'untrusted upstream diagnostic' }, { status }) : undefined });
+    await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), error => {
+      assert.ok(error instanceof CorporateAuthError); assert.equal(error.code, expected);
+      assert.ok(!JSON.stringify(error).includes(f.token));
+      assert.ok(!error.message.includes('upstream diagnostic')); return true;
+    });
+    assert.deepEqual(f.calls.map(call => call.path), ['/auth/v1/user', '/rest/v1/authorized_users', AUTHORIZATION_PATH]);
+  }
+});
+
+test('identity SDK transport cannot send its credentials to the authorization service or another host', async () => {
+  for (const address of [CORPORATE_AUTHORIZATION_URL, 'https://evil.example/auth/v1/user',
+    `${CORPORATE_SUPABASE_URL}/auth/v1/user#unexpected`, 'https://user@kxoriwvzmxhatzqcgnht.supabase.co/auth/v1/user']) {
+    let sent = false;
+    const factory: CorporateDependencies['clientFactory'] = (_url, _key, options) => ({ auth: {
+      getUser: async () => { await options.global!.fetch!(address); assert.fail('must reject destination'); },
+    } } as any);
+    const auth = createCorporateAuth({ settings, clientFactory: factory, now: () => NOW,
+      fetcher: async () => { sent = true; return Response.json({}); } });
+    await assert.rejects(auth.validateCorporateSession(jwt(), { subject: SUBJECT }), code('CORP_UNAVAILABLE'));
+    assert.equal(sent, false);
+  }
+});
+
+test('authorization invalid JSON and missing decisions do not create sessions', async () => {
+  for (const response of [
+    () => new Response('{', { headers: { 'content-type': 'application/json' } }),
+    () => new Response(null, { status: 204 }),
+    () => Response.json({}),
+    () => Response.json(decision(), { status: 201 }),
+  ]) {
+    const f = fixture({ response: path => path === AUTHORIZATION_PATH ? response() : undefined });
+    await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_UNAVAILABLE'));
   }
 });

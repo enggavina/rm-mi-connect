@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 import {
-  corporateSettings, CORPORATE_STORAGE_KEY, CorporateAuthError, validateCorporateDecision,
+  corporateSettings, CORPORATE_AUTHORIZATION_URL, CORPORATE_STORAGE_KEY, CorporateAuthError, validateCorporateDecision,
   validateCorporateFlow, validateCorporateRegistry, verifiedCorporateIdentity,
   type CorporateCapability, type CorporateFlow, type CorporateSettings, type VerifiedCorporateSession,
 } from './sso-policy';
@@ -38,10 +38,11 @@ export function createCorporateAuth({ settings, fetcher = fetch, clientFactory =
   const verifiedSettings = corporateSettings({ EM_SSO_ENABLED: 'true', EM_CORPORATE_SUPABASE_URL: settings.supabaseUrl,
     EM_CORPORATE_PUBLISHABLE_KEY: settings.publishableKey, EM_CORPORATE_APP_SLUG: settings.appSlug, EM_PUBLIC_ORIGIN: settings.publicOrigin });
   if (!verifiedSettings || settings.callbackUrl !== verifiedSettings.callbackUrl || settings.issuer !== verifiedSettings.issuer) throw new CorporateAuthError('CORP_UNCONFIGURED');
-  const boundedFetch: typeof fetch = async (input, init) => {
+  const request = async (input: Parameters<typeof fetch>[0], init: RequestInit | undefined, destination: 'identity' | 'authorization'): Promise<Response> => {
     try {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-      if (url.origin !== settings.supabaseUrl || url.username || url.password || url.hash) throw new Error();
+      if (url.username || url.password || url.hash
+        || (destination === 'identity' ? url.origin !== settings.supabaseUrl : url.href !== CORPORATE_AUTHORIZATION_URL)) throw new Error();
       const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       const response = await fetcher(url, { ...init, cache: 'no-store', redirect: 'error',
         signal: init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout });
@@ -57,20 +58,23 @@ export function createCorporateAuth({ settings, fetcher = fetch, clientFactory =
       return new Response(Buffer.concat(chunks), { status: response.status, headers: response.headers });
     } catch (error) { throw unavailable(error); }
   };
+  // The SDK can only contact its issuer; authorization has a separate, fixed destination.
+  const boundedFetch: typeof fetch = (input, init) => request(input, init, 'identity');
   const client = (storage: FlowStorage) => clientFactory(settings.supabaseUrl, settings.publishableKey, {
     auth: { flowType: 'pkce', autoRefreshToken: false, persistSession: true, detectSessionInUrl: false,
       skipAutoInitialize: true, storage, storageKey: CORPORATE_STORAGE_KEY, experimental: { appendPkceFlowIdToRedirects: false } },
     global: { fetch: boundedFetch },
   });
-  async function json(path: string, token: string, body?: unknown): Promise<unknown> {
-    const response = await boundedFetch(`${settings.supabaseUrl}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: { apikey: settings.publishableKey, Authorization: `Bearer ${token}`, Accept: 'application/json',
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    if (!response.ok) throw new CorporateAuthError(response.status === 401 ? 'CORP_UNAUTHORIZED' : response.status === 403 ? 'CORP_FORBIDDEN' : 'CORP_UNAVAILABLE');
+  async function jsonResponse(response: Response): Promise<unknown> {
+    if (response.status !== 200) throw new CorporateAuthError(response.status === 401 ? 'CORP_UNAUTHORIZED' : response.status === 403 ? 'CORP_FORBIDDEN' : 'CORP_UNAVAILABLE');
     try { return await response.json(); } catch { throw new CorporateAuthError('CORP_UNAVAILABLE'); }
+  }
+  async function json(path: string, token: string): Promise<unknown> {
+    const response = await boundedFetch(`${settings.supabaseUrl}${path}`, {
+      method: 'GET',
+      headers: { apikey: settings.publishableKey, Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    return jsonResponse(response);
   }
   async function verify(auth: AuthClient, token: string, expected: { subject?: string; startedAt?: number }, requiredCapability?: CorporateCapability): Promise<VerifiedCorporateSession> {
     if (typeof token !== 'string' || token.length > 16384 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) throw new CorporateAuthError('CORP_UNAUTHORIZED');
@@ -79,7 +83,10 @@ export function createCorporateAuth({ settings, fetcher = fetch, clientFactory =
     const identity = verifiedCorporateIdentity(token, data.user, now(), expected);
     const query = new URLSearchParams({ select: 'id,email,auth_user_id,is_active', auth_user_id: `eq.${identity.user.id}`, is_active: 'eq.true', limit: '2' });
     validateCorporateRegistry(await json(`/rest/v1/authorized_users?${query}`, token), identity.user);
-    const decision = validateCorporateDecision(await json('/rest/v1/rpc/cp_my_permissions_v1', token, { p_app_slug: settings.appSlug }), identity.user.id, requiredCapability);
+    const decisionResponse = await request(CORPORATE_AUTHORIZATION_URL, {
+      method: 'GET', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    }, 'authorization');
+    const decision = validateCorporateDecision(await jsonResponse(decisionResponse), identity.user.id, requiredCapability);
     if (identity.expiresAt <= now()) throw new CorporateAuthError('CORP_UNAUTHORIZED');
     const verified = { accessToken: token, user: identity.user, expiresAt: identity.expiresAt, decision };
     if (identity.mfaRequired) throw new CorporateAuthError('CORP_MFA_REQUIRED', verified, identity.factors);

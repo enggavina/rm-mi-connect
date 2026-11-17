@@ -1,5 +1,6 @@
 /** Server-side corporate SSO policy. No claim is trusted before remote getUser(token). */
 export const CORPORATE_SUPABASE_URL = 'https://kxoriwvzmxhatzqcgnht.supabase.co';
+export const CORPORATE_AUTHORIZATION_URL = 'https://acessos.miconnect.app.br/authorization/v1/me/access?application=em';
 export const CORPORATE_ISSUER = `${CORPORATE_SUPABASE_URL}/auth/v1`;
 export const CORPORATE_APP_SLUG = 'em' as const;
 export const CORPORATE_FLOW_TTL_MS = 10 * 60_000;
