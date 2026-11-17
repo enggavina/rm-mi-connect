@@ -1,5 +1,115 @@
 # Revisão de paridade RMMI → EM e plano de implementação
 
+## Roadmap consolidado — 17/11/2026
+
+Esta seção é a referência atual de prioridades e pendências do EM. Consolida as entregas até a 052, a separação entre oficinas e o pedido de integração com Mi Connect, Acessos, Gente e, sob avaliação, Processos. Os registros de entregas e a sequência histórica abaixo ficam preservados para rastreabilidade; não devem reabrir funcionalidades já publicadas.
+
+O backlog está organizado em pacotes entregáveis, ainda sem estimativas de prazo. As prioridades abaixo são uma proposta de execução; a ordem respeita as dependências e a prioridade já definida de acompanhar a oficina com dados confiáveis. Salvo indicação contrária, os itens estão planejados e ainda não implementados. Cada pacote terá seu contrato detalhado antes do desenvolvimento, responsável técnico definido no início e aceite funcional da área indicada.
+
+### Base já entregue
+
+SSO Microsoft pela Central de Acessos; gestão de projetos e recebimentos; cadastros básicos; Engenharia e roteiro próprio; modelos de formulário; fotos, documentos/pastas e comentários; aprovações e fila das células; Gantt geral/célula/projeto com datas, dependências, referência, calendários, marcos e caminho crítico; recursos/reservas diárias; apontamentos offline e revisão gerencial; gêmeo digital no portal; abertura antecipada de recebimentos e classificação inicial corrigidas. A integração atual com Acessos é real, mas não equivale à integração completa do ecossistema. Gerador PDF, CLI e isolamento entre oficinas ainda não estão entregues.
+
+### Ordem de execução proposta
+
+| Onda | Foco e resultado de saída | Itens principais |
+| --- | --- | --- |
+| 0 — preparar a expansão | Segurança, recuperação, qualidade dos dados e contratos dos aplicativos conhecidos; sem ampliar acessos de outras oficinas antes do isolamento | SEG-01–03, DAD-01, INT-00 |
+| 1 — separar e conectar | Oficinas isoladas no banco/web/mobile; acesso por oficina e entrada pelo Mi Connect | OFI-01–03, INT-01–02 |
+| 2 — operação confiável | Equipe vinculada por identidade real, impedimentos geridos e execução apresentada de forma consistente | INT-03, EXE-01–03, CAD-01–02 |
+| 3 — planejar e personalizar | Planejamento por horários/capacidade, cenários, indicadores e plantas próprias | INT-04, PLN-01–04, OFI-04–05 |
+| 4 — documentação e fechamento | Editor/geração PDF, dossiê e encerramento; avaliar Processos e integrar somente o contrato aprovado | REL-01–04, DOS-01–03, INT-05–06 |
+| 5 — ampliar os canais e módulos | CLI, portal do cliente, Comercial e Laboratório, conforme priorização do negócio | CLI-01–03, MOB-02, COM-01–02, LAB-01 |
+| Corte legado — marco separado | Decidir convivência ou corte com o Bubble depois da reconciliação e homologação | LEG-01 |
+
+MOB-01, DAD-02 e a manutenção SEG-03 acompanham todas as ondas. O estudo de integração do editor PDF (REL-01) e o discovery de Processos (INT-05) podem começar enquanto se detalha a onda 1; sua publicação respeita o isolamento por oficina. CLI-01–02 podem iniciar após seus contratos de acesso/isolamento, sem aguardar Comercial/Laboratório. As ondas organizam a prioridade, não impõem espera entre trabalhos independentes. Não há compromisso de datas ou implementação do app Processos sem confirmar sua necessidade.
+
+### Segurança, qualidade e continuidade
+
+| ID / prioridade | Entrega | Dependências e aceite |
+| --- | --- | --- |
+| SEG-01 / P0 | Revisar acessos de Railway, Supabase e GitHub, MFA, credenciais e notificações do incidente Railway discutido em 17/11 | Inventário restrito ao EM; evidência de revisão/rotação quando aplicável, credenciais mínimas e nenhuma interrupção não planejada. Não assumir comprometimento nem rotação já executada. |
+| SEG-02 / P0 | Confirmar backups de banco e arquivos e ensaiar restauração | Destino e retenção definidos; restauração isolada comprovada, com procedimento e responsáveis por recuperação. |
+| SEG-03 / contínua | Monitoramento, alertas, atualização de dependências e revisão de segurança | Alertas de indisponibilidade/fila, trilha de alterações e diagnóstico sem segredos; revisão independente dos fluxos críticos antes da expansão. |
+| DAD-01 / P0 | Dicionário operacional, piloto e painel de qualidade dos dados | Oficina valida significados de status, prazos, esforço e conclusão; identificar dados sem origem/tipo/célula e definir responsável por sua conferência. Não inferir execução histórica nem corrigir em massa sem evidência. |
+| DAD-02 / contínua | Reconciliar referências legadas e homologar os fluxos reais | Engenharia/PCP revisam vínculos de tipos, equipamentos, avaliadores e registros; ambiguidades registradas, identidades e trabalhos offline preservados. |
+
+### Oficinas e personalização
+
+| ID / prioridade | Entrega | Dependências e aceite |
+| --- | --- | --- |
+| OFI-01 / P0 antes de nova oficina | Cadastro de oficinas, vínculos de usuários e classificação dos dados existentes | Definir oficinas reais, gestores e cadastros compartilháveis. Mapear o legado com validação; não presumir que todos os registros importados pertencem à mesma unidade. Manter IDs e tratar ambiguidades. |
+| OFI-02 / P0 antes de nova oficina | Isolamento de leitura/escrita por oficina em todo o sistema | OFI-01. Banco, funções privilegiadas, APIs, arquivos, downloads, contagens, buscas, exportações e jobs negam acesso cruzado; vínculos entre registros conferem a mesma oficina. Administrador local não se torna global. |
+| OFI-03 / P1 | Oficina ativa no web/mobile e cache/fila offline com escopo de origem | OFI-02. Seleção somente entre oficinas permitidas; troca não revela cache anterior nem redireciona um envio pendente. Clientes antigos tratados em migração compatível antes da abertura a novos grupos. |
+| OFI-04 / P1 | Configurações por oficina e visão corporativa autorizada | OFI-02–03. Células, roteiros, formulários, calendários e módulos configuráveis; distinguir padrões compartilhados de cópias locais. Consolidado exige permissão explícita e informa seu escopo. |
+| OFI-05 / P1 | Planta própria do gêmeo digital por oficina | OFI-02–04. Externalizar layout hoje definido em código; dimensões, áreas, células, câmeras e modelos vinculados à oficina e versionados. Posições físicas somente quando comprovadas; sem misturar dados/planta de outra unidade. |
+
+### Integrações do ecossistema Mi Connect
+
+As responsabilidades abaixo são o desenho proposto para validar com os responsáveis dos aplicativos. Os contratos e recursos de Mi Connect, Gente e Processos ainda precisam ser inspecionados; não se presume que APIs, eventos, campos ou permissões já existam. O [SSO existente](desktop/docs/sso.md) deve ser reaproveitado.
+
+| ID / prioridade / estado | Entrega e autoridade proposta | Dependências e aceite |
+| --- | --- | --- |
+| INT-00 / P0 / discovery | Inventariar aplicativos, responsáveis, ambientes, IDs canônicos e contratos de integração | Mapear APIs/eventos disponíveis, autenticação, campos permitidos, sistema responsável por cada dado e atualização/revogação esperada; decidir o que é link, consulta ou escrita. Nenhuma alteração de outros sistemas nesta organização do roadmap. |
+| INT-01 / P1 / evolução de integração existente | Acessos: preservar SSO e capacidades; acrescentar vínculos de oficina e ciclo de concessão/revogação | INT-00, OFI-01–02. Central continua autoridade do acesso corporativo; EM controla escopo operacional compatível. Usuário bloqueado não ganha acesso alternativo; testar troca/revogação e preservar identidades legadas mobile. |
+| INT-02 / P1 / planejado | Mi Connect: disponibilizar entrada do EM, navegação contextual e retorno ao ambiente corporativo | INT-00–01, OFI-03. Abrir projeto/oficina somente se permitido, com sessão validada; esconder atalho não é controle de acesso. Perfil/notificações compartilhadas somente se houver contrato aprovado. |
+| INT-03 / P1 / planejado | Gente: relacionar colaboradores, vínculos, lotação/oficina e equipes por identificador estável | INT-00–01, OFI-01. Importar somente campos necessários; evitar cadastro duplicado e associação apenas por nome/e-mail. Desligamento/mudança de unidade segue o fluxo acordado com Acessos; preservar autoria e histórico, sem copiar dados salariais ou médicos. |
+| INT-04 / P2 / condicionado aos dados disponíveis | Gente + planejamento: competências, escalas e disponibilidade autorizadas | INT-03, OFI-02 e cadastro diário de recursos já entregue na 050. Confirmar se esses dados existem no Gente; definir relação com recursos da oficina e calendário, atualização e exceções locais. Ausência ou dado desatualizado não vira capacidade inventada. |
+| INT-05 / P2 / avaliação solicitada, não compromisso de integração | Processos: avaliar procedimentos, instruções e responsabilidades que realmente devem integrar o EM | INT-00 e validação da área de Processos. Mapear funcionalidades existentes e benefício; registrar decisão de integrar, apenas referenciar documentos ou adiar. Não bloqueia os demais módulos. |
+| INT-06 / P2 / condicionado a INT-05 | Vincular procedimentos/versionamento e, se aprovado, eventos ou aprovações de Processos | INT-05, OFI-02. Projeto/registros conservam a versão aplicada; atualização não reescreve respostas/offline. Definir um único responsável por cada decisão, preservando aprovações operacionais atuais do EM. |
+
+Contrato transversal obrigatório: API de serviço com escopo mínimo; sem conceder administração global nem usar acesso amplo a bancos de outros aplicativos. Registrar origem e instante de atualização; validar mensagens, versões e identidades; aplicar assinatura/autenticação, idempotência, retries, reconciliação e fila de falhas conforme o transporte escolhido. Testar duplicidade, indisponibilidade, mensagem atrasada e acesso por outra oficina. Falha de integração deve ser visível e não apagar o histórico nem liberar acesso indevido. Credenciais e conteúdo sensível não entram em logs. Escrita de volta em outro aplicativo será especificada e autorizada como parte de seu pacote, não consequência de uma consulta.
+
+### Execução e planejamento da oficina
+
+| ID / prioridade | Entrega | Dependências e aceite |
+| --- | --- | --- |
+| EXE-01 / P1 | Impedimentos estruturados com categoria, responsável, previsão de liberação, ação e histórico | DAD-01, OFI-02 para uso em várias unidades. Evoluir bloqueios/motivos de pausa já existentes; testar criação, tratamento e liberação sem alterar decisões históricas. |
+| EXE-02 / P1 | Consolidar apontamentos no Gantt, gêmeo digital e acompanhamento | Base 051, DAD-01. Definir projeção de eventos aceitos versus status legado; distinguir dado desconhecido, pendência offline e divergência. Não atualizar automaticamente horas/status sem regra acordada. |
+| EXE-03 / P1 | Melhorar revisão gerencial e confiabilidade operacional | EXE-01–02. Piloto com conferência no turno, pendências de relógio/conflito visíveis e correções auditadas; separar esforço declarado de intervalo de relógio e conservar eventos originais. |
+| PLN-01 / P2 | Horários/turnos, atividades necessárias e associação entre pessoas/competências e recursos | Base 049–050, DAD-01; INT-04 quando os dados vierem do Gente. Horas-pessoa/máquina e jornada explícitas; reservas existentes preservadas, sem converter login ou duração do Gantt em esforço. |
+| PLN-02 / P2 | Programação com capacidade finita e nivelamento explicável | PLN-01, EXE-01. Prévia respeita dependências, calendários, recursos exclusivos e paralelismo; apresenta restrições inviáveis e exige decisão do planejador. |
+| PLN-03 / P2 | Cenários persistidos e revisões completas do plano | PLN-01–02. Simular urgência/ausência/atraso, comparar com plano vigente e referência existente; publicação versionada, com motivo e revalidação concorrente. |
+| PLN-04 / P2 | Indicadores avançados e previsão com qualidade/cobertura informadas | EXE-02–03, PLN-01. Previsto × realizado, espera, fluxo, carga e produtividade com unidade, escopo e atualização visíveis; não calcular precisão inexistente. |
+
+### Relatórios, dossiê e encerramento
+
+| ID / prioridade | Entrega | Dependências e aceite |
+| --- | --- | --- |
+| REL-01 / P1 estudo; P2 entrega | Validar motor/editor visual PDF integrado ao Next/React do EM | Prova inicial existente não é produto entregue. Testar templates representativos, tabelas longas, fotos distintas/ausentes, fontes e paginação; escolher o motor após ensaio. [Discovery](docs/discovery_relatorios_pdf_editor.md). |
+| REL-02 / P2 | Catálogo de templates PDF, editor visual sem código, versões e atribuição por tipo/oficina | REL-01, OFI-02–04. Equipe EM edita/publica; modelo aplicado permanece identificável e histórico não muda retroativamente. Template de relatório é distinto de modelo de formulário. |
+| REL-03 / P2 | Relatórios técnicos/fotográficos com dados e fotos autorizados do projeto | REL-02. PDF utiliza respostas/versões corretas e seleção/ordem de fotos; snapshot e autoria registrados, prévia conferida, nenhum arquivo ausente omitido silenciosamente. |
+| REL-04 / P2 | Compilação ordenada, fila durável de geração, recuperação e arquivo privado no dossiê | REL-03. Jobs idempotentes, falha explícita, retry e download autorizado; sucesso somente quando o PDF existir. Saída solicitada é PDF, sem exigência de Word editável. |
+| DOS-01 / P2 | Exclusão individual protegida de comentários e anexos, legendas e histórico complementar | OFI-02, regras de autoria e uso. Preservar evidência de aprovação, versões e arquivos compartilhados; exclusão administrativa do projeto já existe. |
+| DOS-02 / P2 | Conferência completa para encerramento do projeto | Regras operacionais existentes, DAD-01 e REL-03 quando relatório for exigido. Verificar fotos/formulários/aprovações/pendências com exceção explícita auditada; não reintroduzir botão Finalizar removido pelo usuário. |
+| DOS-03 / P3 | Compartilhamento controlado e consulta por cliente | OFI-02, DOS-01, política própria de acesso externo. Expor somente projetos/documentos aprovados, com revogação, prazo e auditoria; sem acesso ao acervo interno completo. |
+
+### Cadastros, mobile, CLI e módulos complementares
+
+| ID / prioridade | Entrega | Dependências e aceite |
+| --- | --- | --- |
+| CAD-01 / P1 | Contatos, imagens e complementos de clientes/células/tipos | OFI-01–02. Definir compartilhamento de cada cadastro e proteger referências; CRUD básico existente não será refeito. |
+| CAD-02 / P1 | Gestão de equipes e permissões operacionais, incluindo autorizações por elemento quando comprovadamente necessárias | INT-01–03, OFI-01–02. Identidades exatas, escopo servidor e trilha de concessão; gestão local não substitui a Central nem amplia privilégio global. |
+| MOB-01 / P1 e contínua | Homologar no aparelho, QR físico, upgrade/offline e tratamento de envios recusados | Piloto DAD-01 e cada novo contrato. Atualizar APK sobre dados existentes, validar retomada/assinatura/mídia e rotina de tablet; definir assinatura de distribuição e política MFA adequada. A instalação do APK 1.2.10 no smartphone está pendente de conexão do aparelho. |
+| MOB-02 / P3 | Complementos de painel/prioridade por célula e consulta externa, conforme uso real | DAD-01, OFI-03, DOS-03 para cliente. Reaproveitar fila/status atuais; auditar fotos legadas existentes só em listas e corrigir apenas casos comprovados. |
+| CLI-01 / P2 | Contrato e autenticação da CLI com habilitação específica | INT-01, OFI-02, revisão de segurança. Login, escopos, expiração e revogação; nenhum acesso direto ao banco ou privilégio por possuir token web. |
+| CLI-02 / P2 | Consultas, análises e exportações permitidas pela CLI | CLI-01, indicadores efetivamente entregues. Escopo aplicado a campos, IDs, listas, contagens e exportações; logs de acesso e limites de consumo. |
+| CLI-03 / P3 | Poucos comandos de escrita ou propostas de mudança pela CLI | CLI-02 e comandos web maduros. Prévia, motivo, versão exata, idempotência e auditoria; não oferecer uma interface administrativa genérica. |
+| COM-01 / P3 | Reconciliar/importar contrato comercial e estruturar materiais e precificação | Discovery do legado, OFI-02 e validação comercial. Nenhuma fórmula ou relação inventada a partir de tabelas aproximadas. |
+| COM-02 / P3 | Propostas firme/estimada, versões, aprovação, PT/EN, PDF e indicadores | COM-01 e REL-03–04. Cálculos/versões auditados, aprovações definidas e documento consistente; homologação da área comercial. |
+| LAB-01 / P3 | Ensaios inicial/final, desmontagem, medições, revisão e laudos | Revisão técnica, vínculo correto com projeto/equipamento, OFI-02 e REL-03 para emissão. Unidades/limites tipados e resultados homologados. |
+| LEG-01 / decisão separada | Convivência ou corte definitivo com Bubble | Contratos necessários aceitos, conciliação, autoridade da OS/IDs, deduplicação e rollback ensaiados. Ponte de saída segue desativada até entrega explícita; registro no roadmap não autoriza ativá-la. |
+
+### Decisões necessárias para iniciar os pacotes
+
+Confirmar oficinas e gestores; quais cadastros podem ser compartilhados; quem terá visão corporativa; tratamento da transferência de projetos; responsáveis e contratos de Mi Connect/Acessos/Gente/Processos; quais campos de pessoal são necessários; fonte de calendários/competências; regras de conclusão e indicadores do piloto; usuários/escopos da CLI. Esses pontos serão resolvidos no discovery do pacote correspondente, sem bloquear o registro do backlog nem inventar dados de produção.
+
+Critério transversal de conclusão: contrato, interface, persistência e autorização implementados; testes de escopo, concorrência/offline e migração pertinentes aprovados; homologação documentada e publicação no Railway EM/Supabase EM quando houver mudança de produto. Administração de outros aplicativos e publicação neles exigem escopo próprio. Esta organização altera documentação, não ativa integrações nem concede permissões.
+
+Fontes: [publicações até 052](desktop/docs/web-platform.md), [planejamento e execução](rm-mobile-supabase/WEB_GANTT_PLANNING.md), [rascunhos e abertura de recebimentos](rm-mobile-supabase/MOBILE_RECEIVING_DRAFTS.md), [gêmeo digital](desktop/docs/digital-twin.md), [SSO](desktop/docs/sso.md) e discoveries vinculados na matriz histórica. O arquivo local `docs/analise_planejamento_oficina_e_cli.md` foi consultado como análise histórica; seus itens já entregues não serão novamente classificados como ausentes.
+
+## Histórico de publicações
+
 **Recebimento e gêmeo digital corrigidos em produção em 17/11/2026 — 052:** abertura do projeto antes dos uploads no APK 1.2.10/código 13, sem bloquear por outra mídia, com confirmação separada dos anexos e manutenção do mesmo UUID/autoria. Recebimentos no web atualiza automaticamente; fotos de chegada deixam de bloquear a escolha inicial do tipo em projetos sem roteiro. OS, cliente, equipamento e roteiro alterados no web durante os uploads são preservados. O gêmeo digital aceita recebimentos sem OS sem invalidar toda a oficina; a leitura real passou com 181 projetos e 29 células. 052 aplicada após rollback, preservando 97 tabelas anteriores, Storage, 180 OIDs/ACLs/owners, histórico e sequences. 596 testes web, 144 mobile, 53 suítes SQL e 11 novas disputas, build/tipos/smokes e CI aprovados. A leitura real confirmou a liberação do tipo no recebimento sem OS existente, sem escrita artificial de negócio. Runtime web `4552e19`, Railway `a5440176-95cf-497b-9948-78222e86bee2` com **SUCCESS**; fonte SQL/mobile `9e6e872`, [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/44089459985). APK final disponível em `artifacts/em-mi-electric-brasil-1.2.10-internal.apk`; smartphone ausente no USB, nenhum dispositivo alterado nesta entrega. [Publicação, integridade e instalador](desktop/docs/web-platform.md), [recebimento](rm-mobile-supabase/MOBILE_RECEIVING_DRAFTS.md) e [gêmeo digital](desktop/docs/digital-twin.md). As próximas frentes de planejamento continuam sendo impedimentos estruturados, programação intradia/nivelamento, cenários/revisões e CLI restrita.
 
 **Fundação da execução publicada em 17/11/2026 — 051:** eventos mobile idempotentes de início, pausa com motivo, retomada e término; quadro web de trabalho/pausas/término informados, situação a confirmar e revisão; autoria e instantes de captura/recebimento distintos. Reconciliação da gestão acrescenta confirmação de término ou desconsideração com motivo, sem apagar a evidência original nem alterar status, aprovações, formulários, prazos ou reservas. Esforço é uma declaração explícita; valores ausentes e sessões pendentes de revisão não são transformados em horas realizadas. O quadro usa paginação de 100 cards, com filtros e contadores sobre a coorte completa. **14 cards no Início e sete atalhos na lateral.**
@@ -97,7 +207,9 @@ Os módulos NR-12 são outro produto e não integram automaticamente este plano 
 
 Fluxos explicitamente desativados no Bubble, como relatório fotográfico `project_rm/cohYq` e pipelines antigos `coXYn/coXku/coizS/coizg`, não serão apresentados como funcionalidades Live ativas a copiar. Geração individual e compilação têm outros fluxos ativos e continuam sendo lacunas reais.
 
-## Matriz de lacunas
+## Matriz histórica de lacunas
+
+Esta matriz registra a revisão original; o roadmap consolidado no início é a referência atual. Calendários/capacidade diária (049–050), apontamentos (051), recebimento atualizado (052) e gêmeo integrado já foram entregues. Complementos restantes estão identificados pelos IDs atuais acima.
 
 | Módulo | Existente no EM | Trabalho restante |
 | --- | --- | --- |
@@ -115,7 +227,7 @@ Fluxos explicitamente desativados no Bubble, como relatório fotográfico `proje
 | Mobile complementar | Jornada principal/offline, fotos, formulários, etapas e leitura QR autorizada na célula selecionada (034; APK 1.2.4/código 7). | Homologação óptica em aparelho real; recebimentos autorizados sem alocação, prioridade/painel de célula, política MFA/tablet e incidência de fotos armazenadas somente em listas de arquivos. |
 | Coexistência | Importação histórica e infraestrutura da ponte | Resolver contratos ainda pendentes, importação transacional/concorrência, autoridade dos números e deduplicação externa antes de ativar o worker. Não ativar por consequência deste plano. |
 
-## Sequência de implementação
+## Sequência histórica de implementação
 
 | Pacote | Prioridade / dependências | Entrega e critérios de aceite |
 | --- | --- | --- |

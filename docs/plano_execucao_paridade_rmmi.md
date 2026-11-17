@@ -1,5 +1,7 @@
 # Execução da revisão de paridade RMMI
 
+**Referência atual em 17/11/2026:** o [roadmap consolidado](../plano_paridade_rmmi_web.md#roadmap-consolidado--17112026) reúne o backlog restante, as oficinas e as integrações com Mi Connect, Acessos, Gente e a avaliação de Processos, considerando as entregas até a 052. Este documento conserva os contratos e a ordem histórica dos incrementos; os estados anteriores abaixo não substituem o backlog atual.
+
 ## Contrato do incremento 030 definido antes da implementação
 
 O pedido de 30/10/2026 acrescenta uma página inicial com cards de funcionalidades e uma lateral reduzida a atalhos. Usar um catálogo único por capacidade: cards em Operação, Planejamento e Cadastros; no máximo cinco atalhos na lateral. Conservar os indicadores e pendências abaixo dos acessos, os endereços existentes, a identidade EM e o limite servidor/Suspense do portal. Cada rota mantém sua autorização; ocultar um atalho não remove um módulo. Validar também navegação, menu por teclado e 390 px.
