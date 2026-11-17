@@ -1,4 +1,4 @@
-param([int]$Port = 0)
+param([int]$Port = 0, [switch]$WorkshopInventory)
 $ErrorActionPreference = 'Stop'
 foreach ($command in @('initdb','pg_ctl','createdb','psql')) {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Instale PostgreSQL e adicione $command ao PATH." }
@@ -207,6 +207,17 @@ try {
   } finally { $ErrorActionPreference = $activationErrorPreference }
   if ($activationExitCode -eq 0 -or ($activationOutput -join "`n") -notmatch 'Verify production BFF') {
     throw 'Activation script did not reject the missing production-readiness setting.'
+  }
+  if ($WorkshopInventory) {
+    $inventorySource = Join-Path $testRoot 'workshop-metadata.json'
+    $inventoryReport = Join-Path $testRoot 'workshop-review.json'
+    $inventorySql = Join-Path $PSScriptRoot '..\scripts\workshop_scope_inventory.sql'
+    $inventoryRaw = & psql -X -q -A -t -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -f $inventorySql
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao inventariar metadados em modo somente leitura.' }
+    [IO.File]::WriteAllText($inventorySource, ($inventoryRaw -join [Environment]::NewLine).Trim(), [Text.UTF8Encoding]::new($false))
+    & node (Join-Path $PSScriptRoot '..\..\desktop\node_modules\tsx\dist\cli.mjs') (Join-Path $PSScriptRoot '..\scripts\prepare_workshop_inventory.ts') $inventorySource $inventoryReport
+    if ($LASTEXITCODE -ne 0) { throw 'O parser recusou o inventário real do PostgreSQL isolado.' }
+    Write-Output 'PASS: inventario de oficinas SQL -> JSON -> parser, sem acesso a dados de negocio.'
   }
   Write-Output 'PASS: migrations e testes transacionais executados em PostgreSQL isolado.'
 }

@@ -5,6 +5,9 @@ export const CORPORATE_ISSUER = `${CORPORATE_SUPABASE_URL}/auth/v1`;
 export const CORPORATE_APP_SLUG = 'em' as const;
 export const CORPORATE_FLOW_TTL_MS = 10 * 60_000;
 export const CORPORATE_SESSION_TTL_MS = 60 * 60_000;
+// The current authority has no workshop scope. An extended decision must not be
+// silently downgraded to this unpartitioned consumer before isolation is ready.
+const DECISION_KEYS = new Set(['application', 'issuer', 'subject', 'app_access', 'capabilities', 'all_employees', 'fields', 'export_allowed']);
 export const CORPORATE_STORAGE_KEY = 'em-corporate-pkce';
 export const CORPORATE_CAPABILITIES = [
   'em.portal.read', 'em.projects.read', 'em.projects.manage', 'em.planning.read',
@@ -150,7 +153,8 @@ export function validateCorporateRegistry(value: unknown, user: CorporateUser): 
 
 export function validateCorporateDecision(value: unknown, subject: string, requiredCapability: CorporateCapability = 'em.portal.read'): CorporateDecision {
   if (!CORPORATE_CAPABILITIES.includes(requiredCapability)) throw new CorporateAuthError('CORP_FORBIDDEN');
-  if (!object(value) || value.application !== CORPORATE_APP_SLUG || value.issuer !== CORPORATE_ISSUER || value.subject !== subject
+  if (!object(value) || Object.keys(value).some(key => !DECISION_KEYS.has(key))
+    || value.application !== CORPORATE_APP_SLUG || value.issuer !== CORPORATE_ISSUER || value.subject !== subject
     || typeof value.app_access !== 'boolean' || !Array.isArray(value.capabilities) || value.capabilities.length > CORPORATE_CAPABILITIES.length
     || !value.capabilities.every(code => typeof code === 'string' && CORPORATE_CAPABILITIES.includes(code as CorporateCapability))
     || new Set(value.capabilities).size !== value.capabilities.length || value.all_employees !== false

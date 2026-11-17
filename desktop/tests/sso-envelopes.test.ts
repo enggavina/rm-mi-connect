@@ -49,3 +49,9 @@ test('expanded consumer accepts legacy sessions without inferring engineering, f
   }
   assert.equal(ssoFlowSchema.safeParse({ kind: 'corporate-mfa', corporate: full.corporate, factors: [{ id: subject, name: 'MFA' }], expiresAt: 10_000, attempts: 0 }).success, true);
 });
+
+test('encrypted sessions and MFA reject unimplemented decision extensions instead of stripping scope', () => {
+  const changed = { ...corporate, decision: { ...corporate.decision, workshop_context: { effective_workshop_id: subject } } };
+  assert.equal(ssoSessionSchema.safeParse({ ...contents, corporate: changed }).success, false);
+  assert.equal(ssoFlowSchema.safeParse({ kind: 'corporate-mfa', corporate: changed, factors: [{ id: subject, name: 'MFA' }], expiresAt: 10_000, attempts: 0 }).success, false);
+});

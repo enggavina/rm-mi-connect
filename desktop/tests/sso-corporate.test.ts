@@ -326,3 +326,14 @@ test('authorization invalid JSON and missing decisions do not create sessions', 
     await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }), code('CORP_UNAVAILABLE'));
   }
 });
+
+test('a changed authority contract cannot silently drop workshop or other authorization context', async () => {
+  for (const extra of [
+    { workshop_id: SUBJECT }, { workshop_context: { effective_workshop_id: SUBJECT } },
+    { oficinas: [SUBJECT] }, { scope: '*' }, { contract_version: 2 },
+    { workshop_context: null }, { unexpected: false },
+  ]) {
+    const f = fixture({ decision: { ...decision(), ...extra } });
+    await assert.rejects(f.auth.validateCorporateSession(f.token, { subject: SUBJECT }, 'em.projects.read'), code('CORP_UNAVAILABLE'));
+  }
+});
