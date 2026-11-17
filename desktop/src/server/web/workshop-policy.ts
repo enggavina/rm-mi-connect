@@ -34,7 +34,7 @@ export const rawWorkshopSnapshotSchema = z.object({
   allocation_count: z.number().int().min(0).max(WORKSHOP_MAX_ALLOCATIONS),
   cell_count: z.number().int().min(0).max(WORKSHOP_MAX_CELLS),
   projects: z.array(z.object({
-    id: uuid, numero: z.string(), nome: text, descricao_equipamento: text, status_pcp: text,
+    id: uuid, numero: text, nome: text, descricao_equipamento: text, status_pcp: text,
     chegada_do_equipamento: timestamp.nullable(), data_real_de_entrega: timestamp.nullable(),
     data_prevista_final: timestamp.nullable(), data_contratual: timestamp.nullable(), data_renegociada: timestamp.nullable(),
     cliente_nome: text, gestor_nome: text, equipamento_tipo: text, equipamento_descricao: text,
@@ -120,7 +120,7 @@ export function mapWorkshopSnapshot(input: unknown): WorkshopSnapshot {
     if (!model) genericModels++;
     if (!activities.length) unallocated++;
     return {
-      id: project.id, code: present(project.numero) ?? 'Projeto sem número',
+      id: project.id, code: present(project.numero) ?? 'Recebimento sem OS',
       equipment: present(project.descricao_equipamento) ?? present(project.equipamento_descricao)
         ?? ([present(project.fabricante), present(project.modelo)].filter(Boolean).join(' · ') || present(project.nome) || 'Equipamento sem descrição'),
       client: present(project.cliente_nome), stage: running.length === 1 ? running[0].name : running.length > 1 ? 'Múltiplas etapas em execução' : null,

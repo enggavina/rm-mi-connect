@@ -41,6 +41,25 @@ test('real Supabase projection preserves precise timestamps, current identities 
   assert.equal(order.activities!.length, 1); assert.equal(output.cells!.length, 2); assert.deepEqual(data, before);
 });
 
+test('a receipt awaiting its OS preserves the whole workshop and its own identity without inventing an OS', () => {
+  for (const numero of [null, '', '   ']) {
+    const data = raw();
+    data.projects.push({ ...data.projects[0], id: id(50), numero, equipamento_tipo: null }); data.project_count++;
+    const original = structuredClone(data), output = mapWorkshopSnapshot(data);
+    assert.equal(snapshotSchema.safeParse(output).success, true);
+    assert.equal(output.orders.length, 2); assert.equal(output.orders[0].code, 'DEMO-001');
+    assert.equal(output.orders[1].code, 'Recebimento sem OS'); assert.equal(output.orders[1].id, id(50));
+    assert.equal(output.orders[1].sourceUrl, `/projetos/${id(50)}`);
+    assert.deepEqual(output.orders[1].activities, []); assert.equal(output.orders[1].stage, null);
+    assert.equal(output.orders[1].modelVerified, false); assert.equal(getMetrics(output.orders, output.referenceAt).open, 2);
+    assert.deepEqual(data, original);
+  }
+  for (const numero of [123, undefined, false]) {
+    const malformed = raw() as any; malformed.projects[0].numero = numero;
+    assert.throws(() => mapWorkshopSnapshot(malformed));
+  }
+});
+
 test('project cohort uses São Paulo civil arrival date and explicit PCP allowlist, without guessing active states', () => {
   const today = raw(); today.as_of = '2026-11-16T02:59:59.999999Z'; today.projects[0].chegada_do_equipamento = '2026-11-15T23:00:00-03:00';
   assert.equal(mapWorkshopSnapshot(today).orders.length, 1);

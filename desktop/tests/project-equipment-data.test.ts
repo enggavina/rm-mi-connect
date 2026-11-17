@@ -44,6 +44,18 @@ test('technical reads retain raw historical strings and never normalize legacy v
   assert.equal(result!.project.tipo_equipamento_id, id(3)); assert.equal(result!.type_mismatch, true);
 });
 
+test('a new receiving without OS or classification accepts the server eligibility without changing its equipment binding', async () => {
+  const data = snapshot();
+  data.project.numero = null; data.project.tipo_equipamento_id = null;
+  data.equipment!.tipo_equipamento_id = null;
+  data.has_project_route = false; data.can_change_type = true;
+  const f = fixture(data), result = await f.getProjectEquipment(id(1));
+  assert.ok(result); assert.equal(result.project.numero, null); assert.equal(result.equipment!.tipo_equipamento_id, null);
+  assert.equal(result.can_change_type, true); assert.equal(result.has_project_route, false);
+  assert.equal(result.binding_state, 'linked'); assert.deepEqual(f.fromCalls, []);
+  await assert.rejects(fixture({ ...data, has_project_route: true }).getProjectEquipment(id(1)), /Não foi possível consultar/);
+});
+
 test('technical binding failures have a null equipment body and remain read only without choosing a fallback', async () => {
   for (const binding_state of ['missing', 'unlinked', 'conflicting', 'orphaned', 'shared'] as const) {
     const data = snapshot(); data.binding_state = binding_state; data.equipment = null; data.can_edit = false;

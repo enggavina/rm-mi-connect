@@ -31,3 +31,13 @@ test('initialized empty routes and existing operational evidence preserve classi
   assert.equal(canChangeProjectEquipmentType(snapshot({ binding_state: 'shared', can_change_type: true }), false), false);
   assert.equal(canChangeProjectEquipmentType(null, false), false);
 });
+
+test('an unclassified receiving remains editable before its first route while allocation evidence keeps its protection', () => {
+  const receiving = snapshot({ project: { numero: null, tipo_equipamento_id: null, closed: false },
+    equipment: { tipo_equipamento_id: null }, has_project_route: false, can_change_type: true });
+  assert.equal(projectEquipmentType(receiving), '');
+  assert.equal(canChangeProjectEquipmentType(receiving, false), true);
+  assert.equal(canUseProjectEquipmentBundle(receiving, false), true);
+  assert.equal(canChangeProjectEquipmentType(receiving, true), false);
+  assert.equal(canChangeProjectEquipmentType({ ...receiving, can_change_type: false }, false), false);
+});

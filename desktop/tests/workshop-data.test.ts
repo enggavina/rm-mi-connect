@@ -42,6 +42,17 @@ test('workshop reader performs one authenticated projection and returns only val
   assert.equal(JSON.stringify(output).includes('private marker'), false);
 });
 
+test('the authenticated BFF includes a new receipt with null OS alongside existing numbered projects', async () => {
+  const f = fixture(), input = snapshot();
+  input.projects.push({ ...input.projects[0], id: '00000000-0000-4000-8000-000000000002', numero: null as any });
+  input.project_count++; f.setData(input);
+  const output = await f.reader.getWorkshopSnapshot();
+  assert.equal(output.orders.length, 2); assert.equal(output.orders[0].code, 'OFICINA-001');
+  assert.equal(output.orders[1].code, 'Recebimento sem OS');
+  assert.equal(output.orders[1].sourceUrl, '/projetos/00000000-0000-4000-8000-000000000002');
+  assert.equal(output.referenceAt, at); assert.equal(f.calls.length, 1);
+});
+
 test('ordinary RPC failure never exposes transport details or substitutes an example workshop', async () => {
   const f = fixture(); f.setError({ code: '42501', message: 'private diagnostic', details: 'private token', hint: 'private url' });
   await assert.rejects(f.reader.getWorkshopSnapshot(), error => error instanceof Error
