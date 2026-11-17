@@ -18,6 +18,7 @@ const groups: { label: string; items: PortalNavigationItem[] }[] = [
     { href: '/planejamento', label: 'Planejamento', description: 'Consulte as alocações e acompanhe responsáveis, horas e bloqueios.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/fila', label: 'Fila da célula', description: 'Defina a prioridade e a sequência dos trabalhos de uma célula.', icon: 'board', capability: 'em.planning.read' },
     { href: '/planejamento/carga', label: 'Carga planejada', description: 'Veja horas informadas, bloqueios e prazos por célula.', icon: 'clock', capability: 'em.planning.read' },
+    { href: '/planejamento/capacidade', label: 'Pessoas e máquinas', description: 'Planeje disponibilidade, reservas diárias e sobrecarga dos recursos da oficina.', icon: 'users', capability: 'em.planning.read', requires: ['em.projects.read', 'em.portal.read'] },
   ] },
   { label: 'Cadastros', items: [
     { href: '/cadastros', label: 'Cadastros gerais', description: 'Clientes, células, tipos de equipamento e consulta da equipe.', icon: 'settings', capability: 'em.catalogs.read' },

@@ -43,6 +43,7 @@ export async function GanttSchedule({ params, canProjects, canManage }: {
   return <>{nav}{cellSelector}<div className="heading-actions" style={{ marginBottom: 16 }}>
     {scope !== 'project' && <a className="button small secondary" href={`/cronograma?${toggle}`}>{includeClosed ? 'Consultar somente trabalhos abertos' : 'Incluir etapas finalizadas e projetos encerrados'}</a>}
     {projectId && <><a className="button small secondary" href="/cronograma?view=gantt&scope=project">Trocar projeto</a><a className="button small secondary" href={`/cronograma?view=project&project=${projectId}`}>Roteiro e registros das etapas</a><a className="button small secondary" href={`/projetos/${projectId}`}>Informações do projeto</a></>}
+    {canProjects && <a className="button small secondary" href={`/planejamento/capacidade${projectId ? `?project=${projectId}` : ''}`}>Capacidade de pessoas e máquinas</a>}
     {cellId && <a className="button small secondary" href={`/planejamento/fila?cell=${cellId}`}>Prioridades e fila da célula</a>}
   </div><GanttPlanner key={key} snapshot={snapshot} scope={scope} canManage={canManage && canProjects} canProjects={canProjects} destination={destination} initialStart={value('start')} initialDays={value('days')} initialAllocation={scheduleId(params.allocation)} /></>;
 }
