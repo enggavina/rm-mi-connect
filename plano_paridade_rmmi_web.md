@@ -8,6 +8,8 @@ O backlog está organizado em pacotes entregáveis, ainda sem estimativas de pra
 
 ### Base já entregue
 
+**Classificação do acervo confirmada pelo usuário em 17/11/2026:** BMA contém os dados atuais; as outras oficinas são BRJ e BBH. A declaração está versionada em `rm-mobile-supabase/workshops/adoption.json`. O cadastro central das unidades, seus UUIDs e vínculos reais ainda precisam ser conferidos; não foram criadas oficinas nem concedidos acessos nesta preparação. BRJ/BBH devem aguardar o isolamento antes de uso. Esta confirmação resolve a origem do acervo, mas não define automaticamente permissões pessoais, regras de cadastros compartilhados ou origem de futuras filas offline.
+
 **Regra confirmada em 17/11/2026:** mobile usa login e senha, sem SSO; web usa SSO Microsoft. A autorização de oficina administrada em Acessos será resolvida separadamente, sem substituir a autenticação mobile nem pedir seleção de oficina. Identificação de operador, credenciais legadas e trabalhos offline serão preservados.
 
 SSO Microsoft pela Central de Acessos; gestão de projetos e recebimentos; cadastros básicos; Engenharia e roteiro próprio; modelos de formulário; fotos, documentos/pastas e comentários; aprovações e fila das células; Gantt geral/célula/projeto com datas, dependências, referência, calendários, marcos e caminho crítico; recursos/reservas diárias; apontamentos offline e revisão gerencial; gêmeo digital no portal; abertura antecipada de recebimentos e classificação inicial corrigidas. A integração atual com Acessos é real, mas não equivale à integração completa do ecossistema. Gerador PDF, CLI e isolamento entre oficinas ainda não estão entregues.

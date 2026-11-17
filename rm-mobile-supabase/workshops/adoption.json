@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "application": "em",
+  "operational_project_ref": "ellpxfbsrbhblyizvbbk",
+  "authority_project_ref": "kxoriwvzmxhatzqcgnht",
+  "confirmation": {
+    "source": "explicit_user_reply",
+    "date": "2026-11-17",
+    "statement": "As oficinas são: BMA (que contém os dados atualmente), BRJ e BBH"
+  },
+  "legacy_workshop_code": "BMA",
+  "workshops": [
+    { "code": "BMA", "name": "BMA" },
+    { "code": "BRJ", "name": "BRJ" },
+    { "code": "BBH", "name": "BBH" }
+  ]
+}
