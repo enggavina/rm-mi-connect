@@ -1,0 +1,317 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "name": "workshop_cell_ownership",
+      "forced": false,
+      "columns": [
+        [
+          "cell_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "adoption",
+          "boolean",
+          true,
+          "true"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX workshop_cell_owner ON rm_private.workshop_cell_ownership USING btree (workshop_id, cell_id)",
+        "CREATE UNIQUE INDEX workshop_cell_ownership_pkey ON rm_private.workshop_cell_ownership USING btree (cell_id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "workshop_cell_ownership_adoption_check",
+          "CHECK (adoption)"
+        ],
+        [
+          "workshop_cell_ownership_adoption_fkey",
+          "FOREIGN KEY (adoption) REFERENCES rm_private.workshop_legacy_adoption(singleton)"
+        ],
+        [
+          "workshop_cell_ownership_cell_id_fkey",
+          "FOREIGN KEY (cell_id) REFERENCES public.rm_celulas(id) ON DELETE CASCADE"
+        ],
+        [
+          "workshop_cell_ownership_pkey",
+          "PRIMARY KEY (cell_id)"
+        ],
+        [
+          "workshop_cell_ownership_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_legacy_adoption",
+      "forced": false,
+      "columns": [
+        [
+          "singleton",
+          "boolean",
+          true,
+          "true"
+        ],
+        [
+          "legacy_workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "declaration_sha256",
+          "text",
+          true,
+          null
+        ],
+        [
+          "central_manifest",
+          "jsonb",
+          true,
+          null
+        ],
+        [
+          "manifest_sha256",
+          "text",
+          true,
+          null
+        ],
+        [
+          "project_count",
+          "bigint",
+          true,
+          null
+        ],
+        [
+          "cell_count",
+          "bigint",
+          true,
+          null
+        ],
+        [
+          "recorded_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ],
+        [
+          "phase",
+          "text",
+          true,
+          "'foundation_only'::text"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_legacy_adoption_pkey ON rm_private.workshop_legacy_adoption USING btree (singleton)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_adoption_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_legacy_adoption FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_adoption_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_legacy_adoption_cell_count_check",
+          "CHECK ((cell_count >= 0))"
+        ],
+        [
+          "workshop_legacy_adoption_central_manifest_check",
+          "CHECK (((jsonb_typeof(central_manifest) = 'array'::text) AND (jsonb_array_length(central_manifest) = 3)))"
+        ],
+        [
+          "workshop_legacy_adoption_declaration_sha256_check",
+          "CHECK ((declaration_sha256 = 'c45f1ff7d60b695cfa708041e959489b7e05a02ace4bcdce1ff16c8b80d14db2'::text))"
+        ],
+        [
+          "workshop_legacy_adoption_legacy_workshop_id_fkey",
+          "FOREIGN KEY (legacy_workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ],
+        [
+          "workshop_legacy_adoption_manifest_sha256_check",
+          "CHECK ((manifest_sha256 ~ '^[0-9a-f]{64}$'::text))"
+        ],
+        [
+          "workshop_legacy_adoption_phase_check",
+          "CHECK ((phase = 'foundation_only'::text))"
+        ],
+        [
+          "workshop_legacy_adoption_pkey",
+          "PRIMARY KEY (singleton)"
+        ],
+        [
+          "workshop_legacy_adoption_project_count_check",
+          "CHECK ((project_count >= 0))"
+        ],
+        [
+          "workshop_legacy_adoption_singleton_check",
+          "CHECK (singleton)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_project_ownership",
+      "forced": false,
+      "columns": [
+        [
+          "id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "adoption",
+          "boolean",
+          true,
+          "true"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX workshop_project_owner ON rm_private.workshop_project_ownership USING btree (workshop_id, id)",
+        "CREATE UNIQUE INDEX workshop_project_ownership_pkey ON rm_private.workshop_project_ownership USING btree (id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "workshop_project_ownership_adoption_check",
+          "CHECK (adoption)"
+        ],
+        [
+          "workshop_project_ownership_adoption_fkey",
+          "FOREIGN KEY (adoption) REFERENCES rm_private.workshop_legacy_adoption(singleton)"
+        ],
+        [
+          "workshop_project_ownership_id_fkey",
+          "FOREIGN KEY (id) REFERENCES public.rm_projetos(id) ON DELETE CASCADE"
+        ],
+        [
+          "workshop_project_ownership_pkey",
+          "PRIMARY KEY (id)"
+        ],
+        [
+          "workshop_project_ownership_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_references",
+      "forced": false,
+      "columns": [
+        [
+          "id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "code",
+          "text",
+          true,
+          null
+        ],
+        [
+          "authority",
+          "text",
+          true,
+          null
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_references_code_key ON rm_private.workshop_references USING btree (code)",
+        "CREATE UNIQUE INDEX workshop_references_pkey ON rm_private.workshop_references USING btree (id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "workshop_references_authority_check",
+          "CHECK ((authority = 'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1'::text))"
+        ],
+        [
+          "workshop_references_code_check",
+          "CHECK ((code = ANY (ARRAY['BMA'::text, 'BRJ'::text, 'BBH'::text])))"
+        ],
+        [
+          "workshop_references_code_key",
+          "UNIQUE (code)"
+        ],
+        [
+          "workshop_references_pkey",
+          "PRIMARY KEY (id)"
+        ]
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "project_delete_scope_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "TABLE(schema_name text, table_name text, ids uuid[])",
+      "language": "sql",
+      "signature": "p_project uuid",
+      "volatility": "s",
+      "body_sha256": "611133ddb1ef2aead1de6cdcc0ba618f755724c77c41c1adb4502ce20922ee77",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_adopt_bma_roots_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_offices jsonb, p_declaration_sha256 text, p_expected_projects bigint, p_expected_cells bigint",
+      "volatility": "v",
+      "body_sha256": "7769775d8f20d9300b35cc397aec21557b074cbaf81dde478acb757925afe8eb",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_adoption_immutable_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "57c177c8b5a1f936208486b27f93651eb964ee4b3c9d9a32c93839046e4f1c9f",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_ownership_readiness_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "sql",
+      "signature": "",
+      "volatility": "s",
+      "body_sha256": "52512c61a4add790c9346ff0c102b3a58057c3576d2f789d760850b74d93f04d",
+      "security_definer": false
+    }
+  ]
+}

@@ -83,6 +83,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'execution_events_limits.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'mobile_receiving_openings.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'mobile_receiving_openings_concurrency.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'workshop_ownership_foundation.sql'
   foreach ($sqlFile in $sqlFiles) {
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile

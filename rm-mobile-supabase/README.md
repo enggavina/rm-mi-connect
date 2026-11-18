@@ -6,6 +6,9 @@ O aplicativo implementado está em `../mobile`; o runtime da ponte e do ETL est�
 
 ## Estrutura de Arquivos
 
+- [`migrations/053_rm_workshop_ownership_foundation.sql`](./migrations/053_rm_workshop_ownership_foundation.sql)
+  Fundação privada de referências de oficinas e propriedade das raízes projeto/célula, recibo técnico imutável e contagens de pendências. Instalação vazia, sem UUIDs inventados, vínculos pessoais ou ativação de isolamento. A adoção BMA exige IDs reais da Central e lote revisado; retentativas não atribuem novos registros offline à oficina atual. A integração com a exclusão preserva OID/dono/ACL do auxiliar existente. [Contrato e limites](../desktop/docs/sso.md).
+
 - [`migrations/001_rm_enums_and_option_sets.sql`](./migrations/001_rm_enums_and_option_sets.sql)
   Cria o schema privado `rm_private`, a tabela de tradução `public.rm_option_sets`, todos os tipos `ENUM` canônicos do domínio RM e as funções `rm_private.resolve_option_key` / `rm_private.resolve_option_display` (tratando divergências críticas como `direcionado` ↔ `"Revisar"`, `em_dia` ↔ `"Executando"` e `aprovador` ↔ `"Verificador"`).
 - [`migrations/002_rm_core_tables.sql`](./migrations/002_rm_core_tables.sql)
