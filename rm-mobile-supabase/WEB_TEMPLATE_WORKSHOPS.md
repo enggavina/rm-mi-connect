@@ -32,3 +32,5 @@ Este pacote é de escrita. Não ativa filtros de leitura, busca, contagens, expo
 - `powershell -NoProfile -File rm-mobile-supabase/tests/run-local-tests.ps1 -WorkshopInventory`.
 - `python rm-mobile-supabase/scripts/test_template_workshops_local.py`: PostgreSQL descartável, jornada de escrita, adoção, referências indiretas/inversas, exclusões, replay, expiração, MFA, logout, três disputas reais e dez alterações indevidas recusadas pelo envelope.
 - `prepare_template_workshops_release.py`: gerador offline com hashes obrigatórios e rollback padrão; preserva dados anteriores/Auth/Storage, OIDs/owners/ACLs, corpos das funções salvo o despacho exato, papéis, índices, políticas e histórico. Não editar migrações aplicadas.
+
+Publicada e ativada em 18/11/2026: migração 058, consumidor `cba3507d7e928da5e7fb7838d4c846f4794b3631`, Railway `3c1094ec-c989-4038-bbcb-562a2a7dd019` com SUCCESS. [Resultado, evidências e próximas prioridades](../desktop/docs/web-platform.md). Os 5/5 marcos técnicos não equivalem a isolamento completo ou homologação humana da operação.
