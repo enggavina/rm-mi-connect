@@ -20,10 +20,12 @@ update public.rm_projetos set cliente_id=pg_temp.wc_id(21),tipo_equipamento_id=p
 create temporary table wc_original on commit drop as select jsonb_build_object('client',(select to_jsonb(x) from public.rm_clientes x where id=pg_temp.wc_id(21)),
  'type',(select to_jsonb(x) from public.rm_tipos_equipamento x where id=pg_temp.wc_id(22)),
  'form',(select to_jsonb(x) from public.rm_forms x where id=pg_temp.wc_id(23))) data;
+create temporary table wc_counts on commit drop as select (select count(*) from public.rm_clientes) clients,
+ (select count(*) from public.rm_tipos_equipamento) equipment_types,(select count(*) from public.rm_forms) form_models;
 select pg_temp.wc_deny('select rm_private.workshop_catalog_adopt_bma_v1(''wrong'',1,1,1)','22023');
-select pg_temp.wc_deny('select rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),2,1,1)','PT409');
-select rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),1,1,1);
-select pg_temp.wc_check((select count(*) from rm_private.workshop_catalog_ownership)=3,'three approved catalogs adopted');
+select pg_temp.wc_deny(format('select rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),%s,%s,%s)',clients+1,equipment_types,form_models),'PT409') from wc_counts;
+select rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),clients,equipment_types,form_models) from wc_counts;
+select pg_temp.wc_check((select count(*) from rm_private.workshop_catalog_ownership)=(select clients+equipment_types+form_models from wc_counts),'all three approved catalog kinds adopted at reviewed counts');
 select pg_temp.wc_check((select data from wc_original)=jsonb_build_object('client',(select to_jsonb(x) from public.rm_clientes x where id=pg_temp.wc_id(21)),
  'type',(select to_jsonb(x) from public.rm_tipos_equipamento x where id=pg_temp.wc_id(22)),
  'form',(select to_jsonb(x) from public.rm_forms x where id=pg_temp.wc_id(23))),'original contents IDs and timestamps preserved');
@@ -31,7 +33,7 @@ select pg_temp.wc_check((select data from wc_original)=jsonb_build_object('clien
 insert into public.rm_clientes(id,nome) values(pg_temp.wc_id(31),'LOCAL independent client');
 insert into public.rm_tipos_equipamento(id,nome) values(pg_temp.wc_id(32),'LOCAL independent type');
 insert into public.rm_forms(id,titulo) values(pg_temp.wc_id(33),'LOCAL independent form');
-select pg_temp.wc_check((rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),1,1,1)->>'replayed')::boolean,'exact retry acknowledges original batch');
+select pg_temp.wc_check((rm_private.workshop_catalog_adopt_bma_v1(pg_temp.wc_policy(),clients,equipment_types,form_models)->>'replayed')::boolean,'exact retry acknowledges original batch') from wc_counts;
 select pg_temp.wc_check(not exists(select 1 from rm_private.workshop_catalog_ownership where object_id in(pg_temp.wc_id(31),pg_temp.wc_id(32),pg_temp.wc_id(33))),'later catalog objects never default to BMA');
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values
  ('client',pg_temp.wc_id(31),pg_temp.wc_id(2)),('equipment_type',pg_temp.wc_id(32),pg_temp.wc_id(2)),('form_model',pg_temp.wc_id(33),pg_temp.wc_id(2));
