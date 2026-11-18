@@ -113,7 +113,7 @@
       "language": "plpgsql",
       "signature": "p_resource text, p_args jsonb, p_office uuid",
       "volatility": "v",
-      "body_sha256": "f6f3b3a0dc7011c88f0fd15e9959cbceaa4b79f3591ff70befbd63dce2604883",
+      "body_sha256": "397f6606609f8921e411f5929d5ab13ade50f43b288466799eff981e8a39dedc",
       "security_definer": false
     },
     {

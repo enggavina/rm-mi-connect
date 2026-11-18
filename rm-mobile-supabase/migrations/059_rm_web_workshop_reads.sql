@@ -105,11 +105,16 @@ declare required text[];term text;page_no int;start_at int;kind text;ident uuid;
   select jsonb_build_object('drafts',coalesce((select jsonb_agg(row_json order by updated_at desc,id) from dp),'[]'::jsonb),
    'published',coalesce((select jsonb_agg(row_json order by titulo,id) from fp),'[]'::jsonb),'draftTotal',(select count(*) from ds),'publishedTotal',(select count(*) from fs),'page',page_no,'pageSize',25) into result;
  elsif p_resource in('template_draft','template_form') then
-  if not rm_private.workshop_read_visible_v1(case p_resource when 'template_draft' then 'draft' else 'form_model' end,ident,p_office) then return null;end if;
   if p_resource='template_form' then
-   if exists(select 1 from public.rm_questoes q join public.rm_itens_questoes i on i.questao_id=q.id where q.form_id=ident and i.form_id is not null and i.form_id<>ident) then return null;end if;
-   snapshot:=public.rm_web_form_source_snapshot_v1(ident);metadata:=snapshot->'source_snapshot';
-  else snapshot:=public.rm_web_form_template_snapshot_v1(ident);metadata:=snapshot->'draft'->'source_snapshot';end if;
+   select public.rm_web_form_source_snapshot_v1(f.id) into snapshot from public.rm_forms f where f.id=ident
+    and rm_private.workshop_read_visible_v1('form_model',f.id,p_office)
+    and not exists(select 1 from public.rm_questoes q join public.rm_itens_questoes i on i.questao_id=q.id where q.form_id=f.id and i.form_id is not null and i.form_id<>f.id);
+   metadata:=snapshot->'source_snapshot';
+  else
+   select public.rm_web_form_template_snapshot_v1(d.id) into snapshot from public.rm_form_template_drafts d where d.id=ident and rm_private.workshop_read_visible_v1('draft',d.id,p_office);
+   metadata:=snapshot->'draft'->'source_snapshot';
+  end if;
+  if snapshot is null then return null;end if;
   -- Association IDs/cover URLs are not required by the editor. Keep stored metadata intact.
   metadata:=jsonb_build_object('usa_aprovacao',metadata->'usa_aprovacao','has_cover',coalesce(length(btrim(metadata->>'imagem_capa_url'))>0,false),'links_redacted',true);
   result:=jsonb_set(snapshot,case p_resource when 'template_form' then array['source_snapshot'] else array['draft','source_snapshot'] end,metadata);

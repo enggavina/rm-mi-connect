@@ -66,11 +66,11 @@ def main():
    c.execute("select public.rm_sso_session_put_v1(%s,%s,%s,%s,clock_timestamp()+interval '30 minutes')",('6'*64,key(15),key(13),'opaque-local-read-session'))
    c.execute("insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',%s,%s)",(key(101),OFFICES[0]['id']))
   args={'kind':'clients','q':'','page':1}
-  def mint(c,rid):
+  def mint(c,rid,resource='catalog_list',filters=None):
    stamp=datetime.now(timezone.utc);issuer='https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1'
    context={'version':2,'application':'em','channel':'web','authority':issuer,'workshop':{'id':OFFICES[0]['id'],'code':'BMA','name':'LOCAL office','active':True,'revision':1,'updated_at':stamp.isoformat()},
     'principals':[{'kind':'corporate','issuer':issuer,'subject':key(14),'revision':1}],'issued_at':stamp.isoformat(),'expires_at':(stamp+timedelta(minutes=5)).isoformat()}
-   c.execute('select public.rm_sso_workshop_read_permit_v1(%s,%s,%s,%s,%s)',('6'*64,rid,'catalog_list',Jsonb(args),Jsonb(context)))
+   c.execute('select public.rm_sso_workshop_read_permit_v1(%s,%s,%s,%s,%s)',('6'*64,rid,resource,Jsonb(args if filters is None else filters),Jsonb(context)))
   def consume(rid,barrier=None,application='em_workshop_read'):
    with psycopg.connect(dsn('read_release')+' application_name='+application,autocommit=True) as c:
     c.execute("set role authenticated;set statement_timeout='6s'");c.execute("select set_config('request.jwt.claim.sub',%s,false)",(key(11),));c.execute("select set_config('request.jwt.claims',%s,false)",(json.dumps({'session_id':key(13),'aal':'aal1'}),))
@@ -97,6 +97,34 @@ def main():
     time.sleep(2.1);held.rollback();assert waiting.result(timeout=4)=='42501'
    assert c.execute('select exists(select 1 from rm_private.workshop_read_permits where read_id=%s)',(key(602),)).fetchone()[0]
    checks.append('real_expiry_during_data_wait_returns_no_data_and_rolls_back_consumption')
+   # Local-only pause after the actual visibility decision. A concurrent legacy
+   # version insertion must not change the detail snapshot after authorization.
+   c.execute("insert into public.rm_forms(id,titulo) values(%s,'LOCAL stable snapshot form')",(key(301),))
+   c.execute("insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('form_model',%s,%s)",(key(301),OFFICES[0]['id']))
+   c.execute('insert into public.rm_form_template_families(id,created_by) values(%s,%s)',(key(777),key(12)))
+   original=c.execute("select pg_get_functiondef('rm_private.workshop_read_visible_v1(text,uuid,uuid)'::regprocedure)").fetchone()[0]
+   c.execute(original.replace('rm_private.workshop_read_visible_v1(','rm_private.local_visible_original_v1('))
+   c.execute("revoke all on function rm_private.local_visible_original_v1(text,uuid,uuid) from public,anon,authenticated,service_role")
+   c.execute("""create or replace function rm_private.workshop_read_visible_v1(p_kind text,p_id uuid,p_office uuid) returns boolean language plpgsql stable set search_path='' as $$
+    declare allowed boolean;begin allowed:=rm_private.local_visible_original_v1(p_kind,p_id,p_office);
+    if p_kind='form_model' and p_id='05900000-0000-4000-8000-000000000301' then perform pg_advisory_xact_lock(5959,11);end if;return allowed;end$$;""")
+   mint(c,key(604),'template_form',{'id':key(301)})
+   held.execute('select pg_advisory_xact_lock(5959,11)')
+   def detail():
+    with psycopg.connect(dsn('read_release')+' application_name=em_snapshot_read',autocommit=True) as other:
+     other.execute("set role authenticated;set statement_timeout='6s'");other.execute("select set_config('request.jwt.claim.sub',%s,false)",(key(11),));other.execute("select set_config('request.jwt.claims',%s,false)",(json.dumps({'session_id':key(13),'aal':'aal1'}),))
+     return other.execute('select public.rm_web_workshop_read_v1(%s,%s,%s)',(key(604),'template_form',Jsonb({'id':key(301)}))).fetchone()[0]['data']
+   with ThreadPoolExecutor(1) as pool:
+    waiting=pool.submit(detail);deadline=time.monotonic()+2
+    while time.monotonic()<deadline:
+     c.execute('select pg_stat_clear_snapshot()')
+     if c.execute("select exists(select 1 from pg_stat_activity where application_name='em_snapshot_read' and wait_event_type='Lock')").fetchone()[0]:break
+     time.sleep(.02)
+    else:raise AssertionError('Snapshot did not reach visibility pause')
+    held.execute('insert into public.rm_form_template_versions(family_id,version,form_id,legacy,published_by) values(%s,77,%s,true,%s)',(key(777),key(301),key(12)));held.commit()
+    snapshot=waiting.result(timeout=5);assert snapshot['version']==1 and snapshot['family_id'] is None,snapshot
+   c.execute(original);c.execute('drop function rm_private.local_visible_original_v1(text,uuid,uuid)')
+   checks.append('real_detail_visibility_and_snapshot_are_atomic_during_concurrent_version_insertion')
    mint(held,key(603))
    def logout():
     with psycopg.connect(dsn('read_release'),autocommit=True) as other:other.execute("set statement_timeout='4s'");other.execute('select public.rm_sso_session_delete_v1(%s)',('6'*64,))
