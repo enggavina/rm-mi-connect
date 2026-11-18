@@ -1,0 +1,620 @@
+{
+  "rules": [
+    {
+      "left_kind": "cell",
+      "right_kind": "form_model",
+      "table_name": "rm_aprovacoes_registro",
+      "left_column": "celula_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "form_model",
+      "table_name": "rm_aprovacoes_registro",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "cell",
+      "right_kind": "equipment_type",
+      "table_name": "rm_celula_tipos_equipamento",
+      "left_column": "celula_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "tipo_equipamento_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "equipment_type",
+      "table_name": "rm_equipamentos",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "tipo_equipamento_id"
+    },
+    {
+      "left_kind": "cell",
+      "right_kind": "form_model",
+      "table_name": "rm_form_reviewer_assignments",
+      "left_column": "celula_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "form_model",
+      "table_name": "rm_form_reviewer_assignments",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "form_model",
+      "right_kind": "form_model",
+      "table_name": "rm_form_template_drafts",
+      "left_column": "source_form_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "published_form_id"
+    },
+    {
+      "left_kind": "form_model",
+      "right_kind": "cell",
+      "table_name": "rm_forms",
+      "left_column": "id",
+      "right_array": true,
+      "schema_name": "public",
+      "right_column": "celulas_ids"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_ordens_servico",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "cliente_id"
+    },
+    {
+      "left_kind": "client",
+      "right_kind": "equipment_type",
+      "table_name": "rm_projetos",
+      "left_column": "cliente_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "tipo_equipamento_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_projetos",
+      "left_column": "id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "cliente_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "equipment_type",
+      "table_name": "rm_projetos",
+      "left_column": "id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "tipo_equipamento_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_propostas_budgetarias",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "cliente_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_propostas_controle",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "cliente_id"
+    },
+    {
+      "left_kind": "cell",
+      "right_kind": "client",
+      "table_name": "rm_registros_formulario",
+      "left_column": "celula_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "empresa_id"
+    },
+    {
+      "left_kind": "cell",
+      "right_kind": "form_model",
+      "table_name": "rm_registros_formulario",
+      "left_column": "celula_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "form_model",
+      "right_kind": "client",
+      "table_name": "rm_registros_formulario",
+      "left_column": "form_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "empresa_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_registros_formulario",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "empresa_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "form_model",
+      "table_name": "rm_registros_formulario",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "form_model",
+      "right_kind": "client",
+      "table_name": "rm_respostas_temp",
+      "left_column": "form_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "empresa_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "client",
+      "table_name": "rm_respostas_temp",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "empresa_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "form_model",
+      "table_name": "rm_respostas_temp",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "public",
+      "right_column": "form_id"
+    },
+    {
+      "left_kind": "project",
+      "right_kind": "equipment_type",
+      "table_name": "project_route_instances",
+      "left_column": "projeto_id",
+      "right_array": false,
+      "schema_name": "rm_private",
+      "right_column": "tipo_equipamento_id"
+    }
+  ],
+  "tables": [
+    {
+      "rls": true,
+      "name": "workshop_catalog_adoption",
+      "forced": false,
+      "columns": [
+        [
+          "singleton",
+          "boolean",
+          true,
+          "true"
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "policy_sha256",
+          "text",
+          true,
+          null
+        ],
+        [
+          "counts",
+          "jsonb",
+          true,
+          null
+        ],
+        [
+          "recorded_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_catalog_adoption_pkey ON rm_private.workshop_catalog_adoption USING btree (singleton)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_adoption FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_adoption FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_catalog_adoption_pkey",
+          "PRIMARY KEY (singleton)"
+        ],
+        [
+          "workshop_catalog_adoption_policy_sha256_check",
+          "CHECK ((policy_sha256 = 'f08dcd11906184bede3406fbd2acbc193f455334362d1915b8d25c86b61621ff'::text))"
+        ],
+        [
+          "workshop_catalog_adoption_singleton_check",
+          "CHECK (singleton)"
+        ],
+        [
+          "workshop_catalog_adoption_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_catalog_ownership",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "adoption",
+          "boolean",
+          false,
+          null
+        ],
+        [
+          "captured_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX workshop_catalog_by_office ON rm_private.workshop_catalog_ownership USING btree (workshop_id, object_kind, object_id)",
+        "CREATE UNIQUE INDEX workshop_catalog_ownership_pkey ON rm_private.workshop_catalog_ownership USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_catalog_assign BEFORE INSERT ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()",
+        "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_catalog_references AFTER INSERT ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_catalog_ownership_adoption_check",
+          "CHECK (adoption)"
+        ],
+        [
+          "workshop_catalog_ownership_adoption_fkey",
+          "FOREIGN KEY (adoption) REFERENCES rm_private.workshop_catalog_adoption(singleton)"
+        ],
+        [
+          "workshop_catalog_ownership_object_kind_check",
+          "CHECK ((object_kind = ANY (ARRAY['client'::text, 'equipment_type'::text, 'form_model'::text])))"
+        ],
+        [
+          "workshop_catalog_ownership_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ],
+        [
+          "workshop_catalog_ownership_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_catalog_retirements",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "retired_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_catalog_retirements_pkey ON rm_private.workshop_catalog_retirements USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_retirements FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_retirements FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_catalog_retirements_object_kind_object_id_fkey",
+          "FOREIGN KEY (object_kind, object_id) REFERENCES rm_private.workshop_catalog_ownership(object_kind, object_id)"
+        ],
+        [
+          "workshop_catalog_retirements_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ]
+      ]
+    }
+  ],
+  "triggers": [
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF celula_id, form_id, projeto_id ON public.rm_aprovacoes_registro FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF celula_id, tipo_equipamento_id ON public.rm_celula_tipos_equipamento FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_lifecycle BEFORE INSERT OR DELETE OR UPDATE ON public.rm_clientes FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_lifecycle_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON public.rm_clientes FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, tipo_equipamento_id ON public.rm_equipamentos FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF celula_id, form_id, projeto_id ON public.rm_form_reviewer_assignments FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF published_form_id, source_form_id ON public.rm_form_template_drafts FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_lifecycle BEFORE INSERT OR DELETE OR UPDATE ON public.rm_forms FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_lifecycle_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON public.rm_forms FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF celulas_ids, id ON public.rm_forms FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF cliente_id, projeto_id ON public.rm_ordens_servico FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF cliente_id, id, tipo_equipamento_id ON public.rm_projetos FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF cliente_id, projeto_id ON public.rm_propostas_budgetarias FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF cliente_id, projeto_id ON public.rm_propostas_controle FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF celula_id, empresa_id, form_id, projeto_id ON public.rm_registros_formulario FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF empresa_id, form_id, projeto_id ON public.rm_respostas_temp FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_lifecycle BEFORE INSERT OR DELETE OR UPDATE ON public.rm_tipos_equipamento FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_lifecycle_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON public.rm_tipos_equipamento FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, tipo_equipamento_id ON rm_private.project_route_instances FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_adoption FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_adoption FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_assign BEFORE INSERT ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_references AFTER INSERT ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_catalog_retirements FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_no_truncate BEFORE TRUNCATE ON rm_private.workshop_catalog_retirements FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_references AFTER INSERT OR UPDATE ON rm_private.workshop_cell_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_catalog_references AFTER INSERT OR UPDATE ON rm_private.workshop_project_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_catalog_guard_assignment_v1()"
+    }
+  ],
+  "functions": [
+    {
+      "name": "workshop_catalog_adopt_bma_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_policy_sha256 text, p_clients bigint, p_equipment_types bigint, p_form_models bigint",
+      "volatility": "v",
+      "body_sha256": "df7a5e994e2327c0f06d6850acb45587eacf5b76721b4ee81e973da6e2c99ba9",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_catalog_guard_assignment_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "5a50f77058cbde74bc3fde6a1332233cd4ffe537de42588c3b5aa782e37f6c64",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_catalog_guard_lifecycle_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "19e38081e27762e7e793aa55e742995d765fb2fc0fa6823a7abb799df374dce8",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_catalog_guard_reference_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "6d74e431be777655726f9d80269fd270dd548b7d6bf64b2e5c53a346e687e07f",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_catalog_pair_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_left_kind text, p_left_id uuid, p_right_kind text, p_right_id uuid",
+      "volatility": "v",
+      "body_sha256": "b3138acf69581fd791ee1ddfff57fb7236e73e7c95dc63002ca5d0898d5e8579",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_catalog_readiness_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "s",
+      "body_sha256": "88f8f268321b649b37821207ba6d10d0f233f40d7952f24a39332b4b432cf798",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_catalog_relations_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "TABLE(schema_name text, table_name text, left_kind text, left_column text, right_kind text, right_column text, right_array boolean)",
+      "language": "sql",
+      "signature": "",
+      "volatility": "i",
+      "body_sha256": "ca8e322e8733df5e0468372a2ff87d397d9765767f35318581c664d965731554",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_catalog_scope_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "uuid",
+      "language": "plpgsql",
+      "signature": "p_kind text, p_id uuid",
+      "volatility": "v",
+      "body_sha256": "15c6e786f87e629711059943ceadaf8d96dc2a965af5950e37c5bad50167e0f4",
+      "security_definer": false
+    }
+  ]
+}
