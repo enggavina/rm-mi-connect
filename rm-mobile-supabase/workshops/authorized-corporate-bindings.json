@@ -19,7 +19,12 @@
     "infer_mobile_bindings": false
   },
   "execution": {
-    "applied": false,
-    "note": "Autorização registrada; conferir a gravação auditada na Central. Este arquivo não concede acesso nem substitui a autenticação administrativa."
+    "applied": true,
+    "operation": "em.bma.initial-bindings.20261118",
+    "recorded_at": "2026-11-18T03:51:50.991623+00:00",
+    "initial_authorization_sha256": "1d8b18daea49e5840ba0d4bea4e846e58f20738404f55d5ac0884967621d1e10",
+    "producer_sql_sha256": "d047d661f96d3c8d06839d745a1138b71201c20b41bb5ecb24048957598eef26",
+    "human_session_used": false,
+    "note": "Dois vínculos BMA aplicados por operação técnica auditada, com papéis existentes preservados. A declaração inicial imutável está no repositório do produtor em supabase/authorizations/em-bma-20261118.json. Este arquivo informa o resultado; a autoridade continua sendo a Central."
   }
 }
