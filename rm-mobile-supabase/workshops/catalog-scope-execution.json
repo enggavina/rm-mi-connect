@@ -1,0 +1,34 @@
+{
+  "format_version": 1,
+  "application": "em",
+  "workshop_code": "BMA",
+  "package": "O08",
+  "applied": true,
+  "verified_at": "2026-11-18T10:55:58.642297+00:00",
+  "policy_sha256": "f08dcd11906184bede3406fbd2acbc193f455334362d1915b8d25c86b61621ff",
+  "migration": "056",
+  "migration_sha256": "4179923c34482658eb47cd3d0b3d9e4bad6b9e80f547da6c64fc99fc0e7350e3",
+  "catalogs": [
+    {
+      "kind": "client",
+      "total": 895,
+      "pending": 0,
+      "classified": 895
+    },
+    {
+      "kind": "equipment_type",
+      "total": 19,
+      "pending": 0,
+      "classified": 19
+    },
+    {
+      "kind": "form_model",
+      "total": 59,
+      "pending": 0,
+      "classified": 59
+    }
+  ],
+  "exact_batch_replay_read_only": true,
+  "full_isolation_active": false,
+  "note": "Estado conferido no banco. A pol?tica original permanece imut?vel; a autoridade de propriedade e o recibo s?o privados no Supabase do EM."
+}
