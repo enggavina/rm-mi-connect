@@ -51,7 +51,7 @@ export function validateWorkshopContext(value: unknown, expected: ExpectedWorksh
   return context;
 }
 
-/** O09 uses this reader for clients/equipment-type web writes only.
+/** O09/O10 use this reader for client/type and template web writes only.
  * Call only AFTER current corporate SSO/MFA and capabilities have been verified.
  * This targeted guard does not activate read, Storage or offline isolation. */
 export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }: { fetcher?: typeof fetch; now?: () => number } = {}) {

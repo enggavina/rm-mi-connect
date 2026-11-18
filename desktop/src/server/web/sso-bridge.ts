@@ -7,7 +7,7 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
   type CorporateFlow, type VerifiedCorporateSession, type CorporateCapability } from './sso-corporate';
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
-import { createCatalogWorkshopAuthorizer } from './catalog-workshop';
+import { createCatalogWorkshopAuthorizer, isScopedTemplateWrite } from './catalog-workshop';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -34,7 +34,7 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   return data;
 }
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ mint: async value => {
-  await rpc('rm_sso_catalog_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
+  await rpc(isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.context });
 } });
 export function localSsoClient(token?: string) {

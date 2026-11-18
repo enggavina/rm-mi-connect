@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCatalogWorkshopAuthorizer, isScopedCatalogWrite } from '../src/server/web/catalog-workshop';
+import { createCatalogWorkshopAuthorizer, isScopedCatalogWrite, isScopedTemplateWrite } from '../src/server/web/catalog-workshop';
 import { CORPORATE_ISSUER, CorporateAuthError, type VerifiedCorporateSession } from '../src/server/web/sso-policy';
 import { WorkshopContextError, type WorkshopContext } from '../src/server/web/workshop-context';
 import type { SsoContext } from '../src/server/web/auth-policy';
@@ -50,4 +50,32 @@ test('authority failure and database failure propagate without an unscoped fallb
     await assert.rejects(authorizer.authorize(context, 'p', 'save_catalog', { kind: 'clients' }, 'em.catalogs.manage'), e => e === failure);
     assert.equal(minted, phase === 'mint' ? 1 : 0);
   }
+});
+
+test('all template operations use their own capability and fresh office context', async () => {
+  const context = sso(); context.capabilities = ['em.form_templates.manage'];
+  const corporate = session(); corporate.decision.capabilities = ['em.form_templates.manage'];
+  const operations = ['create_form_template', 'save_form_template', 'publish_form_template', 'delete_form_template'];
+  let reads = 0; const minted: string[] = [];
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb(s) { assert.equal(s, corporate); reads++; return workshop(); } },
+    async mint(args) { assert.equal(args.payload.source_form_id, subject); minted.push(args.operation); } });
+  authorizer.remember(context, corporate);
+  for (const operation of operations) {
+    assert.equal(isScopedTemplateWrite(operation), true);
+    assert.equal(await authorizer.authorize(context, 'template-protocol', operation, { source_form_id: subject }, 'em.form_templates.manage'), true);
+  }
+  assert.deepEqual(minted, operations); assert.equal(reads, 4);
+  assert.equal(isScopedTemplateWrite('publish_form_template '), false);
+  assert.equal(JSON.stringify(context).includes(corporate.accessToken), false);
+});
+
+test('catalog capability cannot authorize template operations or fall back to v1', async () => {
+  let reads = 0;
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { reads++; return workshop(); } }, async mint() { assert.fail('no permit'); } });
+  const context = sso(); authorizer.remember(context, session());
+  for (const operation of ['create_form_template', 'save_form_template', 'publish_form_template', 'delete_form_template']) {
+    await assert.rejects(authorizer.authorize(context, 'protocol', operation, {}, 'em.catalogs.manage'), CorporateAuthError);
+    await assert.rejects(authorizer.authorize(context, 'protocol', operation, {}, 'em.form_templates.manage'), CorporateAuthError);
+  }
+  assert.equal(reads, 0);
 });

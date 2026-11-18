@@ -1,0 +1,532 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "name": "template_workshop_write_permits",
+      "forced": false,
+      "columns": [
+        [
+          "submission_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "session_hash",
+          "text",
+          true,
+          null
+        ],
+        [
+          "operation",
+          "text",
+          true,
+          null
+        ],
+        [
+          "payload_hash",
+          "bytea",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "subject",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "context",
+          "jsonb",
+          true,
+          null
+        ],
+        [
+          "expires_at",
+          "timestamp with time zone",
+          true,
+          null
+        ],
+        [
+          "created_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX template_workshop_permits_session ON rm_private.template_workshop_write_permits USING btree (session_hash)",
+        "CREATE UNIQUE INDEX template_workshop_write_permits_pkey ON rm_private.template_workshop_write_permits USING btree (submission_id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "template_workshop_write_permits_operation_check",
+          "CHECK ((operation = ANY (ARRAY['create_form_template'::text, 'save_form_template'::text, 'publish_form_template'::text, 'delete_form_template'::text])))"
+        ],
+        [
+          "template_workshop_write_permits_pkey",
+          "PRIMARY KEY (submission_id)"
+        ],
+        [
+          "template_workshop_write_permits_session_hash_fkey",
+          "FOREIGN KEY (session_hash) REFERENCES rm_private.sso_sessions(hash) ON DELETE CASCADE"
+        ],
+        [
+          "template_workshop_write_permits_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "template_workshop_write_settings",
+      "forced": false,
+      "columns": [
+        [
+          "singleton",
+          "boolean",
+          true,
+          "true"
+        ],
+        [
+          "enforced",
+          "boolean",
+          true,
+          "false"
+        ],
+        [
+          "runtime_sha",
+          "text",
+          false,
+          null
+        ],
+        [
+          "deployment_id",
+          "uuid",
+          false,
+          null
+        ],
+        [
+          "activated_at",
+          "timestamp with time zone",
+          false,
+          null
+        ],
+        [
+          "database_actor",
+          "text",
+          false,
+          null
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX template_workshop_write_settings_pkey ON rm_private.template_workshop_write_settings USING btree (singleton)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "template_workshop_write_settings_check",
+          "CHECK (((NOT enforced) OR ((runtime_sha IS NOT NULL) AND (runtime_sha ~ '^[0-9a-f]{40}$'::text) AND (deployment_id IS NOT NULL) AND (activated_at IS NOT NULL) AND (database_actor IS NOT NULL))))"
+        ],
+        [
+          "template_workshop_write_settings_pkey",
+          "PRIMARY KEY (singleton)"
+        ],
+        [
+          "template_workshop_write_settings_singleton_check",
+          "CHECK (singleton)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_template_adoption",
+      "forced": false,
+      "columns": [
+        [
+          "singleton",
+          "boolean",
+          true,
+          "true"
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "declaration_sha256",
+          "text",
+          true,
+          null
+        ],
+        [
+          "families",
+          "bigint",
+          true,
+          null
+        ],
+        [
+          "drafts",
+          "bigint",
+          true,
+          null
+        ],
+        [
+          "recorded_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_template_adoption_pkey ON rm_private.workshop_template_adoption USING btree (singleton)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_adoption FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_adoption FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_template_adoption_declaration_sha256_check",
+          "CHECK ((declaration_sha256 = 'c45f1ff7d60b695cfa708041e959489b7e05a02ace4bcdce1ff16c8b80d14db2'::text))"
+        ],
+        [
+          "workshop_template_adoption_drafts_check",
+          "CHECK ((drafts >= 0))"
+        ],
+        [
+          "workshop_template_adoption_families_check",
+          "CHECK ((families >= 0))"
+        ],
+        [
+          "workshop_template_adoption_pkey",
+          "PRIMARY KEY (singleton)"
+        ],
+        [
+          "workshop_template_adoption_singleton_check",
+          "CHECK (singleton)"
+        ],
+        [
+          "workshop_template_adoption_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_template_ownership",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "captured_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_template_ownership_pkey ON rm_private.workshop_template_ownership USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_template_assign BEFORE INSERT ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()",
+        "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_template_references AFTER INSERT ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_template_ownership_object_kind_check",
+          "CHECK ((object_kind = ANY (ARRAY['family'::text, 'draft'::text])))"
+        ],
+        [
+          "workshop_template_ownership_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ],
+        [
+          "workshop_template_ownership_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_template_retirements",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "retired_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_template_retirements_pkey ON rm_private.workshop_template_retirements USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_retirements FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_retirements FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_template_retirements_object_kind_object_id_fkey",
+          "FOREIGN KEY (object_kind, object_id) REFERENCES rm_private.workshop_template_ownership(object_kind, object_id)"
+        ],
+        [
+          "workshop_template_retirements_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ]
+      ]
+    }
+  ],
+  "triggers": [
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_lifecycle BEFORE INSERT OR DELETE OR UPDATE ON public.rm_form_template_drafts FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON public.rm_form_template_drafts FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_lifecycle BEFORE INSERT OR DELETE OR UPDATE ON public.rm_form_template_families FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON public.rm_form_template_families FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_references BEFORE INSERT OR UPDATE ON public.rm_form_template_versions FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_references AFTER INSERT ON rm_private.workshop_catalog_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_adoption FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_adoption FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_assign BEFORE INSERT ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_references AFTER INSERT ON rm_private.workshop_template_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_template_guard_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_template_retirements FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_template_no_truncate BEFORE TRUNCATE ON rm_private.workshop_template_retirements FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+    }
+  ],
+  "functions": [
+    {
+      "name": "activate_template_workshop_writes_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_runtime_sha text, p_deployment_id uuid",
+      "volatility": "v",
+      "body_sha256": "0194252fb25ec7973046614b37380d168baca0a4f03ece508c04b007440b9402",
+      "security_definer": false
+    },
+    {
+      "name": "adopt_workshop_templates_bma_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_families bigint, p_drafts bigint",
+      "volatility": "v",
+      "body_sha256": "2d495fc96e7cd8f6030ded940660b17e0ba3b086e023562ea23d9649494324e6",
+      "security_definer": false
+    },
+    {
+      "name": "rm_sso_template_workshop_permit_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_session_hash text, p_submission_id uuid, p_operation text, p_payload jsonb, p_context jsonb",
+      "volatility": "v",
+      "body_sha256": "987317864d20fe911d1e59be7bcbdd8190c20ae69be8d3c1a7101045dae60084",
+      "security_definer": true
+    },
+    {
+      "name": "rm_web_mutate_v1",
+      "config": [
+        "search_path=\"\"",
+        "lock_timeout=10s"
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_client_submission_id uuid, p_operation text, p_payload jsonb",
+      "volatility": "v",
+      "body_sha256": "e9e6576a9bf8d0a17752576bf94cfc13ccc45f89e1b7a1e081e824377d4d763e",
+      "security_definer": true
+    },
+    {
+      "name": "web_mutate_scoped_templates_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_client_submission_id uuid, p_operation text, p_payload jsonb",
+      "volatility": "v",
+      "body_sha256": "ae0dfc0c7439506c87f541aa9794f650fc1131cc5b379cec4c1668e512420fdf",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_template_check_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_kind text, p_id uuid",
+      "volatility": "v",
+      "body_sha256": "fe73e6d963d0d5ce3edd0576cdd25990736f838e015f317d71a2f6370be0b477",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_template_edges_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "TABLE(left_kind text, left_id uuid, right_kind text, right_id uuid)",
+      "language": "sql",
+      "signature": "",
+      "volatility": "s",
+      "body_sha256": "233887942f99723bff08c55c230c98b52223097b721e9d8ac0e1b01ef27d9cad",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_template_guard_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "b525f453c3d051cf02ef253bc114fb582f2b99a938b1a2b29c2a66e4c69641c5",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_template_pair_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_left_kind text, p_left_id uuid, p_right_kind text, p_right_id uuid",
+      "volatility": "v",
+      "body_sha256": "5868ba21b8499550bdb388f43727f7787a88aa2fceae9517eb2d24626debc086",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_template_require_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_kind text, p_id uuid, p_office uuid",
+      "volatility": "v",
+      "body_sha256": "7494dd753fe852a13732c222dc3efe80dffd752d51edf4c9be1dc694c8a77734",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_template_scope_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "uuid",
+      "language": "plpgsql",
+      "signature": "p_kind text, p_id uuid",
+      "volatility": "v",
+      "body_sha256": "2b7f79a525625e4663f4a78732517ce8f6598ff5152a8aed712ad9dfbedcc25f",
+      "security_definer": false
+    }
+  ]
+}
