@@ -4,6 +4,7 @@ import type { CorporateCapability } from './sso-policy';
 import { editableCatalogKindSchema, type EditableCatalogKind } from './catalog-policy';
 import { withFormVersionLabels } from './form-version-labels';
 import { projectPhotoFilters, type ProjectPhotoFilters } from './project-photo-policy';
+import { checkedWorkshopPage, type WorkshopRead } from './workshop-read-policy';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -65,7 +66,7 @@ async function page(query: any, number: unknown, pageSize: number): Promise<WebP
 }
 
 /** Injectable RLS client makes pagination and scope testable without Auth secrets. */
-export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
   const requireCapability = (capability: CorporateCapability) => {
     if (!allowed('em.portal.read') || !allowed(capability)) throw new Error('Acesso não autorizado a esta área.');
@@ -228,6 +229,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) {
     requireCapability('em.catalogs.read');
     const kind: CatalogKind = catalogKinds.includes(filters.kind as CatalogKind) ? filters.kind as CatalogKind : 'clients';
+    if (workshopRead && ['clients', 'types', 'forms'].includes(kind)) {
+      const current = pageNumber(filters.page);
+      const result = checkedWorkshopPage(await workshopRead('catalog_list', { kind, q: searchTerm(filters.q), page: current }), current, 50) as WebPage;
+      return { ...result, kind, kinds: catalogKinds };
+    }
     const catalog = catalogs[kind];
     let query: any = client.from(catalog.table).select(kind === 'users' ? userColumns : catalog.columns, { count: 'exact' });
     query = applySearch(query, filters.q, catalog.search.split(','));
@@ -248,13 +254,23 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
     requireCapability('em.catalogs.manage');
     if (!editableCatalogKindSchema.safeParse(kind).success) return null;
+    if (workshopRead && ['clients', 'types'].includes(kind)) {
+      if (!uuid.safeParse(id).success) return null;
+      const result = await workshopRead('catalog_entry', { kind, id });
+      if (result !== null && result?.id !== id) throw new Error('O cadastro retornado não pôde ser validado.');
+      return result as WebRow | null;
+    }
     const catalog = catalogs[kind];
     return one(catalog.table, catalog.columns, id);
   }
   return { getOverview, listProjects, getProject, getRecord, listPlanning, listForms, getCatalogs, getCatalogEntry, editorChoices };
 }
 
-async function data(capability: CorporateCapability) { const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability); return createWebData(session.client, session.sso?.capabilities); }
+async function data(capability: CorporateCapability) {
+  const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability);
+  const { ssoWorkshopRead } = await import('./sso-bridge');
+  return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined);
+}
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
 export async function listProjects(filters: ProjectFilters = {}) { return (await data('em.projects.read')).listProjects(filters); }
 export async function getProject(id: string, filters: ProjectReadFilters = {}) { return (await data('em.projects.read')).getProject(id, filters); }
@@ -266,5 +282,6 @@ export async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
   const { requireWebUser } = await import('./auth');
   const session = await requireWebUser('em.catalogs.manage');
   if (session.profile.perfil !== 'administrador') { const { redirect } = await import('next/navigation'); redirect('/acesso?motivo=permissao'); }
-  return createWebData(session.client, session.sso?.capabilities).getCatalogEntry(kind, id);
+  const { ssoWorkshopRead } = await import('./sso-bridge');
+  return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined).getCatalogEntry(kind, id);
 }

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { required } from '../config';
@@ -8,6 +9,8 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
 import { createCatalogWorkshopAuthorizer, isScopedTemplateWrite } from './catalog-workshop';
+import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
+import { WorkshopContextError } from './workshop-context';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -36,7 +39,19 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ mint: async value => {
   await rpc(isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.context });
+}, mintRead: async value => {
+  await rpc('rm_sso_workshop_read_permit_v1', { p_session_hash: value.sessionHash, p_read_id: value.requestId,
+    p_resource: value.resource, p_args: value.filters, p_context: value.context });
 } });
+export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof localSsoClient>): WorkshopRead {
+  return async (resource, args) => {
+    const requestId = randomUUID(), office = await catalogWorkshops.authorizeRead(context, requestId, resource, args);
+    const response = await client.rpc('rm_web_workshop_read_v1', { p_read_id: requestId, p_resource: resource, p_args: args });
+    if (response.error) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
+    try { return workshopReadResult(response.data, { requestId, resource, workshopId: office }); }
+    catch { throw new WorkshopContextError('WORKSHOP_UNAVAILABLE'); }
+  };
+}
 export function localSsoClient(token?: string) {
   if (token !== undefined && (typeof token !== 'string' || token.length < 50 || token.length > 32_768)) throw new CorporateAuthError('CORP_UNAUTHORIZED');
   return createClient(required('SUPABASE_URL'), required('SUPABASE_ANON_KEY'), {

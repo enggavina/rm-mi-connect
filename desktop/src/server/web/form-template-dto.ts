@@ -7,11 +7,13 @@ const object = (value: unknown): Raw => {
   return value as Raw;
 };
 function ids(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => uuid.safeParse(item).success) : []; }
-export interface FormSourceMetadata { usa_aprovacao: boolean | null; has_cover: boolean; celulas_ids: string[]; equipes_ids: string[] }
+export interface FormSourceMetadata { usa_aprovacao: boolean | null; has_cover: boolean; celulas_ids: string[]; equipes_ids: string[]; links_redacted?: true }
 export function formSourceMetadata(value: unknown): FormSourceMetadata {
   const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Raw : {};
   return { usa_aprovacao: typeof raw.usa_aprovacao === 'boolean' ? raw.usa_aprovacao : null,
-    has_cover: typeof raw.imagem_capa_url === 'string' && !!raw.imagem_capa_url.trim(), celulas_ids: ids(raw.celulas_ids), equipes_ids: ids(raw.equipes_ids) };
+    has_cover: raw.links_redacted === true ? raw.has_cover === true : typeof raw.imagem_capa_url === 'string' && !!raw.imagem_capa_url.trim(),
+    celulas_ids: raw.links_redacted === true ? [] : ids(raw.celulas_ids), equipes_ids: raw.links_redacted === true ? [] : ids(raw.equipes_ids),
+    ...(raw.links_redacted === true ? { links_redacted: true as const } : {}) };
 }
 export interface FormTemplateDraft {
   id: string; kind: 'new' | 'copy' | 'version'; state: 'draft' | 'published'; family_id: string | null;

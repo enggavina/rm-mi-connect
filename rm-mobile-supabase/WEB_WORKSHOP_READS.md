@@ -1,0 +1,26 @@
+# Consultas do portal por oficina — O11 / 059
+
+Este recorte cobre as páginas de modelos/rascunhos (listas, busca, totais, paginação, consulta, base de cópia/versão e opções do editor) e as abas Clientes, Tipos e Modelos em Cadastros. A consulta do registro para editar/excluir cliente ou tipo também tem escopo. Não se trata do isolamento completo do banco ou de todos os consumidores desses cadastros.
+
+Após SSO corporativo, identidade RM, MFA e capacidades atuais, o servidor consulta novamente o contexto v2 em Acessos. A oficina não é escolhida no login, extraída da URL ou aceita como filtro do navegador. Cada recurso exige seu conjunto de capacidades: `em.portal.read` + `em.catalogs.read` para listas; também `em.catalogs.manage` para a consulta de edição; `em.portal.read` + `em.form_templates.read` para o construtor. A edição de cadastro continua restrita a administrador RM. O leitor SQL também revalida identidade, perfil, sessão Auth real e MFA.
+
+O BFF emite uma confirmação exclusiva do servidor, vinculada a UUID aleatório, sessão, sujeito corporativo, oficina, recurso e hash dos filtros exatos, por até quinze segundos. A nova RPC de emissão reutiliza a validação estrita de autoridade da 057 e não cria permissão de mutação. A leitura usa o JWT local do próprio usuário e consome a confirmação uma única vez. O token e o Bearer corporativo não são enviados ao navegador. Recursos, filtros e respostas de outro contexto são recusados. Falha da autoridade ou do banco nunca dispara consulta global de contingência ou produz uma lista vazia fictícia.
+
+O banco filtra propriedades ativas comprovadas antes da busca, total e paginação. Clientes e tipos usam a propriedade da 056; modelos publicados também; famílias/rascunhos usam a 058. Registros desconhecidos, encerrados ou de outra oficina não entram no resultado. Versão cuja família/rascunho não tem origem comprovada é omitida, sem se apresentar como legado v1. O acesso direto por UUID fora do escopo responde como ausente. Contagem e página de cada recurso são calculadas na mesma instrução SQL, inclusive as duas listas do construtor.
+
+Snapshots preservam versões, timestamps exatos, conteúdo e mapeamentos autorizados. Uma associação inconsistente entre opção/pergunta/modelo bloqueia o snapshot individual, evitando trazer opções de outro modelo. A resposta das consultas de detalhe omite URLs de capa e IDs operacionais de células/equipes, que não são usados pelo editor; `has_cover` e `links_redacted:true` tornam essa redução explícita. Os metadados armazenados continuam intactos e são usados pelo fluxo existente de publicação. O vocabulário de cinco conjuntos de enums continua compartilhado; não são registros operacionais de outra oficina.
+
+Locks de identidade/sessão/perfil/confirmação impedem consumo concorrente e preservam a ordem com logout. Expiração durante uma espera impede o retorno dos dados e reverte o consumo. Somente a tabela privada de confirmações recebe inserção/exclusão técnica; nenhum cadastro, modelo, resposta, recibo de mutação ou fila é alterado pela consulta.
+
+## Publicação e limites
+
+A 059 é aditiva: uma tabela privada com RLS, três auxiliares privados, um emissor exclusivo de service_role e um leitor exclusivo de authenticated. Não altera definições/grants/políticas anteriores, não reclassifica registros e não concede acesso a pessoas. Publicar schema antes do BFF. O novo leitor exige confirmação desde a instalação; não há flag para aceitar consultas sem contexto. Reversão de interface pode conservar o schema, mas retorna ao comportamento anterior e deve ser considerada antes de liberar novas oficinas.
+
+As consultas legadas e políticas globais necessárias aos consumidores ainda não migrados, incluindo mobile, continuam sob os contratos anteriores. As abas Equipe/Células, seletores e dados auxiliares de projetos, planejamento, fotos, arquivos/Storage, exportações e cache/filas offline ainda exigem migração. Os modelos respondidos e formulários operacionais também não foram convertidos por esta entrega. Portanto `full_isolation_active:false`; BRJ/BBH permanecem inativas. Mobile mantém login e senha, sem SSO ou novo APK. Nenhum dado artificial deve ser criado em produção. Homologação humana de leitura autenticada é separada dos testes técnicos e das inspeções do proprietário do banco.
+
+## Verificação reproduzível
+
+- `npm run typecheck`, `npm test`, build e dois smokes em `desktop`; CI também valida mobile e o contrato QR.
+- `powershell -NoProfile -File rm-mobile-supabase/tests/run-local-tests.ps1 -WorkshopInventory`.
+- `python rm-mobile-supabase/scripts/test_workshop_reads_local.py`: PostgreSQL descartável, duas oficinas/raízes desconhecidas, busca/total/páginas, redaction de metadados, sessão/corpo/MFA/perfis, três disputas reais e dez alterações indevidas recusadas.
+- `prepare_workshop_reads_release.py`: gerador offline, hashes obrigatórios e rollback padrão. O envelope preserva todos os dados e funções anteriores, OIDs/owners/ACLs, papéis, RLS/políticas, índices e fontes de migração. Nunca editar migrações aplicadas.

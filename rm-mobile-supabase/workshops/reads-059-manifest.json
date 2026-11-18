@@ -1,0 +1,144 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "name": "workshop_read_permits",
+      "forced": false,
+      "columns": [
+        [
+          "read_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "session_hash",
+          "text",
+          true,
+          null
+        ],
+        [
+          "resource",
+          "text",
+          true,
+          null
+        ],
+        [
+          "args_hash",
+          "bytea",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "subject",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "expires_at",
+          "timestamp with time zone",
+          true,
+          null
+        ],
+        [
+          "created_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX workshop_read_permits_session ON rm_private.workshop_read_permits USING btree (session_hash)",
+        "CREATE UNIQUE INDEX workshop_read_permits_pkey ON rm_private.workshop_read_permits USING btree (read_id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "workshop_read_permits_pkey",
+          "PRIMARY KEY (read_id)"
+        ],
+        [
+          "workshop_read_permits_resource_check",
+          "CHECK ((resource = ANY (ARRAY['catalog_list'::text, 'catalog_entry'::text, 'template_list'::text, 'template_draft'::text, 'template_form'::text, 'template_choices'::text])))"
+        ],
+        [
+          "workshop_read_permits_session_hash_fkey",
+          "FOREIGN KEY (session_hash) REFERENCES rm_private.sso_sessions(hash) ON DELETE CASCADE"
+        ],
+        [
+          "workshop_read_permits_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "rm_sso_workshop_read_permit_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_session_hash text, p_read_id uuid, p_resource text, p_args jsonb, p_context jsonb",
+      "volatility": "v",
+      "body_sha256": "827586e31a6c710e15f1ca26f4419dc8c030ce79faabc3c5ba43e27ed60373bf",
+      "security_definer": true
+    },
+    {
+      "name": "rm_web_workshop_read_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_read_id uuid, p_resource text, p_args jsonb",
+      "volatility": "v",
+      "body_sha256": "714b27ab6e6031c4a2059f0f800514106cae65c3dd07bb2182dbec557bfe1359",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_read_data_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_resource text, p_args jsonb, p_office uuid",
+      "volatility": "v",
+      "body_sha256": "f6f3b3a0dc7011c88f0fd15e9959cbceaa4b79f3591ff70befbd63dce2604883",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_read_owned_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "boolean",
+      "language": "sql",
+      "signature": "p_kind text, p_id uuid, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "bde7a9ba0ae474635c0990988ca5c213315dfe6446a86a47d68d18051c2725d0",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_read_visible_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "boolean",
+      "language": "sql",
+      "signature": "p_kind text, p_id uuid, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "e511fb79fc6ee1250bfcf217218ffec2e71802da6fda4f9e331b2ba9f10d182a",
+      "security_definer": false
+    }
+  ]
+}

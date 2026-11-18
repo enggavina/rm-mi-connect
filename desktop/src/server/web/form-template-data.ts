@@ -3,6 +3,7 @@ import type { WebRow } from './data';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { formTemplateSnapshotDto, publishedFormSnapshotDto } from './form-template-dto';
+import { checkedWorkshopPage, type WorkshopRead } from './workshop-read-policy';
 
 export type FormTemplateFilters = { q?: string; state?: string; page?: number | string };
 const DRAFT_LIST = 'id,kind,state,family_id,source_form_id,source_version,created_at,updated_at,published_form_id,titulo:content->>titulo';
@@ -14,13 +15,16 @@ function checked(result: any) {
   return result;
 }
 
-export function createFormTemplateData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createFormTemplateData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   function authorize() {
     if (capabilities !== undefined && (!capabilities.includes('em.portal.read') || !capabilities.includes('em.form_templates.read'))) throw new Error('Acesso não autorizado aos modelos de formulário.');
   }
   async function listFormTemplates(filters: FormTemplateFilters = {}) {
     authorize();
     const page = pageNumber(filters.page), pageSize = 25, start = (page - 1) * pageSize;
+    if (workshopRead) return checkedWorkshopPage(await workshopRead('template_list', {
+      q: searchTerm(filters.q), state: ['draft', 'published'].includes(filters.state ?? '') ? filters.state : 'all', page,
+    }), page, pageSize, true) as { drafts: WebRow[]; published: WebRow[]; draftTotal: number; publishedTotal: number; page: number; pageSize: number };
     let drafts: any = client.from('rm_form_template_drafts').select(DRAFT_LIST, { count: 'exact' });
     let published: any = client.from('rm_forms').select(FORM_LIST, { count: 'exact' });
     const term = searchTerm(filters.q);
@@ -41,17 +45,29 @@ export function createFormTemplateData(client: SupabaseClient, capabilities?: re
   async function getFormTemplate(id: string) {
     authorize();
     if (!uuid.safeParse(id).success) return null;
+    if (workshopRead) {
+      const result = formTemplateSnapshotDto(await workshopRead('template_draft', { id }));
+      if (result !== null && result.draft.id !== id) throw new Error('O rascunho retornado não pôde ser validado.');
+      return result;
+    }
     return formTemplateSnapshotDto(checked(await client.rpc('rm_web_form_template_snapshot_v1', { p_id: id })).data);
   }
   async function getPublishedFormTemplate(formId: string) {
     authorize();
     if (!uuid.safeParse(formId).success) return null;
+    if (workshopRead) {
+      const result = publishedFormSnapshotDto(await workshopRead('template_form', { id: formId }));
+      if (result !== null && result.form.id !== formId) throw new Error('O modelo retornado não pôde ser validado.');
+      return result;
+    }
     return publishedFormSnapshotDto(checked(await client.rpc('rm_web_form_source_snapshot_v1', { p_id: formId })).data);
   }
   async function getFormTemplateChoices() {
     authorize();
-    const result = checked(await client.from('rm_option_sets').select('option_set_key,option_key,bubble_display,sort_order')
-      .in('option_set_key', Object.values(OPTION_SETS)).order('sort_order'));
+    const result = workshopRead ? { data: await workshopRead('template_choices', {}) }
+      : checked(await client.from('rm_option_sets').select('option_set_key,option_key,bubble_display,sort_order')
+        .in('option_set_key', Object.values(OPTION_SETS)).order('sort_order'));
+    if (!Array.isArray(result.data)) throw new Error('As opções de formulário não puderam ser validadas.');
     const all = (result.data || []) as Record<string, any>[];
     const options = (set: string): FormTemplateChoice[] => all.filter(row => row.option_set_key === set)
       .map(row => ({ id: row.option_key, option_key: row.option_key, bubble_display: row.bubble_display, sort_order: row.sort_order }));
@@ -63,7 +79,8 @@ export function createFormTemplateData(client: SupabaseClient, capabilities?: re
 async function data() {
   const { requireWebUser } = await import('./auth');
   const session = await requireWebUser('em.form_templates.read');
-  return createFormTemplateData(session.client, session.sso?.capabilities);
+  const { ssoWorkshopRead } = await import('./sso-bridge');
+  return createFormTemplateData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined);
 }
 export async function listFormTemplates(filters: FormTemplateFilters = {}) { return (await data()).listFormTemplates(filters); }
 export async function getFormTemplate(id: string) { return (await data()).getFormTemplate(id); }
