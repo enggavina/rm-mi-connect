@@ -1,0 +1,19 @@
+{
+  "format_version": 1,
+  "application": "em",
+  "confirmation": {
+    "source": "explicit_user_reply",
+    "date": "2026-11-18",
+    "question": "Para separar as oficinas, como devem funcionar os cadastros de clientes, tipos de equipamento e modelos de formulário?",
+    "answer": "Cadastros independentes por oficina (recomendado)"
+  },
+  "catalogs": {
+    "clients": "independent_per_workshop",
+    "equipment_types": "independent_per_workshop",
+    "form_models": "independent_per_workshop"
+  },
+  "migration": {
+    "applied": false,
+    "note": "Decisão registrada para a próxima migração. Nenhum cadastro foi copiado, compartilhado ou reatribuído por este arquivo; demais cadastros e vínculos não são definidos por esta confirmação."
+  }
+}

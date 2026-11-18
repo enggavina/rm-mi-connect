@@ -82,8 +82,8 @@ test('opening evidence writes are atomic and reject changed payloads or another 
   assert.equal(list(db)[0].result_json, null); assert.equal(list(db)[0].status, 'pending'); db.close();
 });
 
-test('authoritative deletion and missing API errors back off without changing IDs or dropping offline attachments', async () => {
-  for (const code of ['PT410', 'PGRST202', '28000', '42501']) {
+test('workshop conflicts, authoritative deletion and missing API back off without changing IDs or dropping offline attachments', async () => {
+  for (const code of ['PT409', 'PT410', 'PGRST202', '28000', '42501']) {
     const db = database(); enqueue(db); let calls = 0;
     const coordinator = new ReceivingOpeningCoordinator({ assertOwner: value => assert.equal(value, owner), list: async () => list(db), read: async (_, queued) => load(db, queued), write: (queued, state) => tx(db, sql => storeReceivingOpening(sql, queued, state)), send: async (_, queued) => { calls++; assert.equal(queued.id, submission); throw { code, message: 'Abertura não autorizada ou indisponível' }; }, now: () => Date.parse(at) });
     await coordinator.run(owner); await coordinator.run(owner); assert.equal(calls, 1); assert.equal(load(db, row())?.nextRetryAt, Date.parse(at) + 300_000); assert.equal(list(db)[0].params_json, row().params_json); assert.equal(list(db)[0].status, 'pending'); db.close();

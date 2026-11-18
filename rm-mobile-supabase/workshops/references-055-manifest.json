@@ -1,0 +1,162 @@
+{
+  "rules": [
+    {
+      "table_name": "rm_aprovacoes_etapas",
+      "cell_column": "celula_destino_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_aprovacoes_etapas",
+      "cell_column": "celula_origem_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_aprovacoes_registro",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_celulas_projeto",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_comentarios",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_form_reviewer_assignments",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_fotos",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_logs_aprovacao",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_registros_formulario",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    },
+    {
+      "table_name": "rm_web_stage_decisions",
+      "cell_column": "celula_id",
+      "project_column": "projeto_id"
+    }
+  ],
+  "triggers": [
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_origem_id, celula_destino_id ON public.rm_aprovacoes_etapas FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_aprovacoes_registro FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_celulas_projeto FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_comentarios FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_form_reviewer_assignments FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_fotos FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_logs_aprovacao FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_registros_formulario FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_direct_reference_guard BEFORE INSERT OR UPDATE OF projeto_id, celula_id ON public.rm_web_stage_decisions FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_reference_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_cell_reference_guard BEFORE INSERT OR UPDATE ON rm_private.workshop_cell_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_root_references_v1()"
+    },
+    {
+      "enabled": "O",
+      "definition": "CREATE TRIGGER workshop_project_reference_guard BEFORE INSERT OR UPDATE ON rm_private.workshop_project_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_guard_root_references_v1()"
+    }
+  ],
+  "functions": [
+    {
+      "name": "workshop_guard_reference_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "7dfc201c3a15254b6f51ec42b4728de2cd8e1ce73be74bd900778f455dc46d7a",
+      "security_definer": true
+    },
+    {
+      "name": "workshop_guard_root_references_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "5b7f5bb988a161d303b1ca6b36f5b86aa9ad80fba011c7e7a5a4a279753dd6fa",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_reference_pair_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_project uuid, p_cell uuid, p_pending_kind text, p_pending_workshop uuid",
+      "volatility": "v",
+      "body_sha256": "092d81195df89047bc75827d280f7872cfa6965c575a5a48dc5f4f3c40944f6a",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_reference_readiness_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "s",
+      "body_sha256": "7301a1b118e6b8dbe5f0112853481264c6fccaeaf8126a222b72cd0959386070",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_reference_relations_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "TABLE(table_name text, project_column text, cell_column text)",
+      "language": "sql",
+      "signature": "",
+      "volatility": "i",
+      "body_sha256": "3ff3a1451922e7f8532a71675745c4e72df82eba35024017cdd3cea367293b34",
+      "security_definer": false
+    }
+  ]
+}
