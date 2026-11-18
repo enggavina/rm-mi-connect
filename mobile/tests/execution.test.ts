@@ -251,6 +251,7 @@ test('previously consulted own SQLite contexts preserve a wholly offline start A
   const startB = operation(33, parameters({ p_session_id: id(90) }));
   const operations = [startA, pauseA, startB], epoch = { intent: 3, ack: 0 };
   const rows = db.prepare(EXECUTION_CONTEXT_SQL).all(JSON.stringify(executionContextKeys(scope, cachedB, operations))) as { key: string; value: string }[];
+  for (const row of rows) assert.ok(Array.isArray(JSON.parse(row.value).known_event_ids), 'SQLite subquery JSON must remain an array across engine versions');
   const contexts = executionContexts(rows, scope, epoch), view = executionLocalView(cachedB, epoch, operations, contexts);
   assert.equal(view.safeToAppend, true); assert.equal(contexts[other].allocation.project_id, id(82));
   const result = projectExecution(view.snapshot!, view.operations, view.safeToAppend, view.contexts);

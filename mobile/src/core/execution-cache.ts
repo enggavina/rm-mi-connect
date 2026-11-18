@@ -15,7 +15,7 @@ export const EXECUTION_CONTEXT_SQL = `SELECT key,json_object('schema',json_extra
     'running_session',json_extract(value,'$.snapshot.running_session'),'review_sessions',json_extract(value,'$.snapshot.review_sessions'),
     'review_sessions_total',json_extract(value,'$.snapshot.review_sessions_total'),'review_sessions_complete',json(CASE json_type(value,'$.snapshot.review_sessions_complete') WHEN 'true' THEN 'true' WHEN 'false' THEN 'false' ELSE 'null' END),
     'events',json('[]'),'events_total',0,'events_complete',json('true'),'reviews',json('[]'),'reviews_total',0,'reviews_complete',json('true')),
-  'known_event_ids',(SELECT json_group_array(json_extract(e.value,'$.id')) FROM json_each(local_meta.value,'$.snapshot.events') e)) value
+  'known_event_ids',json((SELECT json_group_array(json_extract(e.value,'$.id')) FROM json_each(local_meta.value,'$.snapshot.events') e))) value
   FROM local_meta WHERE key IN (SELECT value FROM json_each(?)) AND json_valid(value)`;
 export function executionContextKeys(scope: ExecutionScope, cache: ExecutionCache | null, operations: readonly OutboxRow[]): string[] {
   const ids = new Set([scope.allocationId]);
