@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "application": "em",
+  "authority_project_ref": "kxoriwvzmxhatzqcgnht",
+  "confirmation": {
+    "source": "explicit_user_reply",
+    "date": "2026-11-18",
+    "question": "As contas mgavina@mielectric.com.br e softdev05@mielectric.com.br ainda não têm oficina definida no Acessos. Ambas devem pertencer à BMA?",
+    "answer": "Sim, ambas na BMA"
+  },
+  "bindings": [
+    { "kind": "corporate", "email": "mgavina@mielectric.com.br", "workshop_code": "BMA" },
+    { "kind": "corporate", "email": "softdev05@mielectric.com.br", "workshop_code": "BMA" }
+  ],
+  "constraints": {
+    "preserve_existing_roles": true,
+    "grant_global_administration": false,
+    "change_other_applications": false,
+    "infer_mobile_bindings": false
+  },
+  "execution": {
+    "applied": false,
+    "note": "Autorização registrada; conferir a gravação auditada na Central. Este arquivo não concede acesso nem substitui a autenticação administrativa."
+  }
+}

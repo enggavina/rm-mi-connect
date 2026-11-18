@@ -1,0 +1,187 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "name": "workshop_object_origins",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "captured_from",
+          "text",
+          true,
+          null
+        ],
+        [
+          "captured_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX workshop_origins_by_office ON rm_private.workshop_object_origins USING btree (workshop_id, object_kind, object_id)",
+        "CREATE UNIQUE INDEX workshop_object_origins_pkey ON rm_private.workshop_object_origins USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_origins_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_object_origins FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_origins_no_truncate BEFORE TRUNCATE ON rm_private.workshop_object_origins FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_object_origins_captured_from_check",
+          "CHECK ((captured_from = ANY (ARRAY['existing_ownership'::text, 'ownership_write'::text])))"
+        ],
+        [
+          "workshop_object_origins_object_kind_check",
+          "CHECK ((object_kind = ANY (ARRAY['project'::text, 'cell'::text])))"
+        ],
+        [
+          "workshop_object_origins_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ],
+        [
+          "workshop_object_origins_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "workshop_origin_retirements",
+      "forced": false,
+      "columns": [
+        [
+          "object_kind",
+          "text",
+          true,
+          null
+        ],
+        [
+          "object_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "reason",
+          "text",
+          true,
+          "'ownership_removed'::text"
+        ],
+        [
+          "retired_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ],
+        [
+          "database_actor",
+          "text",
+          true,
+          "SESSION_USER"
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX workshop_origin_retirements_pkey ON rm_private.workshop_origin_retirements USING btree (object_kind, object_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER workshop_retirements_immutable BEFORE DELETE OR UPDATE ON rm_private.workshop_origin_retirements FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+        "CREATE TRIGGER workshop_retirements_no_truncate BEFORE TRUNCATE ON rm_private.workshop_origin_retirements FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+      ],
+      "constraints": [
+        [
+          "workshop_origin_retirements_object_kind_object_id_fkey",
+          "FOREIGN KEY (object_kind, object_id) REFERENCES rm_private.workshop_object_origins(object_kind, object_id)"
+        ],
+        [
+          "workshop_origin_retirements_pkey",
+          "PRIMARY KEY (object_kind, object_id)"
+        ],
+        [
+          "workshop_origin_retirements_reason_check",
+          "CHECK ((reason = 'ownership_removed'::text))"
+        ]
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "workshop_assert_origin_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_kind text, p_id uuid, p_workshop uuid",
+      "volatility": "v",
+      "body_sha256": "757cd6d107a25aeb97116b587ee7368741ed66e07346c064b88e72c821a54ab3",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_capture_origin_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "56e83ea91f0609bbff39d83680562434433157f1965fc764591a4cb81ed26708",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_origin_immutable_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "trigger",
+      "language": "plpgsql",
+      "signature": "",
+      "volatility": "v",
+      "body_sha256": "33dcc6324decafef4aeb59e938457411cbc2647e64a3319286e021715f3e63ae",
+      "security_definer": false
+    },
+    {
+      "name": "workshop_origin_readiness_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "sql",
+      "signature": "",
+      "volatility": "s",
+      "body_sha256": "53bc3b26defecfb3925923fd197b8de32c062f9e3999dc80ce3d70824461410a",
+      "security_definer": false
+    }
+  ],
+  "mapping_triggers": [
+    "CREATE TRIGGER workshop_cell_origin BEFORE INSERT OR DELETE OR UPDATE ON rm_private.workshop_cell_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_capture_origin_v1()",
+    "CREATE TRIGGER workshop_cell_origin_no_truncate BEFORE TRUNCATE ON rm_private.workshop_cell_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()",
+    "CREATE TRIGGER workshop_project_origin BEFORE INSERT OR DELETE OR UPDATE ON rm_private.workshop_project_ownership FOR EACH ROW EXECUTE FUNCTION rm_private.workshop_capture_origin_v1()",
+    "CREATE TRIGGER workshop_project_origin_no_truncate BEFORE TRUNCATE ON rm_private.workshop_project_ownership FOR EACH STATEMENT EXECUTE FUNCTION rm_private.workshop_origin_immutable_v1()"
+  ]
+}
