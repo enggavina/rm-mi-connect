@@ -28,3 +28,5 @@ Esta guarda não entrega isolamento de leitura. Consultas, buscas, contagens, ex
 - `prepare_catalog_writes_release.py` gera SQL offline com hashes obrigatórios e rollback por padrão. Confere dados anteriores, Auth/Storage, OIDs/ACLs/corpos de funções, única substituição exata de despacho, papéis, políticas, índices e histórico. Nenhuma migração aplicada é editada.
 
 Dados sintéticos somente no banco descartável. Os testes públicos de produção verificam recusas, saúde e início SSO; não substituem login humano nem uma criação real feita pela equipe.
+
+Publicada e ativada em 18/11/2026: migração 057, consumidor `808b7807303980a3afc46a39c3d295d85343db70`, Railway `566248b7-ccec-4a36-b450-359d46d75796` com SUCCESS. [Resultado, evidências e pendências](../desktop/docs/web-platform.md). A ativação técnica está registrada no banco; não equivale a isolamento completo nem homologação humana da operação.
