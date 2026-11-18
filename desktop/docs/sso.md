@@ -1,5 +1,7 @@
 # SSO corporativo do EM
 
+**054 publicada em 18/11/2026; O05 concluído em 5/5 marcos (100%).** [Testes, publicação e pendências](web-platform.md). A conferência confirmou 182 origens de projeto e 29 de célula, sem inconsistências ativas. Uma exclusão legada sem origem comprovada permanece sinalizada. O diagnóstico mantém o isolamento desativado; vínculos pessoais autorizados abaixo ainda aguardam gravação auditada na Central.
+
 **Retenção de origem — contrato 054 / O05:** o histórico privado identifica a oficina original de cada projeto/célula já classificado e permanece após a remoção da propriedade ativa. A instalação copia somente os vínculos de propriedade existentes; registros sem origem e exclusões anteriores não recebem uma oficina por suposição. O recibo inicial BMA da 053 permanece intacto.
 
 Os gatilhos registram novas propriedades e sua retirada na mesma transação da operação, impedem troca de oficina/UUID e recusam reutilização de identidade encerrada. Remover apenas o vínculo registra `ownership_removed`, sem afirmar que o projeto foi excluído. Histórico não pode ser atualizado, apagado ou truncado; truncar as propriedades ativas também é recusado. Uma disputa pela mesma origem falha sem espera com `PT409`, preservando a operação para retentativa; identidades encerradas retornam `PT410`. Operações em origens diferentes não compartilham esse lock. A exclusão autenticada existente continua usando seu próprio fluxo e mantém o histórico privado fora do conjunto descartável.
