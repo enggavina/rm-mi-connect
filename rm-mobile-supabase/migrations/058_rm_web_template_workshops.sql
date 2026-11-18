@@ -280,7 +280,10 @@ begin
  end if;
  if permit.expires_at<=clock_timestamp() or sess.expires_at<=clock_timestamp() then raise exception using errcode='42501',message='Confirmação de oficina expirou. Reenvie o mesmo protocolo.';end if;
  return result;
-exception when lock_not_available then raise exception using errcode='PT409',message='Modelo em alteração. Reenvie o mesmo protocolo.';
+exception when lock_not_available then
+ if permit.submission_id is not null and p_operation in('create_form_template','save_form_template','publish_form_template','delete_form_template') then
+  raise exception using errcode='PT409',message='Modelo em alteração. Reenvie o mesmo protocolo.';end if;
+ raise;
 end$$;
 
 do $$declare definition text;needle text:='return rm_private.web_mutate_scoped_catalog_v1(p_client_submission_id,p_operation,p_payload);';begin

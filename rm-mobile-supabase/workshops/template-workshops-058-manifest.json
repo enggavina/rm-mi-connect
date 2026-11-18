@@ -453,7 +453,7 @@
       "language": "plpgsql",
       "signature": "p_client_submission_id uuid, p_operation text, p_payload jsonb",
       "volatility": "v",
-      "body_sha256": "ae0dfc0c7439506c87f541aa9794f650fc1131cc5b379cec4c1668e512420fdf",
+      "body_sha256": "d5d3c7fd8a416e83e9656135bb3668a8ae67dedf5ae96d5f82ec387e0a76d0e1",
       "security_definer": false
     },
     {
