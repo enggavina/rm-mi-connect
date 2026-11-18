@@ -1,0 +1,200 @@
+{
+  "tables": [
+    {
+      "rls": true,
+      "name": "catalog_workshop_write_permits",
+      "forced": false,
+      "columns": [
+        [
+          "submission_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "session_hash",
+          "text",
+          true,
+          null
+        ],
+        [
+          "operation",
+          "text",
+          true,
+          null
+        ],
+        [
+          "payload_hash",
+          "bytea",
+          true,
+          null
+        ],
+        [
+          "workshop_id",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "subject",
+          "uuid",
+          true,
+          null
+        ],
+        [
+          "context",
+          "jsonb",
+          true,
+          null
+        ],
+        [
+          "expires_at",
+          "timestamp with time zone",
+          true,
+          null
+        ],
+        [
+          "created_at",
+          "timestamp with time zone",
+          true,
+          "clock_timestamp()"
+        ]
+      ],
+      "indexes": [
+        "CREATE INDEX catalog_workshop_permits_session ON rm_private.catalog_workshop_write_permits USING btree (session_hash)",
+        "CREATE UNIQUE INDEX catalog_workshop_write_permits_pkey ON rm_private.catalog_workshop_write_permits USING btree (submission_id)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "catalog_workshop_write_permits_operation_check",
+          "CHECK ((operation = ANY (ARRAY['save_catalog'::text, 'delete_catalog'::text])))"
+        ],
+        [
+          "catalog_workshop_write_permits_pkey",
+          "PRIMARY KEY (submission_id)"
+        ],
+        [
+          "catalog_workshop_write_permits_session_hash_fkey",
+          "FOREIGN KEY (session_hash) REFERENCES rm_private.sso_sessions(hash) ON DELETE CASCADE"
+        ],
+        [
+          "catalog_workshop_write_permits_workshop_id_fkey",
+          "FOREIGN KEY (workshop_id) REFERENCES rm_private.workshop_references(id)"
+        ]
+      ]
+    },
+    {
+      "rls": true,
+      "name": "catalog_workshop_write_settings",
+      "forced": false,
+      "columns": [
+        [
+          "singleton",
+          "boolean",
+          true,
+          "true"
+        ],
+        [
+          "enforced",
+          "boolean",
+          true,
+          "false"
+        ],
+        [
+          "runtime_sha",
+          "text",
+          false,
+          null
+        ],
+        [
+          "deployment_id",
+          "uuid",
+          false,
+          null
+        ],
+        [
+          "activated_at",
+          "timestamp with time zone",
+          false,
+          null
+        ],
+        [
+          "database_actor",
+          "text",
+          false,
+          null
+        ]
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX catalog_workshop_write_settings_pkey ON rm_private.catalog_workshop_write_settings USING btree (singleton)"
+      ],
+      "triggers": [],
+      "constraints": [
+        [
+          "catalog_workshop_write_settings_check",
+          "CHECK (((NOT enforced) OR ((runtime_sha IS NOT NULL) AND (runtime_sha ~ '^[0-9a-f]{40}$'::text) AND (deployment_id IS NOT NULL) AND (activated_at IS NOT NULL) AND (database_actor IS NOT NULL))))"
+        ],
+        [
+          "catalog_workshop_write_settings_pkey",
+          "PRIMARY KEY (singleton)"
+        ],
+        [
+          "catalog_workshop_write_settings_singleton_check",
+          "CHECK (singleton)"
+        ]
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "activate_catalog_workshop_writes_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_runtime_sha text, p_deployment_id uuid",
+      "volatility": "v",
+      "body_sha256": "8a03c2a9c768ffbe4f82c0dba84bc6f2c8f754643048512e33d7aa1f80cac48f",
+      "security_definer": false
+    },
+    {
+      "name": "rm_sso_catalog_workshop_permit_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "language": "plpgsql",
+      "signature": "p_session_hash text, p_submission_id uuid, p_operation text, p_payload jsonb, p_context jsonb",
+      "volatility": "v",
+      "body_sha256": "67cbbbb970de553c08d68097705ce00c02911d9b3ac903957b350a0ac5886131",
+      "security_definer": true
+    },
+    {
+      "name": "rm_web_mutate_v1",
+      "config": [
+        "search_path=\"\"",
+        "lock_timeout=10s"
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_client_submission_id uuid, p_operation text, p_payload jsonb",
+      "volatility": "v",
+      "body_sha256": "1c3799b52f7d41f39ae217abee799502a2b4e3d3495ef55eed4cc23d82beda8e",
+      "security_definer": true
+    },
+    {
+      "name": "web_mutate_scoped_catalog_v1",
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "language": "plpgsql",
+      "signature": "p_client_submission_id uuid, p_operation text, p_payload jsonb",
+      "volatility": "v",
+      "body_sha256": "2d7823b91bfadde1af13ba9ffdff7c30453b0df68dee9fb85a99f7c484d81f8f",
+      "security_definer": false
+    }
+  ]
+}

@@ -44,6 +44,8 @@ Sempre informar o escopo e o denominador do percentual. O backlog de 42 itens é
 
 ### Ordem de execução proposta
 
+**Pacote O09 — gravação web de clientes e tipos por oficina: 3/5 marcos concluídos (60% por contagem), em validação.** Diagnóstico/contrato, implementação e testes específicos concluídos; regressão/CI e publicação/ativação ainda pendentes. A oficina é consultada novamente em Acessos após SSO/MFA/capacidade, sem seletor ou Bearer serializado. Criação e propriedade são atômicas; edição/exclusão exigem a mesma origem, inclusive em retentativas. Registros existentes sem origem não são adotados automaticamente. [Contrato e limites](rm-mobile-supabase/WEB_CATALOG_WORKSHOPS.md). Este pacote não entrega leitura isolada, modelos/rascunhos, Storage ou offline; BRJ/BBH continuam inativas. OFI-01/02 e INT-01 parciais, OFI-03 pendente, contagem integral do backlog mantida em 0/42. Próxima prioridade: criação/modelos e demais relações com escopo, seguida dos leitores autorizados e contexto offline.
+
 | Onda | Foco e resultado de saída | Itens principais |
 | --- | --- | --- |
 | 0 — preparar a expansão | Segurança, recuperação, qualidade dos dados e contratos dos aplicativos conhecidos; sem ampliar acessos de outras oficinas antes do isolamento | SEG-01–03, DAD-01, INT-00 |

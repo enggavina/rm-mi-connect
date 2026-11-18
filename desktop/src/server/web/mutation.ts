@@ -5,6 +5,7 @@ import { getWebUser } from './auth';
 import { authorizeSsoAction } from './sso-bridge';
 import { CorporateAuthError, type CorporateCapability } from './sso-policy';
 import type { SsoContext } from './auth-policy';
+import { WorkshopContextError } from './workshop-context';
 
 export type WebActionResult =
   | { ok: true; data: { operation: string; id: string; projeto_id: string | null; updated_at: string; record: Record<string, unknown>; idempotent_replay: boolean } }
@@ -19,7 +20,7 @@ export async function mutate(client: SupabaseClient, operation: string, value: {
       p_client_submission_id: submissionId, p_operation: operation, p_payload: payload,
     });
   } catch (error) {
-    return { ok: false, ...(error instanceof CorporateAuthError ? { code: error.code, error: error.message } : mutationError()) };
+    return { ok: false, ...(error instanceof CorporateAuthError || error instanceof WorkshopContextError ? { code: error.code, error: error.message } : mutationError()) };
   }
   if (response.error) return { ok: false, ...mutationError(response.error.code) };
   const result = response.data;

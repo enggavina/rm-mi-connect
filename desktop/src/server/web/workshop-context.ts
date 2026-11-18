@@ -51,9 +51,9 @@ export function validateWorkshopContext(value: unknown, expected: ExpectedWorksh
   return context;
 }
 
-/** Prepared for the isolated cutover. No current login/route calls this reader.
+/** O09 uses this reader for clients/equipment-type web writes only.
  * Call only AFTER current corporate SSO/MFA and capabilities have been verified.
- * The response must be enforced by DB/Storage/offline controls before activation. */
+ * This targeted guard does not activate read, Storage or offline isolation. */
 export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }: { fetcher?: typeof fetch; now?: () => number } = {}) {
   return {
     async readWeb(session: VerifiedCorporateSession): Promise<WorkshopContext> {

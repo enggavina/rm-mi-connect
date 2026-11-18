@@ -7,6 +7,7 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
   type CorporateFlow, type VerifiedCorporateSession, type CorporateCapability } from './sso-corporate';
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
+import { createCatalogWorkshopAuthorizer } from './catalog-workshop';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -32,6 +33,10 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   if (error) throw new CorporateAuthError('CORP_UNAVAILABLE');
   return data;
 }
+const catalogWorkshops = createCatalogWorkshopAuthorizer({ mint: async value => {
+  await rpc('rm_sso_catalog_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
+    p_operation: value.operation, p_payload: value.payload, p_context: value.context });
+} });
 export function localSsoClient(token?: string) {
   if (token !== undefined && (typeof token !== 'string' || token.length < 50 || token.length > 32_768)) throw new CorporateAuthError('CORP_UNAUTHORIZED');
   return createClient(required('SUPABASE_URL'), required('SUPABASE_ANON_KEY'), {
@@ -191,11 +196,14 @@ export async function getSsoWebAccess(): Promise<WebAccess> {
   if (binding.binding_id !== contents.binding.binding_id || binding.auth_user_id !== contents.binding.auth_user_id || binding.rm_user_id !== contents.binding.rm_user_id) throw new CorporateAuthError('CORP_FORBIDDEN');
   const client = localSsoClient(contents.localToken), access = await resolveWebAccess(client, contents.localToken);
   if (access.state !== 'authenticated' || access.profile.id !== binding.rm_user_id || localClaims(contents.localToken, binding.auth_user_id).sessionId !== contents.localSessionId) throw new CorporateAuthError('CORP_UNAUTHORIZED');
-  return { ...access, sso: { sessionHash: hash, bindingId: binding.binding_id, subject: corporate.user.id, capabilities: corporate.decision.capabilities } };
+  const sso: SsoContext = { sessionHash: hash, bindingId: binding.binding_id, subject: corporate.user.id, capabilities: corporate.decision.capabilities };
+  catalogWorkshops.remember(sso, corporate);
+  return { ...access, sso };
 }
 export async function authorizeSsoAction(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
   // The capability was checked freshly by getSsoWebAccess in this same request.
   if (!context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');
+  if (await catalogWorkshops.authorize(context, submissionId, operation, payload, capability)) return;
   await rpc('rm_sso_action_permit_v1', { p_session_hash: context.sessionHash, p_submission_id: submissionId,
     p_operation: operation, p_payload: payload, p_capability: capability });
 }

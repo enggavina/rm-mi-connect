@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createCatalogWorkshopAuthorizer, isScopedCatalogWrite } from '../src/server/web/catalog-workshop';
+import { CORPORATE_ISSUER, CorporateAuthError, type VerifiedCorporateSession } from '../src/server/web/sso-policy';
+import { WorkshopContextError, type WorkshopContext } from '../src/server/web/workshop-context';
+import type { SsoContext } from '../src/server/web/auth-policy';
+
+const subject = '00000000-0000-4000-8000-000000000001';
+function session(): VerifiedCorporateSession { return { accessToken: 'synthetic.jwt.signature', user: { id: subject, email: 'qa@example.invalid' }, expiresAt: Date.now() + 60_000,
+  decision: { application: 'em', issuer: CORPORATE_ISSUER, subject, app_access: true, capabilities: ['em.catalogs.manage'], all_employees: false, fields: [], export_allowed: false } }; }
+function sso(): SsoContext { return { subject, bindingId: subject, sessionHash: 'test-hash', capabilities: ['em.catalogs.manage'] }; }
+function workshop(): WorkshopContext { return { version: 2, application: 'em', channel: 'web', authority: CORPORATE_ISSUER,
+  workshop: { id: subject, code: 'BMA', name: 'BMA', active: true, revision: 1, updated_at: new Date().toISOString() },
+  principals: [{ kind: 'corporate', issuer: CORPORATE_ISSUER, subject, revision: 1 }], issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString() }; }
+
+test('only exact client/type save and delete operations require workshop confirmation', () => {
+  for (const operation of ['save_catalog', 'delete_catalog']) for (const kind of ['clients', 'types']) assert.equal(isScopedCatalogWrite(operation, { kind }), true);
+  for (const kind of ['cells', 'forms', 'types ', null, ['clients'], { toString: () => 'clients' }]) assert.equal(isScopedCatalogWrite('save_catalog', { kind }), false);
+  assert.equal(isScopedCatalogWrite('save_project', { kind: 'clients' }), false);
+});
+
+test('every protected action reads current authority and mints for the exact request without serializing Bearer', async () => {
+  const corporate = session(), context = sso(), payload = Object.freeze({ kind: 'clients', id: subject });
+  const before = JSON.stringify(context); let reads = 0, mints = 0;
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb(s) { assert.equal(s, corporate); reads++; return workshop(); } },
+    async mint(args) { assert.equal(args.payload, payload); assert.equal(args.sessionHash, context.sessionHash); assert.equal(args.submissionId, 'protocol'); mints++; } });
+  authorizer.remember(context, corporate);
+  for (let i = 0; i < 2; i++) assert.equal(await authorizer.authorize(context, 'protocol', 'save_catalog', payload, 'em.catalogs.manage'), true);
+  assert.equal(reads, 2); assert.equal(mints, 2); assert.equal(JSON.stringify(context), before); assert.equal(before.includes(corporate.accessToken), false);
+  await assert.rejects(authorizer.authorize({ ...context }, 'protocol', 'save_catalog', payload, 'em.catalogs.manage'), CorporateAuthError);
+});
+
+test('missing verification, wrong subject and wrong capability cannot contact workshop authority', async () => {
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { assert.fail('no network'); } }, async mint() { assert.fail('no permit'); } });
+  assert.throws(() => authorizer.remember(sso(), { ...session(), user: { ...session().user, id: 'other' } }), CorporateAuthError);
+  await assert.rejects(authorizer.authorize(sso(), 'p', 'save_catalog', { kind: 'clients' }, 'em.catalogs.manage'), CorporateAuthError);
+  const context = sso(); authorizer.remember(context, session());
+  await assert.rejects(authorizer.authorize(context, 'p', 'save_catalog', { kind: 'types' }, 'em.projects.manage'), CorporateAuthError);
+  context.capabilities = [];
+  await assert.rejects(authorizer.authorize(context, 'p', 'delete_catalog', { kind: 'types' }, 'em.catalogs.manage'), CorporateAuthError);
+  assert.equal(await authorizer.authorize(context, 'p', 'save_catalog', { kind: 'cells' }, 'em.catalogs.manage'), false);
+});
+
+test('authority failure and database failure propagate without an unscoped fallback', async () => {
+  for (const phase of ['reader', 'mint']) {
+    const failure = new WorkshopContextError('WORKSHOP_UNAVAILABLE'), context = sso(); let minted = 0;
+    const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { if (phase === 'reader') throw failure; return workshop(); } },
+      async mint() { minted++; throw failure; } });
+    authorizer.remember(context, session());
+    await assert.rejects(authorizer.authorize(context, 'p', 'save_catalog', { kind: 'clients' }, 'em.catalogs.manage'), e => e === failure);
+    assert.equal(minted, phase === 'mint' ? 1 : 0);
+  }
+});
