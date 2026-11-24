@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## EM Operacional Web — entrada e consultas por oficina
+
+Primeiro incremento publicado em **24/11/2026** em [EM Operacional Web](https://em-web-production.up.railway.app/operacao/login). Migração **061** aplicada em `oficina-em-mi-off` e Railway **`e02b8c7d-0df5-4e19-be10-e2595b9dcede`** com `SUCCESS`, consumidor `e448a605646a231f6c78089ae5d5f536f5bb6b04`. O login por senha do dispositivo e a identificação do operador usam uma sessão própria do navegador. Acessos define a unidade e as consultas do banco exigem propriedade da oficina e permissão de célula em cada acesso. O incremento entrega as listas de células e projetos e a consulta dos modelos vinculados ao projeto. [Contrato operacional](online-operation.md).
+
+Passaram **657 testes web, 144 mobile, 62 suítes PostgreSQL e oito cenários no Chromium**. Isolamento exercitado em SQL com três oficinas e no navegador com duas oficinas simuladas. Ensaio e aplicação verificaram a preservação das 119 tabelas e 228 funções anteriores. As 18 verificações públicas confirmaram o endereço, o controle de sessão e as recusas de origem indevida. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45438842271).
+
+**Primeiro incremento técnico concluído em 5/5 marcos (100%)** por contagem de diagnóstico, implementação, testes, publicação e conferência. A homologação real da BMA depende do cadastro explícito de dispositivo e operador em Acessos. O envio de formulários e fotos segue no próximo incremento. Evidências locais sob o prefixo `online-operation-` em `.tmp/`.
+
 ## Restauração da gestão de oficinas na Central de Acessos
 
 Publicada em **24/11/2026** na [Central de Acessos](https://acessos.miconnect.app.br/acessos/). A versão `72124c1e8774315dfbfad64876d5ce06be6b2068` reaplica a API, o proxy e o painel de oficinas do O02 sobre a versão ativa de cadastro corporativo e vagas `5bb2f15b1cba5cf28459dfe9aad4536d56efd9f1`. Railway confirmou `SUCCESS` no backend `2f4cea2c-05b2-40d0-93dd-a7c8f224ac6c` e no gateway `1363654e-fc51-4bb0-82e6-c359f7172623`. [Código publicado](https://github.com/enggavina/atualizador-gente/commit/72124c1e8774315dfbfad64876d5ce06be6b2068).
