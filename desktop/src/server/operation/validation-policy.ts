@@ -41,6 +41,7 @@ export function createOperationValidationReader({ authenticate, workshopRead }: 
       if (!query) return { status: 'missing' };
       const payload = await workshopRead(access)('operation_validation', {
         cell_id: query.cellId, project_id: query.projectId, page: query.page,
+        ...(query.formId && { form_id: query.formId }),
       });
       const data = operationData(payload, query);
       if (!data) return { status: 'missing' };

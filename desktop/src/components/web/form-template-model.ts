@@ -82,8 +82,8 @@ export function templateWarnings(content: TemplateContent): string[] {
 export function blankQuestion(id: string, indice: string, tipo = 'texto_curto'): TemplateQuestion {
   return { id, indice, tipo, enunciado: '', title: null, subtitulo: null, tag: null, subtipo: null, dimensoes: null, obrigatorio: false, colaborador_filtro_perfil: null, items: [] };
 }
-export function templateSections(questions: readonly TemplateQuestion[]) {
-  const sections: { id: string; title: string; description: string | null; questions: TemplateQuestion[] }[] = [];
+export function templateSections<T extends Pick<TemplateQuestion, 'id' | 'indice' | 'tipo' | 'enunciado' | 'subtitulo'>>(questions: readonly T[]) {
+  const sections: { id: string; title: string; description: string | null; questions: T[] }[] = [];
   let current: typeof sections[number] | undefined;
   for (const question of ordered(questions)) {
     if (question.tipo === 'subt_tulo') { current = { id: question.id, title: question.enunciado || 'Subtítulo sem nome', description: question.subtitulo, questions: [] }; sections.push(current); }

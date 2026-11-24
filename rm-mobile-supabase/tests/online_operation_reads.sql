@@ -36,6 +36,19 @@ exception when others then reset role; raise;
 end;
 $$;
 
+create function pg_temp.online_form(n int, cell int, project int, form int)
+returns jsonb language plpgsql as $$
+declare reply jsonb;
+begin
+  set local role service_role;
+  reply := public.rm_online_operation_form_read_v1(pg_temp.online_id(10+n),pg_temp.online_id(20+n),repeat(n::text,64),
+    pg_temp.online_context(n),pg_temp.online_id(cell),pg_temp.online_id(project),pg_temp.online_id(form));
+  reset role;
+  return reply;
+exception when others then reset role; raise;
+end;
+$$;
+
 select rm_private.workshop_adopt_bma_roots_v1(
   '[{"id":"06110000-0000-4000-8000-000000000001","code":"BMA"},{"id":"06110000-0000-4000-8000-000000000002","code":"BRJ"},{"id":"06110000-0000-4000-8000-000000000003","code":"BBH"}]',
   'c45f1ff7d60b695cfa708041e959489b7e05a02ace4bcdce1ff16c8b80d14db2',
@@ -78,14 +91,28 @@ update public.rm_projetos set equipamento_id=pg_temp.online_id(351) where id=pg_
 
 insert into public.rm_forms(id,titulo,ativo) values
   (pg_temp.online_id(401),'Formulário local',true),(pg_temp.online_id(402),'Formulário pendente',true),
-  (pg_temp.online_id(403),'Formulário inativo',false);
+  (pg_temp.online_id(403),'Formulário inativo',false),(pg_temp.online_id(404),'Formulário local sem vínculo',true),
+  (pg_temp.online_id(405),'Formulário BRJ',true),(pg_temp.online_id(406),'Formulário BBH',true);
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values
-  ('form_model',pg_temp.online_id(401),pg_temp.online_id(1)),('form_model',pg_temp.online_id(403),pg_temp.online_id(1));
+  ('form_model',pg_temp.online_id(401),pg_temp.online_id(1)),('form_model',pg_temp.online_id(403),pg_temp.online_id(1)),
+  ('form_model',pg_temp.online_id(404),pg_temp.online_id(1)),('form_model',pg_temp.online_id(405),pg_temp.online_id(2)),
+  ('form_model',pg_temp.online_id(406),pg_temp.online_id(3));
+insert into public.rm_questoes(id,form_id,indice,enunciado,subtitulo,tipo,obrigatorio) values
+  (pg_temp.online_id(801),pg_temp.online_id(401),3,'Condição visual','Marque uma opção.','escolha__nica',true),
+  (pg_temp.online_id(802),pg_temp.online_id(401),2,'Inspeção',null,'subt_tulo',false),
+  (pg_temp.online_id(803),pg_temp.online_id(405),1,'Local BRJ',null,'texto_curto',false),
+  (pg_temp.online_id(804),pg_temp.online_id(406),1,'Local BBH',null,'texto_curto',false);
+insert into public.rm_itens_questoes(id,form_id,questao_id,indice,descricao) values
+  (pg_temp.online_id(811),null,pg_temp.online_id(801),2,'Opção legada'),
+  (pg_temp.online_id(812),pg_temp.online_id(401),pg_temp.online_id(801),1,'Conforme'),
+  (pg_temp.online_id(813),pg_temp.online_id(405),pg_temp.online_id(801),3,'Opção de outra oficina');
 
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade,retirada,posicao,status,forms_ids)
   select pg_temp.online_id(500+n),pg_temp.online_id(200+n),pg_temp.online_id(case when n in (2,3) then 100+n else 101 end),
     n not in(7,8),n=8,n,case when n=9 then 'retornado' else 'em_dia' end::public.rm_status_cel_proj_enum,
-    case when n=1 then array[pg_temp.online_id(402),pg_temp.online_id(401),pg_temp.online_id(403)] else '{}' end
+    case when n=1 then array[pg_temp.online_id(402),pg_temp.online_id(401),pg_temp.online_id(403),pg_temp.online_id(405)]
+      when n in (2,3) then array[pg_temp.online_id(403+n)]
+      when n=7 then array[pg_temp.online_id(401)] else '{}' end
   from generate_series(1,32) n;
 
 do $$
@@ -127,6 +154,24 @@ begin
     and pg_temp.online_call(1,101,204) is null and pg_temp.online_call(1,null,201) is null
     and pg_temp.online_call(1,101,null,0) is null,'own office alone is insufficient without cell grants and project ownership');
 
+  result := pg_temp.online_form(1,101,201,401);
+  perform pg_temp.online_check(result->>'kind'='form' and result->'form'->>'id'=pg_temp.online_id(401)::text
+    and result->'questions'->0->>'tipo'='subt_tulo' and result->'questions'->1->>'enunciado'='Condição visual'
+    and result->'questions'->1->>'obrigatorio'='true' and jsonb_array_length(result->'questions')=2
+    and jsonb_array_length(result->'questions'->1->'items')=2
+    and result->'questions'->1->'items'->0->>'descricao'='Conforme'
+    and result->'questions'->1->'items'->1->>'descricao'='Opção legada'
+    and strpos(result::text,'private.invalid')=0,'authorized form projects ordered questions, safe options and no private URLs');
+  perform pg_temp.online_check(pg_temp.online_form(2,102,202,405)->'questions'->0->>'enunciado'='Local BRJ'
+    and pg_temp.online_form(3,103,203,406)->'questions'->0->>'enunciado'='Local BBH'
+    and pg_temp.online_form(1,102,202,405) is null and pg_temp.online_form(3,102,202,405) is null,
+    'form reads use current workshop for BRJ and BBH even when a cross-office cell grant exists');
+  perform pg_temp.online_check(pg_temp.online_form(1,101,201,402) is null and pg_temp.online_form(1,101,201,403) is null
+    and pg_temp.online_form(1,101,201,404) is null and pg_temp.online_form(1,101,201,405) is null
+    and pg_temp.online_form(1,101,207,401) is null and pg_temp.online_form(1,101,205,401) is null
+    and pg_temp.online_form(1,null,201,401) is null,
+    'form requires active owned model linked to an active visible allocation in the exact cell and project');
+
   context := pg_temp.online_context(1);
   perform pg_temp.online_check(public.rm_online_operation_read_v1(pg_temp.online_id(11),pg_temp.online_id(22),repeat('1',64),
     context,null,null,1) is null,'mismatched session is refused');
@@ -149,6 +194,7 @@ $$;
 
 update rm_private.operator_delegations set revoked=true where operator_id=pg_temp.online_id(41);
 select pg_temp.online_check(pg_temp.online_call(1) is null,'revoked operator grant is refused');
+select pg_temp.online_check(pg_temp.online_form(1,101,201,401) is null,'revoked operator cannot use a saved form link');
 update public.rm_users set status='inativo' where id=pg_temp.online_id(42);
 select pg_temp.online_check(pg_temp.online_call(2) is null,'inactive operator is refused');
 delete from auth.sessions where id=pg_temp.online_id(23);
@@ -160,6 +206,10 @@ select pg_temp.online_check(
   and not has_function_privilege('anon','public.rm_online_operation_read_v1(uuid,uuid,text,jsonb,uuid,uuid,integer)','EXECUTE')
   and not has_function_privilege('authenticated','public.rm_online_operation_read_v1(uuid,uuid,text,jsonb,uuid,uuid,integer)','EXECUTE')
   and has_function_privilege('service_role','public.rm_online_operation_read_v1(uuid,uuid,text,jsonb,uuid,uuid,integer)','EXECUTE')
+  and not has_function_privilege('anon','public.rm_online_operation_form_read_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid)','EXECUTE')
+  and not has_function_privilege('authenticated','public.rm_online_operation_form_read_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid)','EXECUTE')
+  and has_function_privilege('service_role','public.rm_online_operation_form_read_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid)','EXECUTE')
+  and not has_function_privilege('service_role','rm_private.online_operation_form_v1(jsonb,uuid)','EXECUTE')
   and not has_function_privilege('service_role','rm_private.online_workshop_context_v1(jsonb,uuid,uuid)','EXECUTE'),
   'only the trusted server may invoke the new online RPCs');
 

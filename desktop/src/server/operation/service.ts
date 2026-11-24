@@ -11,7 +11,10 @@ type OperationDeps = {
   identify: (token: string, matricula: string, password: string) => Promise<Reply>;
   readIdentity: (args: IdentityParams) => Promise<Reply>;
   readWorkshop: (identity: MobileIdentity, expiresAt: number) => Promise<WorkshopContext>;
-  readData: (args: IdentityParams & { p_workshop_context: WorkshopContext; p_cell_id: string | null; p_project_id: string | null; p_page: number }) => Promise<Reply>;
+  readData: (args: IdentityParams & { p_workshop_context: WorkshopContext } & (
+    { p_cell_id: string | null; p_project_id: string | null; p_page: number } |
+    { p_cell_id: string; p_project_id: string; p_form_id: string }
+  )) => Promise<Reply>;
   signOut: (token: string) => Promise<void>;
   now?: () => number;
   cookieKey?: string;
@@ -91,7 +94,9 @@ export function createOperationService(deps: OperationDeps) {
         const access = await authority(claims, saved.operatorToken, saved.expiresAt);
         const { workshop } = access;
         const reply = await deps.readData({
-          ...access.args, p_workshop_context: workshop, p_cell_id: query.cellId, p_project_id: query.projectId, p_page: query.page,
+          ...access.args, p_workshop_context: workshop, ...(query.formId
+            ? { p_cell_id: query.cellId, p_project_id: query.projectId, p_form_id: query.formId }
+            : { p_cell_id: query.cellId, p_project_id: query.projectId, p_page: query.page }),
         });
         if (reply.error) throw reply.error.code === '42501' || reply.error.code === 'PT403'
           ? new WorkshopContextError('WORKSHOP_FORBIDDEN') : identityError(reply.error.code);

@@ -1,6 +1,6 @@
 # EM Operacional Web
 
-O acesso em `/operacao` atende o operador no navegador pelo mesmo serviço Railway do EM. Este incremento oferece login e consulta de células, projetos e modelos de formulário vinculados à célula do projeto.
+O acesso em `/operacao` atende o operador no navegador pelo mesmo serviço Railway do EM. O operador pode entrar, consultar suas células, abrir os projetos liberados e consultar os formulários vinculados a cada alocação.
 
 ## Identidade e oficina
 
@@ -15,6 +15,12 @@ A migração `061` acrescenta consultas exclusivas do servidor. O banco revalida
 A conta corporativa `softdev05@mielectric.com.br` pode entrar pelo [portal do EM](https://em-web-production.up.railway.app/login) e abrir **Validar EM Operacional** no painel. A página de validação usa a mesma interface de consulta da operação. O servidor verifica a sessão Microsoft, o vínculo corporativo e as capacidades do EM. A Central confirma a BMA em cada consulta, e a migração `062` aplica as permissões de célula já cadastradas para o operador associado. As consultas usam uma confirmação do servidor de uso único com os filtros exatos.
 
 Esse acesso cobre a consulta de células, projetos ativos e modelos de formulário na BMA. A remoção de permissões de célula, a revogação do vínculo ou a mudança de oficina em Acessos altera o resultado das próximas consultas. A entrada por senha do dispositivo continua atendendo o fluxo do operador.
+
+## Consulta de formulários
+
+Dentro do projeto, selecione **Abrir formulário** para ver as seções, as perguntas obrigatórias e as opções cadastradas. Os subtítulos começam recolhidos. O botão **Voltar ao projeto** leva à mesma alocação.
+
+A migração `063` acrescenta a consulta do modelo pelo caminho completo de célula, projeto e formulário nos dois acessos. O servidor consulta a oficina e o banco exige que o modelo esteja ativo e vinculado à alocação acessível. A confirmação de uso único da validação Microsoft inclui o identificador do formulário. A consulta é somente leitura.
 
 ## Validação e piloto
 

@@ -82,33 +82,47 @@ const project = z.object({
   descricao: z.string().nullable(), status: z.string().nullable(),
 }).strict();
 const form = z.object({ id, titulo: z.string().nullable() }).strict();
+const question = z.object({
+  id, indice: z.string(), enunciado: z.string(), subtitulo: z.string().nullable(),
+  tipo: z.string(), obrigatorio: z.boolean(),
+  items: z.array(z.object({ id, descricao: z.string() }).strict()),
+}).strict();
 const dataSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cells'), items: z.array(cell) }).strict(),
   z.object({ kind: z.literal('projects'), cell, items: z.array(project).max(25), page: z.number().int().positive(),
     total: z.number().int().nonnegative(), page_size: z.literal(25) }).strict(),
   z.object({ kind: z.literal('project'), cell, project, forms: z.array(form) }).strict(),
+  z.object({ kind: z.literal('form'), cell, project, form: form.extend({ descricao: z.string().nullable() }),
+    questions: z.array(question) }).strict(),
 ]);
 export type OperationData = z.infer<typeof dataSchema>;
-export type OperationSelection = { cellId?: string; projectId?: string; page?: string | number };
-export type OperationQuery = { cellId: string | null; projectId: string | null; page: number };
+export type OperationSelection = { cellId?: string; projectId?: string; formId?: string; page?: string | number };
+export type OperationQuery =
+  | { cellId: string | null; projectId: string | null; formId: null; page: number }
+  | { cellId: string; projectId: string; formId: string; page: 1 };
 
 export function operationQuery(input: OperationSelection): OperationQuery | null {
-  const { cellId, projectId, page } = input;
+  const { cellId, projectId, formId, page } = input;
   if (cellId != null && !id.safeParse(cellId).success || projectId != null && !id.safeParse(projectId).success
       || projectId != null && cellId == null) return null;
   const currentPage = page == null ? 1 : typeof page === 'string' && /^\d{1,5}$/.test(page) ? Number(page) : page;
   if (typeof currentPage !== 'number' || !Number.isInteger(currentPage) || currentPage < 1 || currentPage > 10_000) return null;
-  return { cellId: cellId?.toLowerCase() ?? null, projectId: projectId?.toLowerCase() ?? null, page: currentPage };
+  if (formId != null) {
+    if (!cellId || !projectId || currentPage !== 1 || !id.safeParse(formId).success) return null;
+    return { cellId: cellId.toLowerCase(), projectId: projectId.toLowerCase(), formId: formId.toLowerCase(), page: 1 };
+  }
+  return { cellId: cellId?.toLowerCase() ?? null, projectId: projectId?.toLowerCase() ?? null, formId: null, page: currentPage };
 }
 
 export function operationData(value: unknown, query: OperationQuery): OperationData | null {
   if (value === null) return null;
   const result = dataSchema.parse(value);
-  const items = result.kind === 'project' ? result.forms : result.items;
-  const expected = query.projectId ? 'project' : query.cellId ? 'projects' : 'cells';
+  const items = result.kind === 'form' ? result.questions : result.kind === 'project' ? result.forms : result.items;
+  const expected = query.formId ? 'form' : query.projectId ? 'project' : query.cellId ? 'projects' : 'cells';
   if (expected !== result.kind || new Set(items.map(item => item.id)).size !== items.length
     || result.kind !== 'cells' && result.cell.id !== query.cellId
-    || result.kind === 'project' && result.project.id !== query.projectId
+    || (result.kind === 'project' || result.kind === 'form') && result.project.id !== query.projectId
+    || result.kind === 'form' && result.form.id !== query.formId
     || result.kind === 'projects' && (result.page !== query.page || result.items.length > result.total)) {
     throw new Error('Projeção operacional divergente.');
   }

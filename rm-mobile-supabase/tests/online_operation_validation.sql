@@ -15,9 +15,10 @@ begin
   raise exception 'FAIL: request unexpectedly accepted';
 end;
 $$;
-create function pg_temp.ov_args(cell_id int default null, project_id int default null, page int default 1)
+create function pg_temp.ov_args(cell_id int default null, project_id int default null, page int default 1, form_id int default null)
 returns jsonb language sql immutable as $$
-  select jsonb_build_object('cell_id',pg_temp.ov_id(cell_id),'project_id',pg_temp.ov_id(project_id),'page',page);
+  select jsonb_build_object('cell_id',pg_temp.ov_id(cell_id),'project_id',pg_temp.ov_id(project_id),'page',page)
+    || case when form_id is null then '{}'::jsonb else jsonb_build_object('form_id',pg_temp.ov_id(form_id)) end;
 $$;
 create function pg_temp.ov_context(office int default 1, approved boolean default true)
 returns jsonb language sql volatile as $$
@@ -94,6 +95,8 @@ insert into public.rm_forms(id,titulo,ativo) values
   (pg_temp.ov_id(403),'Modelo local inativo',false);
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values
   ('form_model',pg_temp.ov_id(401),pg_temp.ov_id(1)),('form_model',pg_temp.ov_id(403),pg_temp.ov_id(1));
+insert into public.rm_questoes(id,form_id,indice,enunciado,tipo) values
+  (pg_temp.ov_id(701),pg_temp.ov_id(401),1,'Verificar a peça','texto_longo');
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade,retirada,posicao,status,forms_ids)
   select pg_temp.ov_id(500+n),pg_temp.ov_id(300+n),pg_temp.ov_id(case n when 2 then 202 when 7 then 204 else 201 end),
     n not in (4,5),n=5,n,'em_dia',case when n=1 then array[pg_temp.ov_id(402),pg_temp.ov_id(401),pg_temp.ov_id(403)] else '{}' end
@@ -122,6 +125,14 @@ begin
     and pg_temp.ov_call(pg_temp.ov_args(203))='null'::jsonb and pg_temp.ov_call(pg_temp.ov_args(204))='null'::jsonb
     and pg_temp.ov_call(pg_temp.ov_args(201,302))='null'::jsonb and pg_temp.ov_call(pg_temp.ov_args(201,303))='null'::jsonb,
     'cross-office, unknown and explicitly ungranted identifiers are all absent');
+  r := pg_temp.ov_call(pg_temp.ov_args(201,301,1,401));
+  perform pg_temp.ov_check(r->>'kind'='form' and r->'form'->>'id'=pg_temp.ov_id(401)::text
+    and r->'questions'->0->>'enunciado'='Verificar a peça','corporate permit reads questions from the linked form');
+  perform pg_temp.ov_check(pg_temp.ov_call(pg_temp.ov_args(201,301,1,402))='null'::jsonb
+    and pg_temp.ov_call(pg_temp.ov_args(201,301,1,403))='null'::jsonb
+    and pg_temp.ov_call(pg_temp.ov_args(201,304,1,401))='null'::jsonb
+    and pg_temp.ov_call(pg_temp.ov_args(204,307,1,401))='null'::jsonb,
+    'corporate form reads preserve allocation, form and explicit cell boundaries');
 end;
 $$;
 
@@ -131,6 +142,7 @@ select pg_temp.ov_deny($sql$select pg_temp.ov_mint(pg_temp.ov_id(601),pg_temp.ov
 select pg_temp.ov_deny($sql$select pg_temp.ov_mint(pg_temp.ov_id(601),pg_temp.ov_args(),1,false)$sql$,'42501');
 select pg_temp.ov_mint(pg_temp.ov_id(601),pg_temp.ov_args());
 select pg_temp.ov_mint(pg_temp.ov_id(602),pg_temp.ov_args());
+select pg_temp.ov_mint(pg_temp.ov_id(604),pg_temp.ov_args(201,301,1,401));
 reset role;
 
 set local role authenticated;
@@ -142,11 +154,17 @@ select set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.o
 select pg_temp.ov_check((public.rm_web_workshop_read_v1(pg_temp.ov_id(601),'operation_validation',pg_temp.ov_args())->'data'->>'kind')='cells',
   'server-issued single-use permit works with the correct JWT session');
 select pg_temp.ov_deny($sql$select public.rm_web_workshop_read_v1(pg_temp.ov_id(601),'operation_validation',pg_temp.ov_args())$sql$,'42501');
+select pg_temp.ov_deny($sql$select public.rm_web_workshop_read_v1(pg_temp.ov_id(604),'operation_validation',pg_temp.ov_args(201,301,1,402))$sql$,'42501');
+select pg_temp.ov_check((public.rm_web_workshop_read_v1(pg_temp.ov_id(604),'operation_validation',pg_temp.ov_args(201,301,1,401))->'data'->>'kind')='form',
+  'form identifier is bound to the permit alongside cell and project');
 reset role;
 
 select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args() || '{"office":"BMA"}')$sql$,'22023');
 select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args(null,301))$sql$,'22023');
 select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args(null,null,10001))$sql$,'22023');
+select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args(201,null,1,401))$sql$,'22023');
+select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args(201,301,2,401))$sql$,'22023');
+select pg_temp.ov_deny($sql$select pg_temp.ov_call(pg_temp.ov_args(201,301) || '{"form_id":null}')$sql$,'22023');
 
 update public.rm_users set status='inativo' where id='23c4787b-eb5b-44ed-abbc-547e358e2f6f';
 set local role authenticated;
@@ -158,6 +176,7 @@ reset role;
 update public.rm_users set status='ativo' where id='23c4787b-eb5b-44ed-abbc-547e358e2f6f';
 delete from public.rm_tablet_celula_users where celula_id=pg_temp.ov_id(201);
 select pg_temp.ov_check(pg_temp.ov_call(pg_temp.ov_args())->'items'='[]'::jsonb,'removing an explicit cell grant immediately removes access');
+select pg_temp.ov_check(pg_temp.ov_call(pg_temp.ov_args(201,301,1,401))='null'::jsonb,'an existing form URL obeys the revoked cell grant');
 
 select pg_temp.ov_check(
   not has_function_privilege('anon','public.rm_web_workshop_read_v1(uuid,text,jsonb)','EXECUTE')

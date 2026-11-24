@@ -23,7 +23,7 @@ function PreviewQuestion({ question: q, choices }: { question: TemplateQuestion;
     <div className="field">{unit && <span>Unidade: {unit}</span>}{na ? <div className="notice">Não se aplica (N/A)</div> : field}</div><button type="button" className="button small secondary" style={{ marginTop: 16 }} onClick={() => setNa(value => !value)}>{na ? 'Preencher questão' : 'Marcar N/A na prévia'}</button>
   </div>;
 }
-function PreviewSection({ section, choices }: { section: ReturnType<typeof templateSections>[number]; choices: TemplateChoices }) {
+function PreviewSection({ section, choices }: { section: ReturnType<typeof templateSections<TemplateQuestion>>[number]; choices: TemplateChoices }) {
   const [open, setOpen] = useState(false);
   return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>{section.title} <span className={s.notes}>· {section.questions.length} questões</span></summary>{open && <>{section.description && <p className={s.subtitle} style={{ padding: '16px 18px 0' }}>{section.description}</p>}{section.questions.map(question => <PreviewQuestion key={question.id} question={question} choices={choices} />)}{!section.questions.length && <p className={s.notes} style={{ padding: 18 }}>Nenhuma questão neste subtítulo.</p>}</>}</details>;
 }

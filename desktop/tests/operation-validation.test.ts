@@ -82,3 +82,22 @@ test('corporate validation closes on session, context and projection failures', 
   const noRead = createOperationValidationReader({ authenticate: async () => authorized, workshopRead: () => assert.fail('called read for invalid filter') });
   assert.deepEqual(await noRead({ projectId: cellId }), { status: 'missing' });
 });
+
+test('corporate form reads include a normalized model in the single-use permit filters', async () => {
+  const formId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const data = {
+    kind: 'form', cell,
+    project: { id: otherId, numero: null, nome: 'Projeto local', status: null, descricao: null, cliente: null },
+    form: { id: formId, titulo: 'Formulário local', descricao: null }, questions: [],
+  };
+  const load = createOperationValidationReader({ authenticate: async () => authorized,
+    workshopRead: () => async (resource, args) => {
+      assert.equal(resource, 'operation_validation');
+      assert.deepEqual(args, { cell_id: cellId, project_id: otherId, page: 1, form_id: formId });
+      return data;
+    },
+  });
+  const result = await load({ cellId, projectId: otherId, formId: formId.toUpperCase() });
+  assert.equal(result.status, 'ok');
+  if (result.status === 'ok') assert.deepEqual(result.data, data);
+});

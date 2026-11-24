@@ -134,6 +134,39 @@ test('a project returned for the wrong cell or project does not reach the browse
   assert.equal(operationQuery({ cellId, page: '10001' }), null);
 });
 
+test('operator form reads bind the model to the authenticated cell and project', async () => {
+  const formId = id('8');
+  const data = {
+    kind: 'form', cell: { id: cellId, nome: 'Ensaios' },
+    project: { id: projectId, numero: '123', nome: null, status: null, descricao: null, cliente: null },
+    form: { id: formId, titulo: 'Conferência', descricao: null }, questions: [],
+  };
+  let payload: unknown = data;
+  let reads = 0;
+  const { service } = fixture({ readData: async args => {
+    reads++;
+    assert.deepEqual(args, { p_auth_user_id: userId, p_session_id: sessionId, p_operator_token: operatorToken,
+      p_workshop_context: exampleWorkshop, p_cell_id: cellId, p_project_id: projectId, p_form_id: formId });
+    return { data: payload, error: null };
+  } });
+  const { envelope } = await service.login(credentials);
+  const selection = { cellId, projectId, formId };
+  const result = await service.load(envelope, selection);
+  assert.equal(result.status, 'ok');
+  if (result.status === 'ok') assert.deepEqual(result.data, data);
+  for (const invalid of [{ cellId, formId }, { ...selection, formId: 'invalid' }, { ...selection, page: 2 }]) {
+    assert.deepEqual(await service.load(envelope, invalid), { status: 'missing' });
+  }
+  assert.equal(reads, 1);
+  for (const wrong of [{ ...data, form: { ...data.form, id: deviceId } }, { ...data, project: { ...data.project, id: deviceId } },
+    { ...data, cell: { ...data.cell, id: deviceId } }, { ...data, answers: [] }]) {
+    payload = wrong;
+    assert.deepEqual(await service.load(envelope, selection), { status: 'unavailable' });
+  }
+  payload = null;
+  assert.deepEqual(await service.load(envelope, selection), { status: 'missing' });
+});
+
 test('login form refuses ambiguous fields, an office supplied by the browser, and oversized bodies', async () => {
   const params = new URLSearchParams(credentials);
   function request(body: string) {
