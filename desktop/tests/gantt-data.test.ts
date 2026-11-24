@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
-import { createGanttData } from '../src/server/web/gantt-data';
+import { createGanttData, GanttSelectionUnavailable } from '../src/server/web/gantt-data';
 import type { GanttFilters } from '../src/server/web/gantt-policy';
+import type { WorkshopRead } from '../src/server/web/workshop-read-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const version = '2026-11-16T18:03:24.123456+00:00';
@@ -147,4 +148,48 @@ test('invalid scope and unavailable upstream do not leak private failure details
   await assert.rejects(f.data.getGanttSnapshot(filters), error => error instanceof Error && !error.message.includes('private'));
   f.fail({ code: 'PT413', message: 'private oversized payload' });
   await assert.rejects(f.data.getGanttSnapshot(filters), /Selecione um projeto ou uma célula/);
+});
+
+const noLegacyClient = {
+  rpc() { assert.fail('Scoped Gantt used the legacy RPC'); },
+  from() { assert.fail('Scoped Gantt read an unfiltered table'); },
+} as unknown as SupabaseClient;
+
+test('scoped Gantt sends the exact filters for all three views and rejects writable snapshots', async () => {
+  const cases = [filters, { ...filters, cell_id: id(2) }, { ...filters, project_id: id(1), include_closed: true }];
+  for (const selection of cases) {
+    const read: WorkshopRead = async (resource, args) => {
+      assert.equal(resource, 'gantt_snapshot');
+      assert.deepEqual(args, { ...selection, project_details: true, can_manage: false });
+      return { ...snapshot(), filters: selection, items: snapshot().items.map(item => ({ ...item, can_edit: false })) };
+    };
+    const result = await createGanttData(noLegacyClient, caps, read).getGanttSnapshot(selection);
+    assert.equal(result.items.length, 2);
+    assert.ok(result.items.every(item => !item.can_edit));
+  }
+  await assert.rejects(createGanttData(noLegacyClient, caps, async () => snapshot()).getGanttSnapshot(filters), /Não foi possível/);
+});
+
+test('scoped project/cell selections and authority failures never fall back to global reads', async () => {
+  let fault = false;
+  const read: WorkshopRead = async (resource, args) => {
+    if (fault) throw new Error('Contexto indisponível');
+    if (resource === 'gantt_projects') {
+      assert.deepEqual(args, { q: 'Motor', page: 2 });
+      return { items: [{ id: id(1), numero: 'OS', nome: 'Motor', extra: 'private' }], total: 26, page: 2, page_size: 25 };
+    }
+    if (resource === 'gantt_cells') {
+      assert.deepEqual(args, {});
+      return [{ id: id(2), nome: 'Célula A', extra: 'private' }];
+    }
+    assert.equal(resource, 'gantt_snapshot');
+    return null;
+  };
+  const data = createGanttData(noLegacyClient, caps, read);
+  assert.deepEqual(await data.listGanttProjects('(_Motor)', '2'), { items: [{ id: id(1), numero: 'OS', nome: 'Motor' }], total: 26, page: 2, page_size: 25 });
+  assert.deepEqual(await data.listGanttCells(), [{ id: id(2), nome: 'Célula A' }]);
+  await assert.rejects(data.getGanttSnapshot({ ...filters, project_id: id(42), include_closed: true }), GanttSelectionUnavailable);
+  await assert.rejects(data.getGanttSnapshot({ ...filters, cell_id: id(42) }), GanttSelectionUnavailable);
+  fault = true;
+  await assert.rejects(data.getGanttSnapshot(filters), /Contexto indisponível/);
 });

@@ -4,6 +4,7 @@ import { createWebData, listProjects } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
+import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { editorChoices } from '@/server/web/choices';
 import { createProjectScheduleData } from '@/server/web/project-schedule-data';
 import { getOperationalPhotos } from '@/server/web/operational-photo-data';
@@ -63,11 +64,10 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   // Reuse the project reader while excluding unused media/document/history
   // capabilities from this composition. Slots below have their own bounded DTO.
   const projectCapabilities = (session.sso?.capabilities ?? CORPORATE_CAPABILITIES).filter(capability => !['em.photos.read', 'em.documents.read', 'em.history.read'].includes(capability));
-  const [data, route] = await Promise.all([
-    createWebData(session.client, projectCapabilities).getProject(projectId),
-    createProjectRouteData(session.client, session.sso?.capabilities).getProjectRoute(projectId),
-  ]);
+  const operations = await readWorkshopOperations(session);
+  const data = await createWebData(session.client, projectCapabilities, undefined, operations).getProject(projectId);
   if (!data) notFound();
+  const route = await createProjectRouteData(session.client, session.sso?.capabilities).getProjectRoute(projectId);
   const project = data.project;
   const allocations = orderedProjectAllocations(data.allocations, projectId);
   const current = selectedAllocation(allocations, projectId, params.allocation);

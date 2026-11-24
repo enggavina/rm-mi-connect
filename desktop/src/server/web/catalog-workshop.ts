@@ -26,7 +26,9 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
       verified.set(context, corporate);
     },
     async authorizeRead(context: SsoContext, requestId: string, resource: WorkshopReadResource, filters: Record<string, unknown>) {
-      if (!workshopReadCapabilities(resource).every(capability => context.capabilities.includes(capability))) throw new CorporateAuthError('CORP_FORBIDDEN');
+      if (!workshopReadCapabilities(resource, filters).every(capability => context.capabilities.includes(capability))
+        || resource === 'project_entry' && filters.cells === true
+          && !context.capabilities.some(capability => capability === 'em.planning.read' || capability === 'em.history.read')) throw new CorporateAuthError('CORP_FORBIDDEN');
       const corporate = verified.get(context);
       if (!mintRead || !corporate || corporate.user.id !== context.subject) throw new CorporateAuthError('CORP_UNAUTHORIZED');
       const workshop = await reader.readWeb(corporate);

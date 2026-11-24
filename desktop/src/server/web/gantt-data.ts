@@ -4,6 +4,7 @@ import { pageNumber, searchTerm, uuid } from './policy';
 import { GANTT_MAX_ITEMS, GANTT_MAX_LINKS, ganttFiltersSchema, ganttRevision, type GanttFilters } from './gantt-policy';
 import type { CorporateCapability } from './sso-policy';
 import { ganttProjectSettingsSchema } from './gantt-settings-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
@@ -38,11 +39,19 @@ export type GanttCell = GanttSnapshot['cells'][number];
 export type GanttLink = GanttSnapshot['links'][number];
 export type GanttBaseline = NonNullable<GanttSnapshot['baseline']>;
 export type GanttProjectChoices = { items: { id: string; numero: string | null; nome: string | null }[]; page: number; page_size: 25; total: number };
+const projectChoiceItems = z.array(z.object({ id: uuid, numero: text, nome: text })).max(25);
+const projectChoicesSchema = z.object({ items: projectChoiceItems, total: z.number().int().nonnegative(), page: z.number().int().positive(), page_size: z.literal(25) });
 const unavailable = () => new Error('Não foi possível consultar o Gantt. Tente novamente.');
 const oversized = () => new Error('O Gantt excede o limite desta consulta. Selecione um projeto ou uma célula.');
 const key = (id: string) => id.toLowerCase();
 
-export function createGanttData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export class GanttSelectionUnavailable extends Error {
+  constructor() {
+    super('O projeto ou a célula não está disponível.');
+  }
+}
+
+export function createGanttData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], operationRead?: WorkshopRead) {
   const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
   function authorize(project = false) {
     if (!allowed('em.portal.read') || !allowed('em.planning.read') || project && !allowed('em.projects.read')) {
@@ -55,10 +64,17 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
     if (!checked.success) throw unavailable();
     const filters = checked.data;
     if (filters.project_id) authorize(true);
-    let result;
-    try { result = await client.rpc('rm_web_gantt_snapshot_v1', { p_filters: filters }); } catch { throw unavailable(); }
-    if (result.error) throw result.error.code === 'PT413' ? oversized() : unavailable();
-    const parsed = ganttSnapshotSchema.safeParse(result.data);
+    let snapshot: unknown;
+    if (operationRead) {
+      snapshot = await operationRead('gantt_snapshot', { ...filters, project_details: allowed('em.projects.read'), can_manage: false });
+      if (snapshot === null && (filters.project_id || filters.cell_id)) throw new GanttSelectionUnavailable();
+    } else {
+      let result;
+      try { result = await client.rpc('rm_web_gantt_snapshot_v1', { p_filters: filters }); } catch { throw unavailable(); }
+      if (result.error) throw result.error.code === 'PT413' ? oversized() : unavailable();
+      snapshot = result.data;
+    }
+    const parsed = ganttSnapshotSchema.safeParse(snapshot);
     if (!parsed.success) throw unavailable();
     const data = parsed.data;
     if (data.filters.project_id !== filters.project_id || data.filters.cell_id !== filters.cell_id || data.filters.include_closed !== filters.include_closed
@@ -77,7 +93,7 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
         || filters.project_id && key(item.projeto_id) !== key(filters.project_id)
         || filters.cell_id && key(item.celula_id) !== key(filters.cell_id)
         || !filters.include_closed && (projects.get(key(item.projeto_id))!.closed || ['finalizado', 'n_a'].includes(item.status ?? ''))
-        || item.can_edit && (projects.get(key(item.projeto_id))!.closed || ['finalizado', 'n_a'].includes(item.status ?? '')))) throw unavailable();
+        || item.can_edit && (operationRead || projects.get(key(item.projeto_id))!.closed || ['finalizado', 'n_a'].includes(item.status ?? '')))) throw unavailable();
     const edges = new Set<string>();
     for (const link of data.links) {
       const from = items.get(key(link.predecessor_id)), to = items.get(key(link.successor_id)), edge = `${key(link.predecessor_id)}:${key(link.successor_id)}`;
@@ -86,7 +102,7 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
     }
     if (data.baseline && (!filters.project_id || new Set(data.baseline.items.map(item => key(item.allocation_id))).size !== data.baseline.items.length)) throw unavailable();
     // Corporate capabilities remain independent even when the local RLS profile can read more.
-    const canManage = allowed('em.planning.manage') && allowed('em.projects.read');
+    const canManage = !operationRead && allowed('em.planning.manage') && allowed('em.projects.read');
     if (!canManage) data.items = data.items.map(item => ({ ...item, can_edit: false }));
     if (!allowed('em.projects.read')) data.projects = data.projects.map(project => ({ ...project,
       numero: data.items.find(item => key(item.projeto_id) === key(project.id))?.numero_projeto ?? null,
@@ -98,22 +114,40 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
   async function listGanttProjects(query?: string, requestedPage?: number | string): Promise<GanttProjectChoices> {
     authorize(true);
     const page = pageNumber(requestedPage), term = searchTerm(query), pageSize = 25;
+    if (operationRead) {
+      const parsed = projectChoicesSchema.safeParse(await operationRead('gantt_projects', { q: term, page }));
+      if (!parsed.success || parsed.data.page !== page || new Set(parsed.data.items.map(project => key(project.id))).size !== parsed.data.items.length
+        || parsed.data.items.length !== Math.max(0, Math.min(pageSize, parsed.data.total - (page - 1) * pageSize))) throw unavailable();
+      return parsed.data;
+    }
     let request = client.from('rm_projetos').select('id,numero,nome', { count: 'exact' });
     if (term) request = request.or(`numero.ilike.%${term}%,nome.ilike.%${term}%`);
     let result;
     try { result = await request.order('numero').order('id').range((page - 1) * pageSize, page * pageSize - 1); } catch { throw unavailable(); }
     if (result.error || !Number.isInteger(result.count) || (result.count ?? -1) < 0) throw unavailable();
-    const parsed = z.array(z.object({ id: uuid, numero: text, nome: text })).max(pageSize).safeParse(result.data);
+    const parsed = projectChoiceItems.safeParse(result.data);
     if (!parsed.success || new Set(parsed.data.map(project => key(project.id))).size !== parsed.data.length || parsed.data.length > result.count!) throw unavailable();
     return { items: parsed.data, total: result.count!, page, page_size: pageSize };
   }
-  return { getGanttSnapshot, listGanttProjects };
+  async function listGanttCells() {
+    authorize();
+    if (!operationRead) {
+      const { createPcpData } = await import('./pcp-data');
+      return (await createPcpData(client, capabilities).getPcpChoices()).cells;
+    }
+    const parsed = z.array(cellSchema.extend({ nome: z.string() })).max(19999).safeParse(await operationRead('gantt_cells', {}));
+    if (!parsed.success || new Set(parsed.data.map(cell => key(cell.id))).size !== parsed.data.length) throw unavailable();
+    return parsed.data;
+  }
+  return { getGanttSnapshot, listGanttProjects, listGanttCells };
 }
 
 async function data() {
   const { requireWebUser } = await import('./auth');
+  const { readWorkshopOperations } = await import('./workshop-operation-reader');
   const session = await requireWebUser('em.planning.read');
-  return createGanttData(session.client, session.sso?.capabilities);
+  return createGanttData(session.client, session.sso?.capabilities, await readWorkshopOperations(session));
 }
 export async function getGanttSnapshot(filters: GanttFilters) { return (await data()).getGanttSnapshot(filters); }
 export async function listGanttProjects(query?: string, page?: number | string) { return (await data()).listGanttProjects(query, page); }
+export async function listGanttCells() { return (await data()).listGanttCells(); }

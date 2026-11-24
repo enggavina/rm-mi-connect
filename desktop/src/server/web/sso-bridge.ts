@@ -47,6 +47,9 @@ export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof l
   return async (resource, args) => {
     const requestId = randomUUID(), office = await catalogWorkshops.authorizeRead(context, requestId, resource, args);
     const response = await client.rpc('rm_web_workshop_read_v1', { p_read_id: requestId, p_resource: resource, p_args: args });
+    if (resource === 'gantt_snapshot' && response.error?.code === 'PT413') {
+      throw new Error('O Gantt excede o limite desta consulta. Selecione um projeto ou uma célula.');
+    }
     if (response.error) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
     try { return workshopReadResult(response.data, { requestId, resource, workshopId: office }); }
     catch { throw new WorkshopContextError('WORKSHOP_UNAVAILABLE'); }

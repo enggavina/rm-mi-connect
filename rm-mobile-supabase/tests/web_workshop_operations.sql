@@ -1,0 +1,162 @@
+\set ON_ERROR_STOP on
+begin;
+
+create function pg_temp.project_read_id(n int) returns uuid language sql immutable as $$
+ select ('06010000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid;
+$$;
+create function pg_temp.project_read_check(v boolean,msg text) returns void language plpgsql as $$
+begin
+ if v is distinct from true then raise exception 'FAIL: %',msg;end if;
+end$$;
+
+create function pg_temp.project_read_deny(statement text,state text) returns void language plpgsql as $$
+begin
+ begin execute statement;exception when others then if sqlstate=state then return;end if;raise;end;
+ raise exception 'FAIL: request unexpectedly accepted';
+end$$;
+create function pg_temp.project_read_mint(request_id uuid,resource text,args jsonb,office uuid) returns void language sql as $$
+ select public.rm_sso_workshop_read_permit_v1(repeat('7',64),request_id,resource,args,jsonb_build_object(
+ 'version',2,'application','em','channel','web','authority','https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',
+ 'workshop',jsonb_build_object('id',office,'code',case when office=pg_temp.project_read_id(1) then 'BMA' else 'BRJ' end,
+  'name','LOCAL office','active',true,'revision',1,'updated_at',stamp),
+ 'principals',jsonb_build_array(jsonb_build_object('kind','corporate','issuer','https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',
+  'subject',pg_temp.project_read_id(14),'revision',1)),
+ 'issued_at',stamp,'expires_at',stamp+interval '5 minutes')) from(select clock_timestamp() stamp)s;
+$$;
+create function pg_temp.project_read_call(resource text,args jsonb,office uuid) returns jsonb language plpgsql as $$
+declare request_id uuid:=gen_random_uuid();response jsonb;
+begin
+ perform pg_temp.project_read_mint(request_id,resource,args,office);
+ set local role authenticated;
+ response:=public.rm_web_workshop_read_v1(request_id,resource,args);
+ reset role;
+ perform pg_temp.project_read_check(response->>'request_id'=request_id::text
+  and response->>'resource'=resource and response->>'workshop_id'=office::text,'response binds request, resource and office');
+ return nullif(response->'data','null'::jsonb);
+exception when others then reset role;raise;
+end$$;
+
+select rm_private.workshop_adopt_bma_roots_v1(
+ '[{"id":"06010000-0000-4000-8000-000000000001","code":"BMA"},{"id":"06010000-0000-4000-8000-000000000002","code":"BRJ"},{"id":"06010000-0000-4000-8000-000000000003","code":"BBH"}]',
+ 'c45f1ff7d60b695cfa708041e959489b7e05a02ace4bcdce1ff16c8b80d14db2',(select count(*) from public.rm_projetos),(select count(*) from public.rm_celulas));
+
+insert into auth.users(id) values(pg_temp.project_read_id(11));
+insert into public.rm_users(id,auth_user_id,nome,perfil) values(pg_temp.project_read_id(12),pg_temp.project_read_id(11),'LOCAL operations reader','administrador');
+insert into auth.sessions(id,user_id) values(pg_temp.project_read_id(13),pg_temp.project_read_id(11));
+insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at) values
+ (pg_temp.project_read_id(15),'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',pg_temp.project_read_id(14),pg_temp.project_read_id(12),pg_temp.project_read_id(11),true,pg_temp.project_read_id(12),clock_timestamp());
+select public.rm_sso_session_put_v1(repeat('7',64),pg_temp.project_read_id(15),pg_temp.project_read_id(13),'opaque-local-operations-session',clock_timestamp()+interval '30 minutes');
+select set_config('request.jwt.claim.sub',pg_temp.project_read_id(11)::text,true);
+select set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.project_read_id(13),'aal','aal1')::text,true);
+
+insert into public.rm_clientes(id,nome) values
+ (pg_temp.project_read_id(201),'LOCAL BMA client'),(pg_temp.project_read_id(202),'LOCAL BRJ client'),(pg_temp.project_read_id(203),'LOCAL pending client');
+insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values
+ ('client',pg_temp.project_read_id(201),pg_temp.project_read_id(1)),('client',pg_temp.project_read_id(202),pg_temp.project_read_id(2));
+
+insert into public.rm_projetos(id,numero,nome,cliente_id,arquivo_nota_fiscal_url)
+ select pg_temp.project_read_id(100+n),'OS '||n,'LOCAL needle',pg_temp.project_read_id(case when n<=26 then 201 when n=27 then 202 else 203 end),
+   case when n=1 then 'https://private.invalid/invoice' end from generate_series(1,28)n;
+insert into rm_private.workshop_project_ownership(id,workshop_id)
+ select pg_temp.project_read_id(100+n),pg_temp.project_read_id(case when n<=26 then 1 else 2 end) from generate_series(1,27)n;
+
+insert into public.rm_celulas(id,nome) values
+ (pg_temp.project_read_id(301),'LOCAL BMA cell'),(pg_temp.project_read_id(302),'LOCAL BRJ cell'),(pg_temp.project_read_id(303),'LOCAL pending cell');
+insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values
+ (pg_temp.project_read_id(301),pg_temp.project_read_id(1)),(pg_temp.project_read_id(302),pg_temp.project_read_id(2));
+
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,numero_projeto,posicao,retirada) values
+ (pg_temp.project_read_id(501),pg_temp.project_read_id(101),pg_temp.project_read_id(301),'LOCAL allocation 1',1,false),
+ (pg_temp.project_read_id(502),pg_temp.project_read_id(102),pg_temp.project_read_id(301),'LOCAL allocation 2',2,true),
+ (pg_temp.project_read_id(503),pg_temp.project_read_id(101),pg_temp.project_read_id(303),'LOCAL pending allocation',3,false),
+ (pg_temp.project_read_id(504),pg_temp.project_read_id(127),pg_temp.project_read_id(302),'LOCAL BRJ allocation',4,false);
+
+insert into public.rm_equipamentos(id,projeto_id,descricao) values
+ (pg_temp.project_read_id(401),pg_temp.project_read_id(101),'LOCAL canonical equipment');
+update public.rm_projetos set equipamento_id=pg_temp.project_read_id(401) where id=pg_temp.project_read_id(101);
+
+do $$
+declare
+  bma uuid:=pg_temp.project_read_id(1);
+  brj uuid:=pg_temp.project_read_id(2);
+  project_bma uuid:=pg_temp.project_read_id(101);
+  list_args jsonb:='{"q":"NEEDLE","status":null,"client":null,"cell":null,"page":1,"planning":true}';
+  detail_args jsonb:=jsonb_build_object('id',project_bma,'documents',false,'cells',false);
+  planning_args jsonb:='{"q":"NEEDLE","status":null,"cell":null,"page":1,"project_details":true}';
+  gantt_args jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
+  v jsonb;
+begin
+  v:=pg_temp.project_read_call('project_list',list_args,bma);
+  perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'rows')=25
+    and jsonb_array_length(v->'clients')=1 and jsonb_array_length(v->'cells')=1,'project counts and selectors are filtered before paging');
+  v:=pg_temp.project_read_call('project_list',list_args||'{"page":2}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'rows')=1,'page two reports the scoped total');
+  v:=pg_temp.project_read_call('project_list',list_args,brj);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'rows'->0->>'id')::uuid=pg_temp.project_read_id(127),'reciprocal workshop read excludes BMA and unclassified project');
+  v:=pg_temp.project_read_call('project_list',list_args||jsonb_build_object('client',pg_temp.project_read_id(202)),bma);
+  perform pg_temp.project_read_check((v->>'total')::int=0,'cross-workshop client filter returns no matches');
+  v:=pg_temp.project_read_call('project_list',list_args||jsonb_build_object('cell',pg_temp.project_read_id(303)),bma);
+  perform pg_temp.project_read_check((v->>'total')::int=0,'unclassified cell filter cannot discover its project');
+  v:=pg_temp.project_read_call('project_list',list_args||jsonb_build_object('cell',pg_temp.project_read_id(301)),bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and v->'rows'->0->>'descricao_equipamento_exibicao'='LOCAL canonical equipment'
+    and not (v->'rows'->0 ? 'arquivo_nota_fiscal_url'),'active cell filter, reverse equipment join and list redaction');
+
+  v:=pg_temp.project_read_call('project_entry',detail_args,bma);
+  perform pg_temp.project_read_check((v->'project'->>'id')::uuid=project_bma and v->'client'->>'nome'='LOCAL BMA client'
+    and jsonb_array_length(v->'cells')=0 and not (v->'project' ? 'arquivo_nota_fiscal_url'),'project detail trims cell choices and private document URLs');
+  v:=pg_temp.project_read_call('project_entry',detail_args||'{"documents":true,"cells":true}',bma);
+  perform pg_temp.project_read_check(jsonb_array_length(v->'cells')=1 and v->'project'->>'arquivo_nota_fiscal_url'='https://private.invalid/invoice','authorized detail reveals only scoped cell choices');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('project_entry',detail_args,brj) is null
+    and pg_temp.project_read_call('project_entry',detail_args||jsonb_build_object('id',pg_temp.project_read_id(128)),bma) is null,'cross-workshop and unclassified details are absent');
+
+  v:=pg_temp.project_read_call('planning_list',planning_args,bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and jsonb_array_length(v->'projects')=26
+    and (v->'rows'->0->>'id')::uuid=pg_temp.project_read_id(501) and jsonb_array_length(v->'cells')=1,'planning filters both parents and excludes retired allocations');
+  v:=pg_temp.project_read_call('planning_list',planning_args||'{"q":"allocation 1","project_details":false}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and jsonb_array_length(v->'projects')=0 and v->'rows'->0->'project'='null','planning-only search does not query project detail');
+  v:=pg_temp.project_read_call('planning_list',planning_args||'{"project_details":false}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=0,'planning-only search cannot query hidden project names');
+
+  v:=pg_temp.project_read_call('gantt_projects','{"q":"needle","page":2}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'items')=1,'Gantt selector counts only projects in the office');
+  v:=pg_temp.project_read_call('gantt_cells','{}',bma);
+  perform pg_temp.project_read_check(jsonb_array_length(v)=1 and (v->0->>'id')::uuid=pg_temp.project_read_id(301),'Gantt cell selector shows only proven office');
+  v:=pg_temp.project_read_call('gantt_snapshot',gantt_args,bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->>'complete')::boolean
+   and (v->'items'->0->>'id')::uuid=pg_temp.project_read_id(501)
+   and (v->'items'->0->>'can_edit')::boolean=false,'general Gantt excludes other office, pending and retired allocations');
+  v:=pg_temp.project_read_call('gantt_snapshot',gantt_args,brj);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'items'->0->>'id')::uuid=pg_temp.project_read_id(504),'reciprocal general Gantt filter');
+  v:=pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('cell_id',pg_temp.project_read_id(301)),bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(301),'Gantt cell filter binds exact root');
+  v:=pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('project_id',project_bma,'include_closed',true),bma);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'projects'->0->>'id')::uuid=project_bma,'Gantt project restricts active allocations to classified cells');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('cell_id',pg_temp.project_read_id(302)),bma) is null
+    and pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('cell_id',pg_temp.project_read_id(303)),bma) is null,
+    'foreign and pending Gantt cell IDs are indistinguishable');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('project_id',project_bma,'include_closed',true),brj) is null
+    and pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('project_id',pg_temp.project_read_id(128),'include_closed',true),bma) is null,
+    'foreign and pending Gantt project IDs are indistinguishable');
+  v:=pg_temp.project_read_call('gantt_snapshot',gantt_args||'{"project_details":false}',bma);
+  perform pg_temp.project_read_check(v->'projects'->0->'nome'='null' and v->'projects'->0->'planned_start'='null','Gantt planning-only projection preserves project field restrictions');
+end$$;
+
+select pg_temp.project_read_mint(pg_temp.project_read_id(701),'gantt_cells','{}',pg_temp.project_read_id(1));
+set local role authenticated;
+select pg_temp.project_read_deny('select pg_temp.project_read_mint(gen_random_uuid(),''gantt_cells'',''{}'',pg_temp.project_read_id(1))','42501');
+select pg_temp.project_read_deny('select public.rm_web_workshop_read_v1(pg_temp.project_read_id(701),''gantt_cells'',''{"office":"BRJ"}'')','42501');
+select pg_temp.project_read_deny('select public.rm_web_workshop_read_v1(pg_temp.project_read_id(701),''gantt_projects'',''{}'')','42501');
+select public.rm_web_workshop_read_v1(pg_temp.project_read_id(701),'gantt_cells','{}');
+select pg_temp.project_read_deny('select public.rm_web_workshop_read_v1(pg_temp.project_read_id(701),''gantt_cells'',''{}'')','42501');
+select pg_temp.project_read_check((public.rm_web_gantt_snapshot_v1('{"project_id":null,"cell_id":null,"include_closed":false}')->>'total')::int>=3,
+ 'legacy Gantt remains available to its previous authorized callers');
+reset role;
+select pg_temp.project_read_deny('select pg_temp.project_read_call(''gantt_cells'',''{"office":"BRJ"}'',pg_temp.project_read_id(1))','22023');
+select pg_temp.project_read_deny('select pg_temp.project_read_call(''gantt_snapshot'',''{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":true}'',pg_temp.project_read_id(1))','22023');
+select pg_temp.project_read_check(not has_function_privilege('authenticated','rm_private.workshop_project_read_data_v1(text,jsonb,uuid)','execute')
+ and not has_function_privilege('authenticated','rm_private.workshop_gantt_snapshot_v1(jsonb,uuid)','execute')
+ and not has_function_privilege('anon','public.rm_web_workshop_read_v1(uuid,text,jsonb)','execute')
+ and not has_function_privilege('service_role','public.rm_web_workshop_read_v1(uuid,text,jsonb)','execute'),'readers cannot bypass the permit gateway');
+
+select 'PASS: workshop operations readers, two offices and unclassified roots, list/pagination, planning and Gantt scopes, legacy compatibility and permit replay' result;
+rollback;

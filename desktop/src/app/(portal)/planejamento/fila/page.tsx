@@ -8,6 +8,7 @@ import { Icon } from '@/components/web/icons';
 import { editorChoices } from '@/server/web/choices';
 import { createWebData } from '@/server/web/data';
 import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
+import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { getCellAvailability } from '@/server/web/cell-availability-data';
 import { availabilityMatchesContext } from '@/components/web/cell-availability-model';
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
@@ -23,7 +24,8 @@ export default async function FilaCelula({ searchParams }: { searchParams: Promi
   const allocationId = scheduleId(query.allocation);
   const item = canProjects && snapshot?.complete && allocationId ? snapshot.items.find(row => row.id === allocationId) : undefined;
   const capabilities = (session.sso?.capabilities ?? CORPORATE_CAPABILITIES).filter(capability => !['em.photos.read', 'em.documents.read', 'em.history.read'].includes(capability));
-  const projectData = item ? await createWebData(session.client, capabilities).getProject(item.projeto_id, { includeDossier: false, includeEquipment: false }) : null;
+  const projectData = item ? await createWebData(session.client, capabilities, undefined, await readWorkshopOperations(session))
+    .getProject(item.projeto_id, { includeDossier: false, includeEquipment: false }) : null;
   const allocation = projectData?.allocations.find(row => row.id === item?.id);
   const availability = item && allocation ? await getCellAvailability(item.projeto_id, item.id) : null;
   const current = !!item && queueAllocationMatches(item, allocation) && !!availability && !!projectData

@@ -1,0 +1,141 @@
+{
+  "functions": [
+    {
+      "cost": 100,
+      "name": "public.rm_sso_workshop_read_permit_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "void",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_session_hash text, p_read_id uuid, p_resource text, p_args jsonb, p_context jsonb",
+      "volatility": "v",
+      "body_sha256": "2c2487f6b20f149f4402eea3ab909658b5d55910095bd06728ff0bd8399987c8",
+      "security_definer": true
+    },
+    {
+      "cost": 100,
+      "name": "public.rm_web_workshop_read_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_read_id uuid, p_resource text, p_args jsonb",
+      "volatility": "v",
+      "body_sha256": "a4c644c344966bd5e7508fd8a41299c7ff6512eefdb138c678e63f4a2c824fb6",
+      "security_definer": true
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_cell_owned_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "boolean",
+      "strict": false,
+      "language": "sql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_id uuid, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "c82e1a81dd79b94bedb41f31546c7cf1c7d83d9ab7a55e36b6ef1ac0c056a219",
+      "security_definer": false
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_gantt_cells_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_args jsonb, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "5c6263ea80fa423714c2e395ee790a82e147d949762cc2cad25bf21721b4074a",
+      "security_definer": false
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_gantt_projects_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_args jsonb, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "8c0e558c71d320dd9a3587932c2e38efa7c4736f32d472c9feff913b4f0d603c",
+      "security_definer": false
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_gantt_snapshot_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_args jsonb, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "7e54563320d85dbab71b09574265101470ab55d48d9633d9c9a333a9b4483cb1",
+      "security_definer": false
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_project_owned_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "boolean",
+      "strict": false,
+      "language": "sql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_id uuid, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "3a8b38d6b873029588e4f8e86fa532226e220d2c4e282ce7b4062a011926898a",
+      "security_definer": false
+    },
+    {
+      "cost": 100,
+      "name": "rm_private.workshop_project_read_data_v1",
+      "rows": 0,
+      "config": [
+        "search_path=\"\""
+      ],
+      "result": "jsonb",
+      "strict": false,
+      "language": "plpgsql",
+      "parallel": "u",
+      "leakproof": false,
+      "signature": "p_resource text, p_args jsonb, p_office uuid",
+      "volatility": "s",
+      "body_sha256": "9dce03d4aae7287b4848fe33bdc01e47cb38ce92ddebc26b47a4ac241e205200",
+      "security_definer": false
+    }
+  ],
+  "resource_constraint": "CHECK ((resource = ANY (ARRAY['catalog_list'::text, 'catalog_entry'::text, 'template_list'::text, 'template_draft'::text, 'template_form'::text, 'template_choices'::text, 'project_list'::text, 'project_entry'::text, 'planning_list'::text, 'gantt_snapshot'::text, 'gantt_projects'::text, 'gantt_cells'::text])))"
+}

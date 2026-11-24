@@ -2,7 +2,7 @@ import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { CAPACITY_READ_SCOPES, capacityFiltersSchema } from '@/server/web/capacity-policy';
 import { createCapacityData } from '@/server/web/capacity-data';
-import { createGanttData } from '@/server/web/gantt-data';
+import { listGanttProjects } from '@/server/web/gantt-data';
 import { calendarDay, isoCalendarDay, saoPauloDay } from '@/server/web/gantt';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { CapacityPlanner } from '@/components/web/capacity-planner';
@@ -18,7 +18,7 @@ export default async function Capacidade({ searchParams }: { searchParams: Promi
   const filters = checked.success ? checked.data : { start: today, days: 14 as const, project_id: projectId };
   const [snapshot, projects] = await Promise.all([
     createCapacityData(session.client, session.sso?.capabilities).getCapacitySnapshot(filters),
-    createGanttData(session.client, session.sso?.capabilities).listGanttProjects(value('q'), value('page')),
+    listGanttProjects(value('q'), value('page')),
   ]);
   const query = new URLSearchParams({ start: filters.start, days: String(filters.days) });
   if (projectId) query.set('project', projectId);

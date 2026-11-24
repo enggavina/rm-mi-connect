@@ -2,8 +2,7 @@ import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { EXECUTION_READ_SCOPES } from '@/server/web/execution-policy';
 import { createExecutionData } from '@/server/web/execution-data';
-import { createGanttData } from '@/server/web/gantt-data';
-import { getPcpChoices } from '@/server/web/pcp-data';
+import { listGanttCells, listGanttProjects } from '@/server/web/gantt-data';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { ExecutionBoard } from '@/components/web/execution-board';
 import { PcpNavigation } from '@/components/web/pcp-navigation';
@@ -14,9 +13,9 @@ export default async function Execucao({ searchParams }: { searchParams: Promise
   const value = (key: string) => typeof params[key] === 'string' ? params[key] as string : undefined;
   const projectId = scheduleId(params.project) ?? null, cellId = scheduleId(params.cell) ?? null, selectedSession = scheduleId(params.session) ?? null;
   const filters = { project_id: projectId, cell_id: cellId, session_id: selectedSession, include_closed: !!projectId || value('closed') === 'yes' };
-  const [snapshot, choices, projects] = await Promise.all([
-    createExecutionData(session.client, session.sso?.capabilities).getExecutionSnapshot(filters), getPcpChoices(),
-    createGanttData(session.client, session.sso?.capabilities).listGanttProjects(value('q'), value('page')),
+  const [snapshot, cells, projects] = await Promise.all([
+    createExecutionData(session.client, session.sso?.capabilities).getExecutionSnapshot(filters), listGanttCells(),
+    listGanttProjects(value('q'), value('page')),
   ]);
   const query = new URLSearchParams();
   if (projectId) query.set('project', projectId); if (cellId) query.set('cell', cellId); if (selectedSession) query.set('session', selectedSession); if (filters.include_closed) query.set('closed', 'yes');
@@ -28,7 +27,7 @@ export default async function Execucao({ searchParams }: { searchParams: Promise
     <PcpNavigation active="execution" />
     {(['project', 'cell', 'session'] as const).some(field => value(field) && !scheduleId(params[field])) && <p className="notice">Algum identificador informado é inválido. Use os filtros para selecionar o contexto desejado.</p>}
     <section className="panel"><div className="panel-header"><div><h2>Contexto da oficina</h2><p>As situações sem apontamento recebido continuam como informação a confirmar. O servidor não conhece os registros que ainda estão offline em um aparelho.</p></div></div>
-      <form className="filters" action="/planejamento/execucao"><select name="cell" aria-label="Célula dos apontamentos" defaultValue={cellId ?? ''}><option value="">Todas as células</option>{choices.cells.map(cell => <option key={cell.id} value={cell.id}>{cell.nome || 'Célula'}</option>)}</select>
+      <form className="filters" action="/planejamento/execucao"><select name="cell" aria-label="Célula dos apontamentos" defaultValue={cellId ?? ''}><option value="">Todas as células</option>{cells.map(cell => <option key={cell.id} value={cell.id}>{cell.nome || 'Célula'}</option>)}</select>
         {projectId && <input type="hidden" name="project" value={projectId} />}
         <label><input type="checkbox" name="closed" value="yes" defaultChecked={filters.include_closed} disabled={!!projectId} /> Incluir projetos encerrados e etapas retiradas</label>
         <button className="button secondary">Filtrar apontamentos</button><a className="button secondary" href="/planejamento/execucao">Limpar filtros</a>

@@ -30,6 +30,11 @@ const PHOTO = 'id,projeto_id,celula_id,celula_projeto_id,categoria_foto,tipo_rec
 const DOCUMENT = 'id,projeto_id,registro_formulario_id,nome,tipo_documento,arquivo_url,ordem_compilacao,incluir_no_compilado,created_at,updated_at';
 const ATTACHMENT = 'id,projeto_id,nome,descricao,arquivo_url,tipo_arquivo,status,data_vencimento,created_by,visivel_cliente,created_at,updated_at';
 const ACTIVE = 'status_pcp.not.in.(cancelado,finalizando_para_faturar),status_pcp.is.null';
+const queryUnavailable = () => new Error('Não foi possível consultar os dados. Tente novamente.');
+function rowArray(value: unknown): value is WebRow[] {
+  return Array.isArray(value) && value.every(row => row && uuid.safeParse(row.id).success)
+    && new Set(value.map(row => row.id)).size === value.length;
+}
 export type ProjectReadFilters = ProjectPhotoFilters & { includeDossier?: boolean; includeEquipment?: boolean };
 const catalogs = {
   users: { table: 'rm_users', columns: USER, order: 'nome', search: 'nome,matricula' },
@@ -66,7 +71,7 @@ async function page(query: any, number: unknown, pageSize: number): Promise<WebP
 }
 
 /** Injectable RLS client makes pagination and scope testable without Auth secrets. */
-export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
+export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead, operationRead?: WorkshopRead) {
   const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
   const requireCapability = (capability: CorporateCapability) => {
     if (!allowed('em.portal.read') || !allowed(capability)) throw new Error('Acesso não autorizado a esta área.');
@@ -130,6 +135,15 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function listProjects(filters: ProjectFilters = {}) {
     requireCapability('em.projects.read');
     if (filters.cell) requireCapability('em.planning.read');
+    if (operationRead) {
+      const page = pageNumber(filters.page);
+      const result = checkedWorkshopPage(await operationRead('project_list', {
+        q: searchTerm(filters.q), status: filters.status || null, client: filters.client ? uuid.parse(filters.client) : null,
+        cell: filters.cell ? uuid.parse(filters.cell) : null, page, planning: allowed('em.planning.read'),
+      }), page, 25);
+      if (!rowArray(result.clients) || !rowArray(result.cells) || !Array.isArray(result.statuses)) throw queryUnavailable();
+      return result as WebPage & { clients: WebRow[]; cells: WebRow[]; statuses: WebRow[] };
+    }
     let query: any = client.from('rm_projetos').select(projectColumns + (filters.cell ? ',allocations:rm_celulas_projeto!inner(celula_id,retirada)' : ''), { count: 'exact' });
     query = applySearch(query, filters.q, ['numero', 'nome', 'cliente_nome_exportacao', 'descricao_equipamento']);
     if (filters.status) query = query.eq('status_pcp', filters.status);
@@ -153,7 +167,14 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function getProject(id: string, filters: ProjectReadFilters = {}) {
     requireCapability('em.projects.read');
-    const project = await one('rm_projetos', projectColumns, id);
+    if (!uuid.safeParse(id).success) return null;
+    const scoped = operationRead ? await operationRead('project_entry', {
+      id, documents: allowed('em.documents.read'), cells: allowed('em.planning.read') || allowed('em.history.read'),
+    }) : undefined;
+    if (operationRead && scoped === null) return null;
+    if (operationRead && (!scoped || scoped.project?.id !== id.toLowerCase() || !rowArray(scoped.cells)
+      || scoped.client !== null && scoped.client?.id !== scoped.project.cliente_id)) throw queryUnavailable();
+    const project: WebRow | null = operationRead ? scoped.project : await one('rm_projetos', projectColumns, id);
     if (!project) return null;
     const photoFilters = projectPhotoFilters(filters);
     const projectPictures = () => {
@@ -162,22 +183,24 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       if (photoFilters.selectedFirst) query = query.order('selecao_relatorio', { ascending: false });
       return page(query.order('numero').order('id'), filters.photoPage, 24);
     };
-    const [customers, equipmentRows, allocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
-      byIds('rm_clientes', CLIENT, [project.cliente_id]),
+    const [customers, equipmentRows, projectAllocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
+      operationRead ? scoped.client ? [scoped.client as WebRow] : [] : byIds('rm_clientes', CLIENT, [project.cliente_id]),
       filters.includeEquipment !== false ? all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)) : [],
       allowed('em.planning.read') ? all('rm_celulas_projeto', ALLOCATION, q => q.eq('projeto_id', id), 'posicao') : [],
-      allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
+      operationRead ? scoped.cells as WebRow[] : allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
       allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.history.read') ? all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)) : [],
       filters.includeDossier !== false && allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.photos.read') ? projectPictures() : { rows: [], total: 0, page: 1, pageSize: 24 },
       filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
     ]);
+    const scopedCells = operationRead ? new Set(cells.map(row => row.id)) : null;
+    const allocations = scopedCells ? projectAllocations.filter(row => scopedCells.has(row.celula_id)) : projectAllocations;
     const [forms, users] = await Promise.all([
       allowed('em.forms.read') ? byIds('rm_forms', FORM, [...allocations.flatMap(row => row.forms_ids || []), ...records.map(row => row.form_id)]) : [],
       byIds('rm_users', userColumns, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...attachments.map(row => row.created_by), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
     ]);
-    const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
+    const hasAllocations = projectAllocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
     const equipment = equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null;
     const displayProject: WebRow = { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) };
     return { project: displayProject, client: customers[0] || null, equipment,
@@ -205,6 +228,15 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function listPlanning(filters: PlanningFilters = {}) {
     requireCapability('em.planning.read');
+    if (operationRead) {
+      const page = pageNumber(filters.page);
+      const result = checkedWorkshopPage(await operationRead('planning_list', {
+        q: searchTerm(filters.q), status: filters.status || null, cell: filters.cell ? uuid.parse(filters.cell) : null,
+        page, project_details: allowed('em.projects.read'),
+      }), page, 50);
+      if (!rowArray(result.projects) || !rowArray(result.cells) || !Array.isArray(result.statuses)) throw queryUnavailable();
+      return result as WebPage & { projects: WebRow[]; cells: WebRow[]; statuses: WebRow[] };
+    }
     let query: any = client.from('rm_celulas_projeto').select(ALLOCATION + (allowed('em.projects.read') ? ',project:rm_projetos!inner(id,numero,nome,status_pcp,data_real_de_entrega,cliente_nome_exportacao)' : ''), { count: 'exact' }).eq('retirada', false);
     if (filters.cell) query = query.eq('celula_id', uuid.parse(filters.cell));
     if (filters.status) query = query.eq('status', filters.status);
@@ -269,7 +301,9 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
 async function data(capability: CorporateCapability) {
   const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability);
   const { ssoWorkshopRead } = await import('./sso-bridge');
-  return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined);
+  const { readWorkshopOperations } = await import('./workshop-operation-reader');
+  const operationRead = capability === 'em.projects.read' || capability === 'em.planning.read' ? await readWorkshopOperations(session) : undefined;
+  return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined, operationRead);
 }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
 export async function listProjects(filters: ProjectFilters = {}) { return (await data('em.projects.read')).listProjects(filters); }
