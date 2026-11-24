@@ -75,6 +75,14 @@ insert into public.rm_equipamentos(id,projeto_id,descricao) values
  (pg_temp.project_read_id(401),pg_temp.project_read_id(101),'LOCAL canonical equipment');
 update public.rm_projetos set equipamento_id=pg_temp.project_read_id(401) where id=pg_temp.project_read_id(101);
 
+insert into rm_private.gantt_project_plans(projeto_id,links,updated_by) values(
+ pg_temp.project_read_id(101),jsonb_build_array(jsonb_build_object(
+  'predecessor_id',pg_temp.project_read_id(501),'successor_id',pg_temp.project_read_id(503),'lag_days',1)),pg_temp.project_read_id(12));
+insert into rm_private.gantt_baselines(projeto_id,label,items,created_by)
+ select pg_temp.project_read_id(101),'LOCAL baseline',jsonb_agg(jsonb_build_object(
+  'allocation_id',pg_temp.project_read_id(n),'data_inicio',null,'data_limite',null) order by n),pg_temp.project_read_id(12)
+ from unnest(array[501,503]) n;
+
 do $$
 declare
   bma uuid:=pg_temp.project_read_id(1);
@@ -131,6 +139,11 @@ begin
   perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(301),'Gantt cell filter binds exact root');
   v:=pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('project_id',project_bma,'include_closed',true),bma);
   perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'projects'->0->>'id')::uuid=project_bma,'Gantt project restricts active allocations to classified cells');
+  perform pg_temp.project_read_check(v->'links'='[]' and jsonb_array_length(v->'baseline'->'items')=1
+   and (v->'baseline'->'items'->0->>'allocation_id')::uuid=pg_temp.project_read_id(501),
+   'Gantt omits unclassified allocations from dependency links and baseline');
+  perform pg_temp.project_read_check(v->'projects'->0->>'plan_version'=rm_private.web_gantt_project_version_v1(project_bma),
+   'Gantt retains the exact plan revision');
   perform pg_temp.project_read_check(pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('cell_id',pg_temp.project_read_id(302)),bma) is null
     and pg_temp.project_read_call('gantt_snapshot',gantt_args||jsonb_build_object('cell_id',pg_temp.project_read_id(303)),bma) is null,
     'foreign and pending Gantt cell IDs are indistinguishable');

@@ -16,6 +16,8 @@ SSO Microsoft pela Central de Acessos; gestão de projetos e recebimentos; cadas
 
 ### Medição de conclusão
 
+**O12 — preparação das consultas operacionais, publicada em 24/11/2026.** A migração 060 e o portal incluem as consultas por oficina de Projetos, Planejamento e as três visões do Gantt. Diagnóstico, implementação, testes específicos, regressão e publicação concluídos, **5/5 marcos técnicos (100%)**. A ativação fica pendente até as criações registrarem a oficina de origem, inclusive recebimentos mobile, e a BMA homologar o fluxo com acesso autenticado. BRJ e BBH continuam inativas. Na frente de oficinas, OFI-01 e OFI-02 seguem parciais e **0/5 itens OFI** atingiram o aceite integral. [Publicação, validação e próximos passos](desktop/docs/web-platform.md#o12--preparação-das-consultas-de-projetos-e-planejamento-por-oficina).
+
 Sempre informar o escopo e o denominador do percentual. O backlog de 42 itens é o trabalho novo listado neste roadmap; a base já publicada até a 052 não está nesse denominador. Contagem integral nesta entrega: **0/42 itens = 0% integralmente concluído**, com DAD-01, INT-01 e OFI-01 parcialmente entregues. Essa contagem não representa o percentual do software inteiro nem de esforço/tempo restante.
 
 **Pacote Q01 — painel de qualidade: 100% dos marcos técnicos**, com publicação e conferências registradas em [web-platform.md](desktop/docs/web-platform.md). Critério adotado nesta entrega: diagnóstico 20%, implementação 30%, testes/tipos/build 20%, inspeção de interface 10%, publicação/conferência de produção 20%. É um indicador de marcos verificados, não uma estimativa de horas.
