@@ -1,12 +1,20 @@
 # Portal web EM · MI Electric Brasil
 
+## Consulta de formulários no EM Operacional
+
+Publicada em **24/11/2026**. Os cartões dos formulários vinculados abrem as seções, perguntas e opções do modelo. As seções começam recolhidas, e **Voltar ao projeto** preserva a célula e o projeto. A consulta funciona na entrada operacional por senha e na validação por Microsoft. O banco exige oficina, célula, projeto ativo na alocação e modelo vinculado também para URLs abertas diretamente. [Contrato operacional](online-operation.md).
+
+Migração **063** aplicada no Supabase `oficina-em-mi-off`. Railway **`40d34c64-9edc-4836-9486-7d1cf46a9ce3`** com `SUCCESS`, consumidor `3c0a8648a49289ea2af40d9d59391b7296219996`. Passaram **662 testes web, 144 mobile, 63 suítes PostgreSQL, 19 cenários Chromium com autenticação simulada e 35 verificações públicas**. A conferência somente leitura no banco retornou perguntas para **80 de 80 vínculos de formulário** no escopo de validação da BMA. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45463124276).
+
+Correção concluída em **5/5 marcos técnicos (100%)** por contagem de diagnóstico, implementação, testes, publicação e conferência. A abertura pelo titular no celular segue como aceite funcional. O preenchimento e o envio de respostas e fotos são os próximos incrementos. [Validação do EM Operacional](https://em-web-production.up.railway.app/operacao/validacao).
+
 ## Validação do EM Operacional com a conta Microsoft da BMA
 
 Publicado em **24/11/2026** em [Validação do EM Operacional](https://em-web-production.up.railway.app/operacao/validacao). O usuário `softdev05@mielectric.com.br` entra pelo Microsoft no portal e encontra **Validar EM Operacional** no painel. A sessão usa o vínculo corporativo BMA e as permissões de célula já cadastradas para o operador associado. A rota entrega consulta de células, projetos e modelos de formulário.
 
 Migração **062** aplicada em `oficina-em-mi-off`. Railway **`c5e465df-ba15-40d5-a13b-e772f0715a3e`** com `SUCCESS`, consumidor `32a9e3b5cc047b52a4357a72a443dd8c9dd1cc94`. A inspeção técnica somente leitura confirmou **10 células da BMA e 76 alocações visíveis** para a identidade autorizada e zero outros administradores admitidos. Passaram 660 testes web, 144 mobile, 63 suítes PostgreSQL, sete cenários Chromium com autenticação simulada e 29 verificações públicas. [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/45445440602).
 
-**Liberação técnica em 5/5 marcos (100%).** O primeiro login Microsoft pelo titular no celular é o aceite humano pendente. Evidências locais sob o prefixo `softdev-operation-` em `.tmp/`.
+**Liberação técnica em 5/5 marcos (100%).** O usuário confirmou acesso até o detalhe do projeto. Evidências locais sob o prefixo `softdev-operation-` em `.tmp/`.
 
 ## EM Operacional Web — entrada e consultas por oficina
 
