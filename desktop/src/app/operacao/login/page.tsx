@@ -14,5 +14,6 @@ export default async function OperationLoginPage({ searchParams }: { searchParam
   return <AccessLayout title="Acesse o EM Operacional" description="Informe a conta do dispositivo e seus dados de operador para consultar os projetos da sua oficina.">
     <OperationLoginForm error={error} />
     <Link className="text-link" href="/login">Acesso à gestão da oficina</Link>
+    <Link className="text-link" href="/operacao/validacao">Validação com conta Microsoft</Link>
   </AccessLayout>;
 }

@@ -2,7 +2,7 @@ import type { CorporateCapability } from './sso-policy';
 import { uuid } from './policy';
 export const WORKSHOP_READ_RESOURCES = [
   'catalog_list', 'catalog_entry', 'template_list', 'template_draft', 'template_form', 'template_choices',
-  'project_list', 'project_entry', 'planning_list', 'gantt_snapshot', 'gantt_projects', 'gantt_cells',
+  'project_list', 'project_entry', 'planning_list', 'gantt_snapshot', 'gantt_projects', 'gantt_cells', 'operation_validation',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -25,6 +25,7 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
     }
     case 'gantt_projects': return ['em.portal.read', 'em.planning.read', 'em.projects.read'];
     case 'gantt_cells': return ['em.portal.read', 'em.planning.read'];
+    case 'operation_validation': return ['em.portal.read', 'em.projects.read', 'em.planning.read'];
     default: throw new Error('Consulta indisponível.');
   }
 }

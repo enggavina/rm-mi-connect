@@ -10,6 +10,12 @@ A cada consulta, o servidor revalida a sessão e confirma a oficina em Acessos p
 
 A migração `061` acrescenta consultas exclusivas do servidor. O banco revalida a sessão, a delegação e o contexto recente do Acessos. A lista combina as células permitidas ao operador com a propriedade da oficina. A lista de projetos também exige projeto da mesma oficina, alocação visível e ativa e projeto até a entrega. O detalhe verifica se o projeto pertence à célula autorizada e mostra apenas os modelos ativos da própria oficina. Registros alheios e sem classificação são omitidos. A paginação ocorre no banco. As respostas e páginas de acesso usam `no-store`.
 
+## Validação pela conta Microsoft
+
+A conta corporativa `softdev05@mielectric.com.br` pode entrar pelo [portal do EM](https://em-web-production.up.railway.app/login) e abrir **Validar EM Operacional** no painel. A página de validação usa a mesma interface de consulta da operação. O servidor verifica a sessão Microsoft, o vínculo corporativo e as capacidades do EM. A Central confirma a BMA em cada consulta, e a migração `062` aplica as permissões de célula já cadastradas para o operador associado. As consultas usam uma confirmação do servidor de uso único com os filtros exatos.
+
+Esse acesso cobre a consulta de células, projetos ativos e modelos de formulário na BMA. A remoção de permissões de célula, a revogação do vínculo ou a mudança de oficina em Acessos altera o resultado das próximas consultas. A entrada por senha do dispositivo continua atendendo o fluxo do operador.
+
 ## Validação e piloto
 
 A suíte `rm-mobile-supabase/tests/online_operation_reads.sql` usa BMA, BRJ e BBH em banco descartável. Verifica acessos recíprocos, vínculos de célula, registros não classificados, contexto inválido, revogação e execução restrita ao servidor. As três oficinas têm identidades e registros próprios no teste. A conferência de Acessos em produção encontrou BMA ativa, BRJ e BBH inativas e zero vínculos de dispositivo ou operador. Para homologar com uma conta real, cadastrar o par autorizado na BMA e verificar acesso, células e projetos com essa conta.
