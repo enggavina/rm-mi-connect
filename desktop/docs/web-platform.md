@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## Restauração da gestão de oficinas na Central de Acessos
+
+Publicada em **24/11/2026** na [Central de Acessos](https://acessos.miconnect.app.br/acessos/). A versão `72124c1e8774315dfbfad64876d5ce06be6b2068` reaplica a API, o proxy e o painel de oficinas do O02 sobre a versão ativa de cadastro corporativo e vagas `5bb2f15b1cba5cf28459dfe9aad4536d56efd9f1`. Railway confirmou `SUCCESS` no backend `2f4cea2c-05b2-40d0-93dd-a7c8f224ac6c` e no gateway `1363654e-fc51-4bb0-82e6-c359f7172623`. [Código publicado](https://github.com/enggavina/atualizador-gente/commit/72124c1e8774315dfbfad64876d5ce06be6b2068).
+
+A validação passou em **3.890 testes Python** da regressão completa, com 15 ignorados, mais **27 verificações SQL em banco descartável e oito cenários de interface**. As 27 verificações HTTP em produção confirmaram o painel, a rota de contexto v2, os controles de sessão e o acesso com credencial técnica limitada. Conferidos os três arquivos publicados da Central, os arquivos do cadastro corporativo e os leitores usados por vagas. O healthcheck e o login do EM responderam 200. Conferência somente leitura do Supabase corporativo confirmou a preservação dos vínculos, com dois administradores do EM na BMA, BMA ativa e BRJ/BBH inativas.
+
+**Restauração técnica concluída em 5/5 marcos (100%)** por contagem de diagnóstico, integração, validação, publicação e conferência de produção. A homologação com sessão real da BMA segue como etapa separada, assim como a ativação do O12. Provas locais sob o prefixo `central-restore-` em `.tmp/`.
+
 ## O12 — preparação das consultas de projetos e planejamento por oficina
 
 Publicação em **24/11/2026** no [EM web](https://em-web-production.up.railway.app). Migração **060** aplicada no Supabase `oficina-em-mi-off`. Railway **`4f92d506-f110-4863-a275-bb0cfae64935`** com `SUCCESS`, consumidor **`4d7b8ddc69c37a2085fc80b312f49be055d60d09`**.
