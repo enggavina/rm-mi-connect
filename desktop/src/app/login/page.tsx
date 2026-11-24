@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { getWebAuthState } from '@/server/web/auth';
 import { LoginForm } from './login-form';
 import { SsoLoginForm } from './sso-login-form';
@@ -26,6 +27,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (access?.state === 'mfa') redirect('/login/mfa');
   if (corporate) return <AccessLayout title="Acesse com sua conta corporativa" description="Use sua conta Microsoft da MI Electric Brasil para entrar no EM.">
     <SsoLoginForm error={error} />
+    <Link className="text-link" href="/operacao/login">Acesso ao EM Operacional</Link>
   </AccessLayout>;
   return <AccessLayout title="Acesse sua operação" description="Entre com sua conta para acompanhar os projetos e organizar o trabalho da oficina.">
     <LoginForm configured={access !== undefined && access.state !== 'unconfigured'} />

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkshopContextReader, EM_IDENTITY_ISSUER, validateWorkshopContext, WORKSHOP_CONTEXT_URL, WorkshopContextError } from '../src/server/web/workshop-context';
+import { createWorkshopContextReader, EM_IDENTITY_ISSUER, MOBILE_WORKSHOP_CONTEXT_URL, validateWorkshopContext, WORKSHOP_CONTEXT_URL, WorkshopContextError } from '../src/server/web/workshop-context';
 import { CORPORATE_ISSUER, type VerifiedCorporateSession } from '../src/server/web/sso-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -71,6 +71,23 @@ test('reader pins HTTPS destination and sends only current corporate Bearer with
   assert.equal(calls.length, 1); assert.equal(calls[0].method, 'GET'); assert.equal(calls[0].cache, 'no-store'); assert.equal(calls[0].redirect, 'error');
   assert.deepEqual(calls[0].headers, { Authorization: 'Bearer synthetic.jwt.signature', Accept: 'application/json' });
   assert.ok(calls[0].signal instanceof AbortSignal); assert.equal(calls[0].body, undefined);
+});
+
+test('mobile context reads pin their own destination with only verified principals and a server credential', async () => {
+  const expected = { channel: 'mobile', deviceSubject: id(3), operatorSubject: id(4) } as const;
+  const key = 'm'.repeat(43);
+  const reader = createWorkshopContextReader({ now: () => now, fetcher: async (url, options) => {
+    assert.equal(url, MOBILE_WORKSHOP_CONTEXT_URL);
+    assert.equal(options?.method, 'POST');
+    assert.equal(options?.redirect, 'error');
+    assert.equal(options?.cache, 'no-store');
+    assert.equal(new Headers(options?.headers).get('authorization'), `Bearer ${key}`);
+    assert.deepEqual(JSON.parse(String(options?.body)), { device_subject: id(3), operator_subject: id(4) });
+    return Response.json(context(true));
+  } });
+  assert.equal((await reader.readMobile(expected, now + 60_000, key)).workshop.code, 'BMA');
+  await assert.rejects(reader.readMobile(expected, now + 60_000, 'unconfigured'), rejected);
+  await assert.rejects(reader.readMobile(expected, now, key), (e: unknown) => e instanceof WorkshopContextError && e.status === 401);
 });
 
 test('expired or inconsistent sessions never contact the workshop service', async () => {

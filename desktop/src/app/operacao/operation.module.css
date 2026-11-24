@@ -1,0 +1,110 @@
+.shell {
+  min-height: 100dvh;
+  color: var(--ink);
+}
+
+:global(html[data-operation-revalidate]) .shell { visibility: hidden; }
+
+.header {
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+
+.headerInner,
+.content {
+  width: min(100% - 32px, 1080px);
+  margin-inline: auto;
+}
+
+.headerInner {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding-block: 10px;
+}
+
+.brand,
+.context,
+.back,
+.cardAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.context {
+  justify-content: flex-end;
+  gap: 12px;
+  color: var(--muted);
+  text-align: right;
+  font-size: 13px;
+}
+
+.contextText { overflow-wrap: anywhere; }
+.context strong { display: block; color: var(--ink); }
+.content { padding-block: 30px 44px; }
+.back { min-height: 44px; color: var(--muted); margin: -12px 0 12px; }
+.back:hover { color: var(--red); }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  align-items: stretch;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  min-height: 111px;
+  height: 100%;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+a.card:hover { border-color: var(--red); }
+.card h2, .card p { margin: 0; }
+.card h2 { margin-bottom: 6px; font-size: 16px; }
+.card p { font-size: 13px; line-height: 1.5; color: var(--muted); }
+.cardAction { color: var(--red); font-size: 13px; font-weight: 650; }
+.status { margin-top: 10px; }
+.projectInfo { display: grid; gap: 20px; margin-bottom: 18px; }
+.projectInfo p { margin: 0; overflow-wrap: anywhere; }
+.heading { margin: 0 0 10px; font-size: 17px; }
+.pagination { margin-top: 14px; }
+
+.formGroup {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.formGroup + .formGroup { margin-top: 8px; }
+.formGroup legend { margin: 0 0 8px; padding: 0; font-size: 14px; font-weight: 650; }
+.formGroup input { min-height: 44px; font-size: 16px; }
+.formGroup label { font-size: 13px; }
+.loginSubmit { min-height: 44px; }
+
+@media (max-width: 480px) {
+  .headerInner { min-height: 64px; }
+  .brand span { max-width: 95px; }
+  .context { gap: 8px; font-size: 11px; }
+  .content { padding-top: 22px; }
+}
