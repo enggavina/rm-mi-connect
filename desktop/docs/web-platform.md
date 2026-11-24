@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## Validação do EM Operacional com a conta Microsoft da BMA
+
+Publicado em **24/11/2026** em [Validação do EM Operacional](https://em-web-production.up.railway.app/operacao/validacao). O usuário `softdev05@mielectric.com.br` entra pelo Microsoft no portal e encontra **Validar EM Operacional** no painel. A sessão usa o vínculo corporativo BMA e as permissões de célula já cadastradas para o operador associado. A rota entrega consulta de células, projetos e modelos de formulário.
+
+Migração **062** aplicada em `oficina-em-mi-off`. Railway **`c5e465df-ba15-40d5-a13b-e772f0715a3e`** com `SUCCESS`, consumidor `32a9e3b5cc047b52a4357a72a443dd8c9dd1cc94`. A inspeção técnica somente leitura confirmou **10 células da BMA e 76 alocações visíveis** para a identidade autorizada e zero outros administradores admitidos. Passaram 660 testes web, 144 mobile, 63 suítes PostgreSQL, sete cenários Chromium com autenticação simulada e 29 verificações públicas. [CI aprovado](https://github.com/enggavina/rm-mi-connect/actions/runs/45445440602).
+
+**Liberação técnica em 5/5 marcos (100%).** O primeiro login Microsoft pelo titular no celular é o aceite humano pendente. Evidências locais sob o prefixo `softdev-operation-` em `.tmp/`.
+
 ## EM Operacional Web — entrada e consultas por oficina
 
 Primeiro incremento publicado em **24/11/2026** em [EM Operacional Web](https://em-web-production.up.railway.app/operacao/login). Migração **061** aplicada em `oficina-em-mi-off` e Railway **`e02b8c7d-0df5-4e19-be10-e2595b9dcede`** com `SUCCESS`, consumidor `e448a605646a231f6c78089ae5d5f536f5bb6b04`. O login por senha do dispositivo e a identificação do operador usam uma sessão própria do navegador. Acessos define a unidade e as consultas do banco exigem propriedade da oficina e permissão de célula em cada acesso. O incremento entrega as listas de células e projetos e a consulta dos modelos vinculados ao projeto. [Contrato operacional](online-operation.md).
