@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { onlineQuestionKind, type OnlineAnswer } from '@/shared/online-form';
 import type { OperationData } from '@/server/operation/policy';
 import { templateSections } from '@/components/web/form-template-model';
@@ -94,6 +94,18 @@ export function OperationFormEditor({ data, endpoint, proof }: { data: FormDataV
   const intervals = new Set(data.edition?.dateIntervals);
   const sections = templateSections(data.questions);
 
+  function clearFieldError(event: ChangeEvent<HTMLFormElement>) {
+    const id = event.target.closest('fieldset[id^="question-"]')?.id.slice('question-'.length);
+    if (id && errors[id]) {
+      setErrors(previous => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+    }
+    if (empty) setEmpty(false);
+  }
+
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current || code || outcome === 'changed') return;
@@ -139,7 +151,7 @@ export function OperationFormEditor({ data, endpoint, proof }: { data: FormDataV
     }
   }
 
-  return <form onSubmit={send} noValidate className={s.sections}>
+  return <form onSubmit={send} onChange={clearFieldError} noValidate className={s.sections}>
     <fieldset className={s.editorFields} disabled={pending || !!body.current || !!code}>
       {sections.map(section => <details key={section.id} className={`panel ${s.section}`}>
         <summary>{section.title}</summary>
