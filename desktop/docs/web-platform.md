@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## Envio de formulários pelo EM Operacional Web
+
+Publicado em **24/11/2026** para o piloto da BMA. O operador entra por senha, abre o formulário vinculado ao projeto e responde texto, número, data, intervalo de datas e escolhas. O comprovante apresenta o código da inspeção, que vai para **Formulários e aprovações** com status **Em análise** e autoria do operador. A validação Microsoft permanece em consulta. [Entrada operacional](https://em-web-production.up.railway.app/operacao/login) · [Contrato operacional](online-operation.md).
+
+Migração **064** aplicada no Supabase `oficina-em-mi-off`. Railway **`77f4af70-7abd-4819-9045-203a685cdcfb`** com `SUCCESS`, consumidor `de89f5a82bc1ca2f98c9d7736f3c86db058d4662`. Passaram **664 testes web, 144 mobile, 63 suítes PostgreSQL, 20 cenários Chromium e 43 verificações públicas**. Retentativas concorrentes produziram um registro e um comprovante. A conferência em produção encontrou **76 de 80 vínculos de formulário compatíveis** no escopo consultado da BMA. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45527996065).
+
+Incremento em **3/4 marcos (75%)**. Implementação, testes e publicação concluídos. A homologação real depende do vínculo explícito do dispositivo e do operador da BMA na Central de Acessos e da conferência do registro pela equipe.
+
 ## Consulta de formulários no EM Operacional
 
 Publicada em **24/11/2026**. Os cartões dos formulários vinculados abrem as seções, perguntas e opções do modelo. As seções começam recolhidas, e **Voltar ao projeto** preserva a célula e o projeto. A consulta funciona na entrada operacional por senha e na validação por Microsoft. O banco exige oficina, célula, projeto ativo na alocação e modelo vinculado também para URLs abertas diretamente. [Contrato operacional](online-operation.md).
