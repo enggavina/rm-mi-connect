@@ -98,6 +98,40 @@ a.card:hover { border-color: var(--red); }
 .sectionContent > .questionNote { margin: 0 0 12px; }
 .choices { margin: 6px 0 0; padding-inline-start: 20px; }
 
+.editorFields, .answer, .answerFields {
+  border: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+.editorFields, .answerFields { display: grid; gap: 10px; }
+.answer + .answer { margin-top: 16px; border-top: 1px solid var(--line); }
+.answer legend { padding: 0 6px 0 0; font-weight: 650; }
+.answerFields { margin-block: 8px; }
+.answerFields input:not([type="checkbox"]), .answerFields select, .answerFields textarea {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  padding: 9px 12px;
+  min-height: 44px;
+  font-size: 16px;
+  width: 100%;
+  max-width: 100%;
+}
+.answerFields input:disabled, .answerFields select:disabled, .answerFields textarea:disabled { opacity: .65; }
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 40px;
+}
+.fieldError { color: var(--red); font-size: 14px; margin: 8px 0 0; }
+.submissionStatus:empty { display: none; }
+.submissionActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.submissionActions > * { min-height: 44px; }
+
 .formGroup {
   display: grid;
   gap: 14px;

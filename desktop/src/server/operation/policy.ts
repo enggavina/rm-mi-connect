@@ -52,10 +52,10 @@ const credentials = z.object({
 }).strict();
 export type OperationCredentials = z.infer<typeof credentials>;
 
-export async function readOperationCredentials(request: Request): Promise<OperationCredentials | null> {
+export async function readOperationText(request: Request, type: RegExp, maxBytes: number): Promise<string | null> {
   const length = request.headers.get('content-length');
-  if (!/^application\/x-www-form-urlencoded(?:\s*;|$)/i.test(request.headers.get('content-type') ?? '')
-    || !request.body || length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_REQUEST_BYTES)) return null;
+  if (!type.test(request.headers.get('content-type') ?? '') || !request.body
+    || length !== null && (!/^\d+$/.test(length) || Number(length) > maxBytes)) return null;
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -64,16 +64,22 @@ export async function readOperationCredentials(request: Request): Promise<Operat
       const result = await reader.read();
       if (result.done) break;
       size += result.value.byteLength;
-      if (size > MAX_REQUEST_BYTES) return null;
+      if (size > maxBytes) return null;
       chunks.push(result.value);
     }
-    const params = new URLSearchParams(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
-    const fields = [...params.keys()];
-    if (fields.length !== 4 || new Set(fields).size !== 4) return null;
-    const result = credentials.safeParse(Object.fromEntries(params));
-    return result.success ? result.data : null;
+    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
   } catch { return null; }
   finally { void reader.cancel().catch(() => {}); reader.releaseLock(); }
+}
+
+export async function readOperationCredentials(request: Request): Promise<OperationCredentials | null> {
+  const body = await readOperationText(request, /^application\/x-www-form-urlencoded(?:\s*;|$)/i, MAX_REQUEST_BYTES);
+  if (body === null) return null;
+  const params = new URLSearchParams(body);
+  const fields = [...params.keys()];
+  if (fields.length !== 4 || new Set(fields).size !== 4) return null;
+  const result = credentials.safeParse(Object.fromEntries(params));
+  return result.success ? result.data : null;
 }
 
 const cell = z.object({ id, nome: z.string() }).strict();
@@ -82,6 +88,7 @@ const project = z.object({
   descricao: z.string().nullable(), status: z.string().nullable(),
 }).strict();
 const form = z.object({ id, titulo: z.string().nullable() }).strict();
+export const formVersion = z.string().regex(/^[0-9a-f]{64}$/);
 const question = z.object({
   id, indice: z.string(), enunciado: z.string(), subtitulo: z.string().nullable(),
   tipo: z.string(), obrigatorio: z.boolean(),
@@ -93,7 +100,7 @@ const dataSchema = z.discriminatedUnion('kind', [
     total: z.number().int().nonnegative(), page_size: z.literal(25) }).strict(),
   z.object({ kind: z.literal('project'), cell, project, forms: z.array(form) }).strict(),
   z.object({ kind: z.literal('form'), cell, project, form: form.extend({ descricao: z.string().nullable() }),
-    questions: z.array(question) }).strict(),
+    questions: z.array(question), edition: z.object({ version: formVersion, dateIntervals: z.array(id) }).strict().optional() }).strict(),
 ]);
 export type OperationData = z.infer<typeof dataSchema>;
 export type OperationSelection = { cellId?: string; projectId?: string; formId?: string; page?: string | number };

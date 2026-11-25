@@ -45,8 +45,11 @@ export const operationService = createOperationService({
     return await createWorkshopContextReader().readMobile(identity, expiresAt, required('EM_WORKSHOP_CONTEXT_TOKEN'));
   },
   async readData(args) {
-    const rpc = 'p_form_id' in args ? 'rm_online_operation_form_read_v1' : 'rm_online_operation_read_v1';
+    const rpc = 'p_form_id' in args ? 'rm_online_operation_form_entry_v1' : 'rm_online_operation_read_v1';
     return await operationClient(true).rpc(rpc, args);
+  },
+  async writeForm(args) {
+    return await operationClient(true).rpc('rm_online_operation_submit_form_v1', args);
   },
   async signOut(token) {
     const { error } = await operationClient().auth.admin.signOut(token, 'local');

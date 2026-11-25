@@ -1,6 +1,6 @@
 # EM Operacional Web
 
-O acesso em `/operacao` atende o operador no navegador pelo mesmo serviço Railway do EM. O operador pode entrar, consultar suas células, abrir os projetos liberados e consultar os formulários vinculados a cada alocação.
+O acesso em `/operacao` atende o operador no navegador pelo mesmo serviço Railway do EM. O operador pode entrar, consultar suas células, abrir os projetos liberados e consultar os formulários vinculados a cada alocação. No piloto da BMA, os modelos compatíveis também podem ser preenchidos e enviados.
 
 ## Identidade e oficina
 
@@ -20,10 +20,16 @@ Esse acesso cobre a consulta de células, projetos ativos e modelos de formulár
 
 Dentro do projeto, selecione **Abrir formulário** para ver as seções, as perguntas obrigatórias e as opções cadastradas. Os subtítulos começam recolhidos. O botão **Voltar ao projeto** leva à mesma alocação.
 
-A migração `063` acrescenta a consulta do modelo pelo caminho completo de célula, projeto e formulário nos dois acessos. O servidor consulta a oficina e o banco exige que o modelo esteja ativo e vinculado à alocação acessível. A confirmação de uso único da validação Microsoft inclui o identificador do formulário. A consulta é somente leitura.
+A migração `063` acrescenta a consulta do modelo pelo caminho completo de célula, projeto e formulário nos dois acessos. O servidor consulta a oficina e o banco exige que o modelo esteja ativo e vinculado à alocação acessível. A confirmação de uso único da validação Microsoft inclui o identificador do formulário. A validação Microsoft é somente leitura.
+
+## Envio de inspeção pela BMA
+
+A migração `064` habilita texto, número, data, intervalo de datas e escolha simples ou múltipla para o operador identificado. Um modelo com uma pergunta obrigatória de outro tipo é preenchido no aplicativo. Abra as seções do formulário, preencha as respostas e toque em **Enviar formulário**. Após confirmação, o navegador exibe o código do registro, disponível em **Formulários e aprovações** com status **Em análise**.
+
+Se a confirmação atrasar ou a conexão cair, mantenha a página aberta e selecione **Tentar o mesmo envio**. O navegador repete os valores e o protocolo da primeira tentativa. O servidor vincula o protocolo ao operador, dispositivo, oficina e versão do formulário. O banco revalida o acesso, usa a mesma transação de inspeção do aplicativo, devolve o comprovante anterior em retentativas idênticas e mantém intactos os rascunhos legados. O envio web aparece no histórico do projeto com autoria operacional e origem web.
 
 ## Validação e piloto
 
 A suíte `rm-mobile-supabase/tests/online_operation_reads.sql` usa BMA, BRJ e BBH em banco descartável. Verifica acessos recíprocos, vínculos de célula, registros não classificados, contexto inválido, revogação e execução restrita ao servidor. As três oficinas têm identidades e registros próprios no teste. A conferência de Acessos em produção encontrou BMA ativa, BRJ e BBH inativas e zero vínculos de dispositivo ou operador. Para homologar com uma conta real, cadastrar o par autorizado na BMA e verificar acesso, células e projetos com essa conta.
 
-Os próximos incrementos são os registros online de formulários e fotos e a homologação com a equipe. Cada envio terá confirmação do servidor e revalidação de autoria, oficina, célula e projeto. A expansão para BRJ e BBH depende dos vínculos reais, da classificação do acervo e do aceite multi-oficina, incluindo o isolamento dos acessos legados que usam essas identidades. [Publicação e evidências](web-platform.md#em-operacional-web--entrada-e-consultas-por-oficina).
+O próximo incremento é o registro de fotos obrigatórias e complementares. A expansão da escrita para BRJ e BBH depende dos vínculos reais, da classificação do acervo e da homologação da fila de revisão por oficina. [Publicação e evidências](web-platform.md#em-operacional-web--entrada-e-consultas-por-oficina).

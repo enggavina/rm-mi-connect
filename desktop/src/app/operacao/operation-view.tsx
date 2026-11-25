@@ -1,9 +1,11 @@
 import type { OperationData } from '@/server/operation/policy';
 import type { OperationResult } from '@/server/operation/service';
 import { templateSections } from '@/components/web/form-template-model';
+import { canFillOnline } from '@/shared/online-form';
 import { Icon } from '@/components/web/icons';
 import { Details, Empty, PageHeading, Pagination, Status } from '@/components/web/ui';
 import { OperationBack, OperationScreen, operationIssue, projectTitle, type OperationRoute } from './operation-screen';
+import { OperationFormEditor } from './operation-form-editor';
 import styles from './operation.module.css';
 
 export function operationPageNumber(page?: string | string[]) {
@@ -81,14 +83,17 @@ function OperationProject({ data, base }: { data: Extract<OperationData, { kind:
   </>;
 }
 
-function OperationForm({ data, base }: { data: Extract<OperationData, { kind: 'form' }>; base: OperationRoute }) {
+function OperationForm({ data, base, proof }: { data: Extract<OperationData, { kind: 'form' }>; base: OperationRoute; proof?: string }) {
   const { cell, project, form, questions } = data;
+  const projectPath = `${base}/celulas/${cell.id}/projetos/${project.id}`;
+  const canEdit = base === '/operacao' && proof && canFillOnline(questions);
   const sections = templateSections(questions);
   return <>
-    <OperationBack href={`${base}/celulas/${cell.id}/projetos/${project.id}`}>Voltar ao projeto</OperationBack>
+    <OperationBack href={projectPath}>Voltar ao projeto</OperationBack>
     <PageHeading eyebrow={`${cell.nome} · ${projectTitle(project)}`}
       title={form.titulo || 'Formulário sem título'} description={form.descricao ?? undefined} />
-    <p className={styles.readOnly}>Somente leitura</p>
+    {canEdit ? <OperationFormEditor data={data} endpoint={`${projectPath}/formularios/${form.id}/enviar`} proof={proof} /> : <>
+    <p className={styles.readOnly}>{proof && questions.length ? 'Para preencher este modelo, use o app mobile.' : 'Somente leitura'}</p>
     {sections.length ? <div className={styles.sections}>
       {sections.map(section => <details key={section.id} className={`panel ${styles.section}`}>
         <summary>{section.title}</summary>
@@ -109,6 +114,7 @@ function OperationForm({ data, base }: { data: Extract<OperationData, { kind: 'f
     </div> : <section className="panel">
       <Empty icon="clipboard" title="Formulário sem perguntas" />
     </section>}
+    </>}
   </>;
 }
 
@@ -120,6 +126,6 @@ export function OperationView({ result, kind, base = '/operacao' }: { result: Op
     {data.kind === 'cells' && <OperationCells items={data.items} base={base} />}
     {data.kind === 'projects' && <OperationProjects data={data} base={base} />}
     {data.kind === 'project' && <OperationProject data={data} base={base} />}
-    {data.kind === 'form' && <OperationForm data={data} base={base} />}
+    {data.kind === 'form' && <OperationForm data={data} base={base} proof={result.submissionProof} />}
   </OperationScreen>;
 }

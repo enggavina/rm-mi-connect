@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fixedOriginPost, SSO_HEADERS } from '../../app/auth/sso/handlers';
+import { onlineFormSubmission, type OnlineFormSubmission } from '../../shared/online-form';
 import { WorkshopContextError } from '../web/workshop-context';
-import { OPERATION_COOKIE, operationCookieOptions, readOperationCredentials } from './policy';
+import { OPERATION_COOKIE, operationCookieOptions, readOperationCredentials, readOperationText, type OperationSelection } from './policy';
 import { operationService } from './session';
 
 function publicOrigin() {
@@ -51,4 +52,21 @@ export async function signOutOperation(request: Request, envelope?: string) {
   const response = go('/operacao/login', origin);
   response.cookies.set(OPERATION_COOKIE, '', operationCookieOptions(0));
   return response;
+}
+
+const submissionStatus = { ok: 200, session: 401, forbidden: 403, invalid: 422, changed: 412, conflict: 409, unavailable: 503 };
+
+export async function submitOperationForm(request: Request, envelope: string | undefined, selection: OperationSelection) {
+  const origin = publicOrigin();
+  if (!origin || !fixedOriginPost(request, origin)) return denied();
+  if (!envelope) return NextResponse.json({ status: 'session' }, { status: 401, headers: SSO_HEADERS });
+  const body = await readOperationText(request, /^application\/json(?:\s*;|$)/i, 512_000);
+  let input: OnlineFormSubmission;
+  try {
+    input = onlineFormSubmission.parse(JSON.parse(body ?? 'null'));
+  } catch {
+    return NextResponse.json({ status: 'invalid' }, { status: 422, headers: SSO_HEADERS });
+  }
+  const result = await operationService.submitForm(envelope, selection, input);
+  return NextResponse.json(result, { status: submissionStatus[result.status], headers: SSO_HEADERS });
 }

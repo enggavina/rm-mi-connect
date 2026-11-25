@@ -49,6 +49,33 @@ exception when others then reset role; raise;
 end;
 $$;
 
+create function pg_temp.online_submit(n int, cell int, project int, form int, protocol int, version text, answers jsonb)
+returns jsonb language plpgsql as $$
+declare reply jsonb;
+begin
+  set local role service_role;
+  reply := public.rm_online_operation_submit_form_v1(pg_temp.online_id(10+n),pg_temp.online_id(20+n),repeat(n::text,64),
+    pg_temp.online_context(n),pg_temp.online_id(cell),pg_temp.online_id(project),pg_temp.online_id(form),
+    pg_temp.online_id(protocol),version,answers);
+  reset role;
+  return reply;
+exception when others then reset role; raise;
+end;
+$$;
+
+create function pg_temp.online_write_error(n int, cell int, project int, form int, protocol int, version text, answers jsonb, error_code text)
+returns void language plpgsql as $$
+begin
+  begin
+    perform pg_temp.online_submit(n,cell,project,form,protocol,version,answers);
+  exception when others then
+    if sqlstate=error_code then return; end if;
+    raise;
+  end;
+  raise exception 'FAIL: write unexpectedly accepted, expected %',error_code;
+end;
+$$;
+
 select rm_private.workshop_adopt_bma_roots_v1(
   '[{"id":"06110000-0000-4000-8000-000000000001","code":"BMA"},{"id":"06110000-0000-4000-8000-000000000002","code":"BRJ"},{"id":"06110000-0000-4000-8000-000000000003","code":"BBH"}]',
   'c45f1ff7d60b695cfa708041e959489b7e05a02ace4bcdce1ff16c8b80d14db2',
@@ -192,9 +219,117 @@ begin
 end;
 $$;
 
+insert into public.rm_questoes(id,form_id,indice,enunciado,tipo,subtipo,obrigatorio) values
+  (pg_temp.online_id(820),pg_temp.online_id(401),4,'Observação','texto_longo',null,true),
+  (pg_temp.online_id(821),pg_temp.online_id(401),4.5,'Potência','numero',null,true),
+  (pg_temp.online_id(822),pg_temp.online_id(401),5,'Chegada','data',null,true),
+  (pg_temp.online_id(823),pg_temp.online_id(401),6,'Período','data','intervalo_de_datas',true),
+  (pg_temp.online_id(824),pg_temp.online_id(401),7,'Opcionais','lista_multi_sele__o',null,false),
+  (pg_temp.online_id(825),pg_temp.online_id(401),8,'Foto de contexto','foto',null,false);
+insert into public.rm_itens_questoes(id,form_id,questao_id,indice,descricao) values
+  (pg_temp.online_id(826),pg_temp.online_id(401),pg_temp.online_id(824),1,'Mecânica'),
+  (pg_temp.online_id(827),pg_temp.online_id(401),pg_temp.online_id(824),2,'Elétrica');
+insert into public.rm_respostas_temp(id,projeto_id,form_id,questao_id,operador_user_id,resposta)
+  values(pg_temp.online_id(828),pg_temp.online_id(201),pg_temp.online_id(401),pg_temp.online_id(820),pg_temp.online_id(41),'Rascunho anterior');
+
+do $web_form$
+declare
+  selected jsonb; version text; retry jsonb; reply jsonb; payload jsonb; inspection_id uuid; current_version text;
+begin
+  selected := public.rm_online_operation_form_entry_v1(pg_temp.online_id(11),pg_temp.online_id(21),repeat('1',64),pg_temp.online_context(1),
+    pg_temp.online_id(101),pg_temp.online_id(201),pg_temp.online_id(401));
+  version := selected->'edition'->>'version';
+  perform pg_temp.online_check(version ~ '^[0-9a-f]{64}$' and selected->'edition'->'dateIntervals'=jsonb_build_array(pg_temp.online_id(823)),
+    'editable BMA form carries a version and exact interval metadata');
+  perform pg_temp.online_check(not (public.rm_online_operation_form_entry_v1(pg_temp.online_id(12),pg_temp.online_id(22),repeat('2',64),
+    pg_temp.online_context(2),pg_temp.online_id(102),pg_temp.online_id(202),pg_temp.online_id(405)) ? 'edition'),
+    'reader still works in other offices and never offers pilot submit there');
+  payload := jsonb_build_object(pg_temp.online_id(801)::text,jsonb_build_array(pg_temp.online_id(812)),
+    pg_temp.online_id(820)::text,'Inspeção concluída',pg_temp.online_id(821)::text,'25,5',
+    pg_temp.online_id(822)::text,jsonb_build_object('inicio','2026-11-24'),
+    pg_temp.online_id(823)::text,jsonb_build_object('inicio','2026-11-24','fim','2026-11-26'),
+    pg_temp.online_id(824)::text,jsonb_build_array(pg_temp.online_id(827),pg_temp.online_id(826)));
+
+  perform pg_temp.online_write_error(1,102,202,405,830,version,payload,'42501');
+  perform pg_temp.online_write_error(1,101,201,405,830,version,payload,'42501');
+  perform pg_temp.online_write_error(1,101,207,401,830,version,payload,'42501');
+  perform pg_temp.online_write_error(2,102,202,405,830,version,payload,'42501');
+  perform pg_temp.online_write_error(3,103,203,406,830,version,payload,'42501');
+  perform pg_temp.online_write_error(1,101,201,401,830,repeat('0',64),payload,'PT412');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,payload-pg_temp.online_id(820)::text,'22023');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,
+    payload||jsonb_build_object(pg_temp.online_id(825)::text,true),'PT422');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,
+    payload||jsonb_build_object(pg_temp.online_id(803)::text,'Outra oficina'),'22023');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,
+    payload||jsonb_build_object(pg_temp.online_id(801)::text,jsonb_build_array(pg_temp.online_id(813))),'22023');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,
+    payload||jsonb_build_object(pg_temp.online_id(821)::text,'vinte'),'22023');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,
+    payload||jsonb_build_object(pg_temp.online_id(822)::text,jsonb_build_object('inicio','2026-11-31')),'22008');
+  perform pg_temp.online_check(not exists(select 1 from public.rm_registros_formulario where client_submission_id=pg_temp.online_id(830)),
+    'all denied and invalid submissions are atomic');
+
+  reply := pg_temp.online_submit(1,101,201,401,830,version,payload);
+  inspection_id := (reply->>'registro_formulario_id')::uuid;
+  retry := pg_temp.online_submit(1,101,201,401,830,version,payload);
+  perform pg_temp.online_check(retry=reply||'{"idempotent_replay":true}'::jsonb
+    and reply->>'respostas_gravadas'='6' and (select count(*) from public.rm_registros_formulario where client_submission_id=pg_temp.online_id(830))=1,
+    'same request after lost response returns the same receipt and exactly one record');
+  perform pg_temp.online_write_error(1,101,201,401,830,version,payload||jsonb_build_object(pg_temp.online_id(820)::text,'outro'),'PT409');
+  perform pg_temp.online_check(exists(select 1 from public.rm_registros_formulario where id=inspection_id and status='em_an_lise'
+    and preenchido and identidade_user_id=pg_temp.online_id(41) and responsavel_user_id=pg_temp.online_id(41)
+    and created_by_user_id=pg_temp.online_id(31) and projeto_id=pg_temp.online_id(201)
+    and form_id=pg_temp.online_id(401) and celula_id=pg_temp.online_id(101)),
+    'review uses the shared record, project, device and operator attribution');
+  perform pg_temp.online_check(exists(select 1 from public.rm_respostas where registro_formulario_id=inspection_id
+    and questao_id=pg_temp.online_id(801) and enunciado='Condição visual' and itens=array['Conforme']
+    and resposta='Conforme' and itens_questoes_ids=array[pg_temp.online_id(812)])
+    and exists(select 1 from public.rm_respostas where registro_formulario_id=inspection_id
+      and questao_id=pg_temp.online_id(821) and resposta='25,5' and indice=4.5)
+    and exists(select 1 from public.rm_respostas where registro_formulario_id=inspection_id
+      and questao_id=pg_temp.online_id(823) and date_inicio='2026-11-24T03:00:00Z' and data_fim='2026-11-26T03:00:00Z')
+    and exists(select 1 from public.rm_respostas where registro_formulario_id=inspection_id
+      and questao_id=pg_temp.online_id(824) and itens=array['Mecânica','Elétrica']),
+    'portal receives template snapshots, fractional order, workshop dates and server choice labels');
+  perform pg_temp.online_check(exists(select 1 from public.rm_respostas_temp where id=pg_temp.online_id(828))
+    and not exists(select 1 from public.rm_sync_outbox where record_id=inspection_id and target_system='bubble_data_api'),
+    'online filing preserves legacy drafts and does not enqueue Bubble');
+  perform pg_temp.online_check(exists(select 1 from rm_private.project_audit_events_v1(pg_temp.online_id(201),'operations',array['forms'])
+    where entity_id=inspection_id and source='web' and action='form_submitted' and actor_id=pg_temp.online_id(41)),
+    'project activity records the operator and web origin');
+
+  update public.rm_questoes set enunciado='Observação revisada' where id=pg_temp.online_id(820);
+  perform pg_temp.online_write_error(1,101,201,401,831,version,payload,'PT412');
+  perform pg_temp.online_check(pg_temp.online_submit(1,101,201,401,830,version,payload)=retry,
+    'same completed protocol survives a later model change');
+  update public.rm_questoes set obrigatorio=true where id=pg_temp.online_id(825);
+  current_version := public.rm_online_operation_form_entry_v1(pg_temp.online_id(11),pg_temp.online_id(21),repeat('1',64),pg_temp.online_context(1),
+    pg_temp.online_id(101),pg_temp.online_id(201),pg_temp.online_id(401))->'edition'->>'version';
+  perform pg_temp.online_write_error(1,101,201,401,831,current_version,payload,'PT422');
+end;$web_form$;
+
+insert into auth.users(id) values(pg_temp.online_id(14));
+insert into auth.sessions(id,user_id) values(pg_temp.online_id(24),pg_temp.online_id(14));
+insert into public.rm_users(id,auth_user_id,nome,perfil)
+  values(pg_temp.online_id(34),pg_temp.online_id(14),'Supervisor local BMA','administrador');
+insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled,approved_by,approved_at)
+  values(pg_temp.online_id(840),'https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1',pg_temp.online_id(841),
+    pg_temp.online_id(34),pg_temp.online_id(14),true,pg_temp.online_id(34),clock_timestamp());
+select public.rm_sso_session_put_v1(repeat('8',64),pg_temp.online_id(840),pg_temp.online_id(24),
+  'opaque-local-review-session',clock_timestamp()+interval '30 minutes');
+select set_config('request.jwt.claim.sub',pg_temp.online_id(14)::text,true);
+select set_config('request.jwt.claims',jsonb_build_object('session_id',pg_temp.online_id(24),'aal','aal1')::text,true);
+set local role authenticated;
+select pg_temp.online_check(exists(select 1 from public.rm_registros_formulario r join public.rm_respostas a on a.registro_formulario_id=r.id
+  where r.client_submission_id=pg_temp.online_id(830) and r.status='em_an_lise' and a.resposta='Conforme'),
+  'authenticated review list and answer reads see the new inspection');
+reset role;
+
 update rm_private.operator_delegations set revoked=true where operator_id=pg_temp.online_id(41);
 select pg_temp.online_check(pg_temp.online_call(1) is null,'revoked operator grant is refused');
 select pg_temp.online_check(pg_temp.online_form(1,101,201,401) is null,'revoked operator cannot use a saved form link');
+select pg_temp.online_write_error(1,101,201,401,830,repeat('a',64),'{}','42501');
 update public.rm_users set status='inativo' where id=pg_temp.online_id(42);
 select pg_temp.online_check(pg_temp.online_call(2) is null,'inactive operator is refused');
 delete from auth.sessions where id=pg_temp.online_id(23);
@@ -210,6 +345,10 @@ select pg_temp.online_check(
   and not has_function_privilege('authenticated','public.rm_online_operation_form_read_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid)','EXECUTE')
   and has_function_privilege('service_role','public.rm_online_operation_form_read_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid)','EXECUTE')
   and not has_function_privilege('service_role','rm_private.online_operation_form_v1(jsonb,uuid)','EXECUTE')
+  and not has_function_privilege('anon','public.rm_online_operation_submit_form_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid,uuid,text,jsonb)','EXECUTE')
+  and not has_function_privilege('authenticated','public.rm_online_operation_submit_form_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid,uuid,text,jsonb)','EXECUTE')
+  and has_function_privilege('service_role','public.rm_online_operation_submit_form_v1(uuid,uuid,text,jsonb,uuid,uuid,uuid,uuid,text,jsonb)','EXECUTE')
+  and not has_function_privilege('service_role','rm_private.submit_form_inspection_core_v1(uuid,uuid,uuid,uuid,uuid,uuid,integer,jsonb,boolean)','EXECUTE')
   and not has_function_privilege('service_role','rm_private.online_workshop_context_v1(jsonb,uuid,uuid)','EXECUTE'),
   'only the trusted server may invoke the new online RPCs');
 

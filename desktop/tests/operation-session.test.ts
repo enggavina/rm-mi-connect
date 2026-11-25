@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createOperationService } from '../src/server/operation/service';
 import { openOperationSession, operationClaims, operationQuery, readOperationCredentials } from '../src/server/operation/policy';
 import { sealSso } from '../src/server/web/sso-crypto';
+import { onlineFormSubmission } from '../src/shared/online-form';
 import { CORPORATE_ISSUER } from '../src/server/web/sso-policy';
 import { EM_IDENTITY_ISSUER, WorkshopContextError, type WorkshopContext } from '../src/server/web/workshop-context';
 
@@ -54,6 +55,7 @@ function fixture(overrides: Partial<Parameters<typeof createOperationService>[0]
         p_workshop_context: exampleWorkshop, p_cell_id: null, p_project_id: null, p_page: 1 });
       return { data: { kind: 'cells', items: [{ id: cellId, nome: 'Ensaios' }] }, error: null };
     },
+    writeForm: async () => assert.fail('Unexpected form write'),
     signOut: async token => { calls.push('signOut'); assert.equal(token, accessToken); },
     ...overrides,
   });
@@ -165,6 +167,67 @@ test('operator form reads bind the model to the authenticated cell and project',
   }
   payload = null;
   assert.deepEqual(await service.load(envelope, selection), { status: 'missing' });
+});
+
+test('a form intent binds protocol, model, office and operator across exact retries', async () => {
+  const formId = id('8'), questionId = id('9'), version = 'a'.repeat(64);
+  const selection = { cellId, projectId, formId };
+  const data = {
+    kind: 'form', cell: { id: cellId, nome: 'Ensaios' },
+    project: { id: projectId, numero: '123', nome: null, status: null, descricao: null, cliente: null },
+    form: { id: formId, titulo: 'Conferência', descricao: null },
+    questions: [{ id: questionId, indice: '1', enunciado: 'Medida', subtitulo: null, tipo: 'numero', obrigatorio: true, items: [] }],
+    edition: { version, dateIntervals: [] },
+  };
+  let workshop = { ...exampleWorkshop, workshop: { ...exampleWorkshop.workshop, code: 'BMA' } };
+  let resultCode: string | null = 'PT503';
+  let currentOperator = operatorId;
+  const writes: Parameters<Parameters<typeof createOperationService>[0]['writeForm']>[0][] = [];
+  const { service } = fixture({
+    readData: async () => ({ data, error: null }),
+    readIdentity: async () => ({ data: { device_subject: userId, operator_subject: currentOperator,
+      operator_name: 'Operadora', expires_at: new Date(now + 2_000_000).toISOString() }, error: null }),
+    readWorkshop: async () => workshop,
+    writeForm: async args => {
+      writes.push(args);
+      return { data: resultCode ? null : { registro_formulario_id: id('a'), codigo_text: '0039' }, error: resultCode ? { code: resultCode } : null };
+    },
+  });
+  const { envelope } = await service.login(credentials);
+  const loaded = await service.load(envelope, selection);
+  assert.equal(loaded.status, 'ok');
+  if (loaded.status !== 'ok' || !loaded.submissionProof) return assert.fail('Missing form intent');
+  assert.ok(!loaded.submissionProof.includes(operatorId));
+  const input = onlineFormSubmission.parse({ proof: loaded.submissionProof, answers: { [questionId]: '25,5' } });
+  assert.deepEqual(await service.submitForm(undefined, selection, input), { status: 'session' });
+  assert.deepEqual(await service.submitForm(envelope, { ...selection, formId: deviceId }, input), { status: 'forbidden' });
+  assert.deepEqual(await service.submitForm(envelope, selection, { ...input, proof: envelope }), { status: 'forbidden' });
+  currentOperator = deviceId;
+  assert.deepEqual(await service.submitForm(envelope, selection, input), { status: 'forbidden' });
+  currentOperator = operatorId;
+  const originalWorkshop = workshop;
+  workshop = { ...originalWorkshop, workshop: { ...originalWorkshop.workshop, id: deviceId, code: 'BRJ' } };
+  assert.deepEqual(await service.submitForm(envelope, selection, input), { status: 'forbidden' });
+  assert.equal(writes.length, 0);
+  workshop = originalWorkshop;
+  assert.deepEqual(await service.submitForm(envelope, selection, input), { status: 'unavailable' });
+  resultCode = null;
+  assert.deepEqual(await service.submitForm(envelope, selection, input), { status: 'ok', code: '0039' });
+  assert.deepEqual(writes[0], writes[1]);
+  assert.equal(writes[0].p_version, version);
+  assert.equal(writes[0].p_form_id, formId);
+  assert.deepEqual(writes[0].p_answers, input.answers);
+});
+
+test('online submissions accept bounded answer values without authors, metadata or media URLs', () => {
+  const value = { proof: 'local proof', answers: { [id('a')]: { inicio: '2026-11-24', fim: '2026-11-25' },
+    [id('b')]: true, [id('c')]: [id('d')], [id('e')]: 'texto' } };
+  assert.equal(onlineFormSubmission.safeParse(value).success, true);
+  for (const invalid of [{ ...value, operator: operatorId }, { ...value, answers: {} },
+    { ...value, answers: { [id('a')]: { assinatura_url: 'https://example.invalid' } } },
+    { ...value, answers: { [id('b')]: false } }, { ...value, answers: { [id('e')]: 'x'.repeat(4001) } }]) {
+    assert.equal(onlineFormSubmission.safeParse(invalid).success, false);
+  }
 });
 
 test('login form refuses ambiguous fields, an office supplied by the browser, and oversized bodies', async () => {

@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import type { OnlineFormSubmission } from '../../shared/online-form';
+import { openSso, sealSso } from '../web/sso-crypto';
 import { WorkshopContextError, type ExpectedWorkshopIdentity, type WorkshopContext } from '../web/workshop-context';
-import { openOperationSession, operationClaims, operationData, operationQuery, operatorToken, sealOperationSession,
+import { formVersion, openOperationSession, operationClaims, operationData, operationQuery, operatorToken, sealOperationSession,
   type OperationCredentials, type OperationData, type OperationSelection, type OperationSession } from './policy';
 
 type Reply = { data: unknown; error: { code?: string; status?: number } | null };
@@ -15,6 +18,8 @@ type OperationDeps = {
     { p_cell_id: string | null; p_project_id: string | null; p_page: number } |
     { p_cell_id: string; p_project_id: string; p_form_id: string }
   )) => Promise<Reply>;
+  writeForm: (args: IdentityParams & { p_workshop_context: WorkshopContext; p_cell_id: string; p_project_id: string;
+    p_form_id: string; p_protocol: string; p_version: string; p_answers: OnlineFormSubmission['answers'] }) => Promise<Reply>;
   signOut: (token: string) => Promise<void>;
   now?: () => number;
   cookieKey?: string;
@@ -22,7 +27,13 @@ type OperationDeps = {
 type IdentityParams = { p_auth_user_id: string; p_session_id: string; p_operator_token: string };
 export type OperationResult =
   | { status: 'session' | 'forbidden' | 'unavailable' | 'missing' }
-  | { status: 'ok'; workshop: { name: string; code: string }; operatorName: string; data: OperationData };
+  | { status: 'ok'; workshop: { name: string; code: string }; operatorName: string; data: OperationData; submissionProof?: string };
+export type FormSubmissionResult =
+  | { status: 'session' | 'forbidden' | 'invalid' | 'changed' | 'conflict' | 'unavailable' }
+  | { status: 'ok'; code: string };
+const formScope = z.object({ device: z.uuid(), operator: z.uuid(), office: z.uuid(), cell: z.uuid(), project: z.uuid(),
+  form: z.uuid(), version: formVersion, protocol: z.uuid() }).strict();
+const receipt = z.object({ registro_formulario_id: z.uuid(), codigo_text: z.string().regex(/^\d{1,12}$/) });
 const loginIdentity = z.object({ authenticated: z.literal(true), operator_token: operatorToken });
 const operatorIdentity = z.object({
   device_subject: z.string().uuid(), operator_subject: z.string().uuid(),
@@ -61,7 +72,7 @@ export function createOperationService(deps: OperationDeps) {
       channel: 'mobile', deviceSubject: parsed.device_subject, operatorSubject: parsed.operator_subject,
     }, expiresAt);
     if (expiresAt <= now()) throw invalid();
-    return { workshop, args, operatorName: parsed.operator_name, expiresAt };
+    return { workshop, args, operator: parsed.operator_subject, operatorName: parsed.operator_name, expiresAt };
   }
 
   return {
@@ -102,8 +113,51 @@ export function createOperationService(deps: OperationDeps) {
           ? new WorkshopContextError('WORKSHOP_FORBIDDEN') : identityError(reply.error.code);
         const data = operationData(reply.data, query);
         if (!data) return { status: 'missing' };
+        const submissionProof = data.kind === 'form' && data.edition && workshop.workshop.code === 'BMA'
+          ? sealSso(formScope.parse({ device: claims.authUserId, operator: access.operator, office: workshop.workshop.id,
+            cell: data.cell.id, project: data.project.id, form: data.form.id, version: data.edition.version, protocol: randomUUID() }),
+          'operation-form', deps.cookieKey)
+          : undefined;
         return { status: 'ok', workshop: { name: workshop.workshop.name, code: workshop.workshop.code },
-          operatorName: access.operatorName, data };
+          operatorName: access.operatorName, data, ...(submissionProof && { submissionProof }) };
+      } catch (error) {
+        if (error instanceof WorkshopContextError) {
+          if (error.status === 401) return { status: 'session' };
+          if (error.status === 403) return { status: 'forbidden' };
+        }
+        return { status: 'unavailable' };
+      }
+    },
+    async submitForm(envelope: string | undefined, selection: OperationSelection, input: OnlineFormSubmission): Promise<FormSubmissionResult> {
+      const saved = openOperationSession(envelope, now(), deps.cookieKey);
+      if (!saved) return { status: 'session' };
+      const query = operationQuery(selection);
+      if (!query?.formId) return { status: 'invalid' };
+      let scope: z.infer<typeof formScope>;
+      try {
+        scope = formScope.parse(openSso(input.proof, 'operation-form', deps.cookieKey));
+      } catch {
+        return { status: 'forbidden' };
+      }
+      if (scope.cell !== query.cellId || scope.project !== query.projectId || scope.form !== query.formId) {
+        return { status: 'forbidden' };
+      }
+      try {
+        const claims = await verifiedClaims(saved.token);
+        const access = await authority(claims, saved.operatorToken, saved.expiresAt);
+        if (scope.device !== claims.authUserId || scope.operator !== access.operator
+          || scope.office !== access.workshop.workshop.id || access.workshop.workshop.code !== 'BMA') return { status: 'forbidden' };
+        const result = await deps.writeForm({ ...access.args, p_workshop_context: access.workshop, p_cell_id: scope.cell,
+          p_project_id: scope.project, p_form_id: scope.form, p_protocol: scope.protocol, p_version: scope.version, p_answers: input.answers });
+        if (!result.error) return { status: 'ok', code: receipt.parse(result.data).codigo_text };
+        switch (result.error.code) {
+          case '28000': return { status: 'session' };
+          case '42501': case 'PT403': case 'PT410': return { status: 'forbidden' };
+          case 'PT412': return { status: 'changed' };
+          case 'PT409': return { status: 'conflict' };
+          case '22023': case '22007': case '22008': case 'PT422': return { status: 'invalid' };
+          default: return { status: 'unavailable' };
+        }
       } catch (error) {
         if (error instanceof WorkshopContextError) {
           if (error.status === 401) return { status: 'session' };
