@@ -1,38 +1,57 @@
 import { z } from 'zod';
-import { openSso, sealSso } from '../web/sso-crypto';
+import { openSso, sealSso, type SsoPurpose } from '../web/sso-crypto';
 import { EM_IDENTITY_ISSUER } from '../web/workshop-context';
 
 export const OPERATION_COOKIE = 'em-operation-session';
+export const OPERATION_DEVICE_COOKIE = 'em-operation-device';
 export const OPERATION_PATH = '/operacao';
+export const OPERATION_LOGIN_PATH = '/operacao/login';
 const MAX_COOKIE_BYTES = 3_800;
 const MAX_REQUEST_BYTES = 8_192;
 const id = z.string().uuid();
 const token = z.string().max(2_800).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 export const operatorToken = z.string().regex(/^[0-9a-f]{64}$/);
 const expiry = z.number().int().positive();
-const session = z.object({ token, operatorToken, expiresAt: expiry }).strict();
+const deviceSession = z.object({ token, expiresAt: expiry }).strict();
+const session = deviceSession.extend({ operatorToken });
 export type OperationSession = z.infer<typeof session>;
 const claimsSchema = z.object({
   iss: z.literal(EM_IDENTITY_ISSUER), sub: id, session_id: id, exp: expiry,
   aud: z.literal('authenticated'), role: z.literal('authenticated'), aal: z.string().optional(),
 });
 
-export function operationCookieOptions(maxAge: number) {
-  return { path: OPERATION_PATH, maxAge, httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production' };
+export function operationCookieOptions(maxAge: number, path = OPERATION_PATH) {
+  return { path, maxAge, httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production' };
 }
 
-export function sealOperationSession(value: OperationSession, key?: string): string {
-  const envelope = sealSso(session.parse(value), 'operation', key);
+function sealCookie(value: unknown, purpose: SsoPurpose, key?: string) {
+  const envelope = sealSso(value, purpose, key);
   if (Buffer.byteLength(envelope) > MAX_COOKIE_BYTES) throw new Error('Sessão excede o limite do navegador.');
   return envelope;
 }
 
-export function openOperationSession(value: unknown, now = Date.now(), key?: string): OperationSession | null {
+function openCookie<T extends { expiresAt: number }>(value: unknown, schema: z.ZodType<T>, purpose: SsoPurpose, now: number, key?: string): T | null {
   if (typeof value !== 'string' || Buffer.byteLength(value) > MAX_COOKIE_BYTES) return null;
   try {
-    const result = session.safeParse(openSso(value, 'operation', key));
+    const result = schema.safeParse(openSso(value, purpose, key));
     return result.success && result.data.expiresAt > now ? result.data : null;
   } catch { return null; }
+}
+
+export function sealOperationSession(value: OperationSession, key?: string) {
+  return sealCookie(session.parse(value), 'operation', key);
+}
+
+export function openOperationSession(value: unknown, now = Date.now(), key?: string) {
+  return openCookie(value, session, 'operation', now, key);
+}
+
+export function sealDeviceLogin(value: z.infer<typeof deviceSession>, key?: string) {
+  return sealCookie(deviceSession.parse(value), 'operation-device', key);
+}
+
+export function openDeviceLogin(value: unknown, now = Date.now(), key?: string) {
+  return openCookie(value, deviceSession, 'operation-device', now, key);
 }
 
 /** Call only after Supabase Auth has verified this exact JWT. */
@@ -46,10 +65,15 @@ export function operationClaims(value: string, userId: string, now = Date.now())
   } catch { return null; }
 }
 
-const credentials = z.object({
+const deviceCredentials = z.object({
   email: z.string().trim().max(254).email(), password: z.string().min(1).max(1024),
+}).strict();
+const operatorCredentials = z.object({
   matricula: z.string().trim().min(1).max(80), palavra_chave: z.string().min(1).max(256),
 }).strict();
+const credentials = deviceCredentials.extend(operatorCredentials.shape);
+export type DeviceCredentials = z.infer<typeof deviceCredentials>;
+export type OperatorCredentials = z.infer<typeof operatorCredentials>;
 export type OperationCredentials = z.infer<typeof credentials>;
 
 export async function readOperationText(request: Request, type: RegExp, maxBytes: number): Promise<string | null> {
@@ -72,14 +96,22 @@ export async function readOperationText(request: Request, type: RegExp, maxBytes
   finally { void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-export async function readOperationCredentials(request: Request): Promise<OperationCredentials | null> {
+async function readCredentials<T>(request: Request, schema: z.ZodType<T>): Promise<T | null> {
   const body = await readOperationText(request, /^application\/x-www-form-urlencoded(?:\s*;|$)/i, MAX_REQUEST_BYTES);
   if (body === null) return null;
   const params = new URLSearchParams(body);
   const fields = [...params.keys()];
-  if (fields.length !== 4 || new Set(fields).size !== 4) return null;
-  const result = credentials.safeParse(Object.fromEntries(params));
+  if (new Set(fields).size !== fields.length) return null;
+  const result = schema.safeParse(Object.fromEntries(params));
   return result.success ? result.data : null;
+}
+
+export function readOperationCredentials(request: Request) {
+  return readCredentials(request, z.union([deviceCredentials, credentials]));
+}
+
+export function readOperatorCredentials(request: Request) {
+  return readCredentials(request, operatorCredentials);
 }
 
 const cell = z.object({ id, nome: z.string() }).strict();

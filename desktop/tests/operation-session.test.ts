@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOperationService } from '../src/server/operation/service';
-import { openOperationSession, operationClaims, operationQuery, readOperationCredentials } from '../src/server/operation/policy';
+import { openDeviceLogin, openOperationSession, operationClaims, operationQuery, readOperationCredentials,
+  readOperatorCredentials } from '../src/server/operation/policy';
 import { sealSso } from '../src/server/web/sso-crypto';
 import { onlineFormSubmission } from '../src/shared/online-form';
 import { CORPORATE_ISSUER } from '../src/server/web/sso-policy';
@@ -86,6 +87,48 @@ test('revoked or unavailable Central context never uses a previous office or cal
     const { envelope } = await service.login(credentials);
     assert.deepEqual(await service.load(envelope, {}), { status });
   }
+});
+
+test('the browser device step cannot read data and only operator identification opens the workshop', async () => {
+  const { service, calls } = fixture();
+  const pending = await service.beginDeviceLogin(credentials);
+  assert.equal(pending.maxAge, 300);
+  assert.equal(openDeviceLogin(pending.envelope, now, key)?.expiresAt, now + 300_000);
+  assert.equal(pending.envelope.includes(accessToken), false);
+  assert.deepEqual(await service.load(pending.envelope, {}), { status: 'session' });
+  assert.deepEqual(calls, ['signIn', 'verify']);
+
+  const complete = await service.identifyDeviceLogin(pending.envelope, credentials);
+  assert.equal(complete.status, 'ok');
+  if (complete.status !== 'ok') return;
+  assert.equal(complete.maxAge, 2000);
+  assert.deepEqual(calls, ['signIn', 'verify', 'verify', 'identify', 'identity', 'authority']);
+  assert.deepEqual(await service.identifyDeviceLogin(complete.envelope, credentials), { status: 'session' });
+  await service.cancelDeviceLogin(complete.envelope);
+  assert.equal((await service.load(complete.envelope, {})).status, 'ok');
+  assert.ok(!calls.includes('signOut'));
+});
+
+test('operator can retry a rejected password and a cancelled or expired device cannot continue', async () => {
+  let clock = now;
+  let cancelled = false;
+  let attempts = 0;
+  const { service } = fixture({
+    now: () => clock,
+    verify: async () => cancelled ? null : { id: userId, requiresMfa: false },
+    identify: async () => ({ data: ++attempts === 1 ? { authenticated: false } : { authenticated: true, operator_token: operatorToken }, error: null }),
+    signOut: async () => { cancelled = true; },
+  });
+  const pending = await service.beginDeviceLogin(credentials);
+  assert.deepEqual(await service.identifyDeviceLogin(pending.envelope, credentials), { status: 'invalid' });
+  assert.equal((await service.identifyDeviceLogin(pending.envelope, credentials)).status, 'ok');
+  const next = await service.beginDeviceLogin(credentials);
+  clock += 300_000;
+  assert.deepEqual(await service.identifyDeviceLogin(next.envelope, credentials), { status: 'session' });
+  const latest = await service.beginDeviceLogin(credentials);
+  await service.cancelDeviceLogin(latest.envelope);
+  assert.deepEqual(await service.identifyDeviceLogin(latest.envelope, credentials), { status: 'session' });
+  assert.equal(attempts, 2);
 });
 
 test('login denies a bad operator, revoked delegation and a tablet that requires MFA', async () => {
@@ -241,4 +284,21 @@ test('login form refuses ambiguous fields, an office supplied by the browser, an
   for (const body of [`${params}&email=other@example.invalid`, `${params}&office=BMA`, 'email=' + 'x'.repeat(9000)]) {
     assert.equal(await readOperationCredentials(request(body)), null);
   }
+});
+
+test('both browser login steps accept only their credential fields', async () => {
+  const { email, password, ...operator } = credentials;
+  const device = { email, password };
+  function request(data: Record<string, string>, extra = '') {
+    return new Request('https://example.invalid/operacao/login/identificar', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `${new URLSearchParams(data)}${extra}`,
+    });
+  }
+  assert.deepEqual(await readOperationCredentials(request(device)), device);
+  assert.deepEqual(await readOperatorCredentials(request(operator)), operator);
+  assert.equal(await readOperationCredentials(request(operator)), null);
+  assert.equal(await readOperatorCredentials(request(device)), null);
+  assert.equal(await readOperatorCredentials(request(credentials)), null);
+  assert.equal(await readOperatorCredentials(request(operator, '&matricula=outra')), null);
+  assert.equal(await readOperatorCredentials(request(operator, '&office=BMA')), null);
 });

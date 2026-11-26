@@ -141,11 +141,12 @@ a.card:hover { border-color: var(--red); }
   min-width: 0;
 }
 
-.formGroup + .formGroup { margin-top: 8px; }
 .formGroup legend { margin: 0 0 8px; padding: 0; font-size: 14px; font-weight: 650; }
 .formGroup input { min-height: 44px; font-size: 16px; }
 .formGroup label { font-size: 13px; }
 .loginSubmit { min-height: 44px; }
+.changeDevice { margin-top: 12px; }
+.changeDevice button { width: 100%; min-height: 44px; }
 
 @media (max-width: 480px) {
   .headerInner { min-height: 64px; }

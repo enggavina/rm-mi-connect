@@ -3,8 +3,9 @@ import { z } from 'zod';
 import type { OnlineFormSubmission } from '../../shared/online-form';
 import { openSso, sealSso } from '../web/sso-crypto';
 import { WorkshopContextError, type ExpectedWorkshopIdentity, type WorkshopContext } from '../web/workshop-context';
-import { formVersion, openOperationSession, operationClaims, operationData, operationQuery, operatorToken, sealOperationSession,
-  type OperationCredentials, type OperationData, type OperationSelection, type OperationSession } from './policy';
+import { formVersion, openDeviceLogin, openOperationSession, operationClaims, operationData, operationQuery, operatorToken,
+  sealDeviceLogin, sealOperationSession, type DeviceCredentials, type OperationCredentials, type OperatorCredentials,
+  type OperationData, type OperationSelection, type OperationSession } from './policy';
 
 type Reply = { data: unknown; error: { code?: string; status?: number } | null };
 type MobileIdentity = Extract<ExpectedWorkshopIdentity, { channel: 'mobile' }>;
@@ -40,6 +41,9 @@ const operatorIdentity = z.object({
   operator_name: z.string().min(1).max(250), expires_at: z.iso.datetime({ offset: true }),
 }).strict();
 const sessionLimit = 60 * 60_000;
+const deviceLoginLimit = 5 * 60_000;
+type LoginCookie = { envelope: string; maxAge: number };
+type OperatorLoginResult = ({ status: 'ok' } & LoginCookie) | { status: 'session' | 'invalid' | 'forbidden' | 'unavailable' };
 
 function identityError(code?: string) {
   return new WorkshopContextError(code === '42501' || code === '28000' || code === '28P01'
@@ -56,6 +60,17 @@ export function createOperationService(deps: OperationDeps) {
     const claims = operationClaims(token, user.id, now());
     if (!claims || (user.requiresMfa && claims.aal !== 'aal2')) throw invalid();
     return claims;
+  }
+
+  async function verifyDevice(input: DeviceCredentials) {
+    const token = await deps.signIn(input.email, input.password);
+    if (!token) throw invalid();
+    try {
+      return { token, claims: await verifiedClaims(token) };
+    } catch (error) {
+      await deps.signOut(token).catch(() => undefined);
+      throw error;
+    }
   }
 
   async function authority(claims: Awaited<ReturnType<typeof verifiedClaims>>, delegation: string, sessionExpiresAt: number) {
@@ -75,25 +90,60 @@ export function createOperationService(deps: OperationDeps) {
     return { workshop, args, operator: parsed.operator_subject, operatorName: parsed.operator_name, expiresAt };
   }
 
+  async function identifyOperator(token: string, claims: Awaited<ReturnType<typeof verifiedClaims>>, input: OperatorCredentials): Promise<LoginCookie> {
+    const reply = await deps.identify(token, input.matricula, input.palavra_chave);
+    if (reply.error) throw identityError(reply.error.code);
+    if (reply.data && typeof reply.data === 'object' && 'authenticated' in reply.data && reply.data.authenticated === false) throw invalid();
+    const identity = loginIdentity.parse(reply.data);
+    const { expiresAt } = await authority(claims, identity.operator_token, Math.min(claims.expiresAt, now() + sessionLimit));
+    return { envelope: sealOperationSession({ token, operatorToken: identity.operator_token, expiresAt }, deps.cookieKey),
+      maxAge: Math.max(0, Math.floor((expiresAt - now()) / 1000)) };
+  }
+
   return {
-    async login(input: OperationCredentials): Promise<{ envelope: string; maxAge: number }> {
-      const token = await deps.signIn(input.email, input.password);
-      if (!token) throw invalid();
+    async login(input: OperationCredentials): Promise<LoginCookie> {
+      const { token, claims } = await verifyDevice(input);
       try {
-        const claims = await verifiedClaims(token);
-        const reply = await deps.identify(token, input.matricula, input.palavra_chave);
-        if (reply.error) throw identityError(reply.error.code);
-        if (reply.data && typeof reply.data === 'object' && 'authenticated' in reply.data && reply.data.authenticated === false) throw invalid();
-        const identity = loginIdentity.parse(reply.data);
-        const { expiresAt } = await authority(claims, identity.operator_token, now() + sessionLimit);
-        return {
-          envelope: sealOperationSession({ token, operatorToken: identity.operator_token, expiresAt }, deps.cookieKey),
-          maxAge: Math.max(0, Math.floor((expiresAt - now()) / 1000)),
-        };
+        return await identifyOperator(token, claims, input);
       } catch (error) {
         await deps.signOut(token).catch(() => undefined);
         throw error;
       }
+    },
+    async beginDeviceLogin(input: DeviceCredentials): Promise<LoginCookie> {
+      const { token, claims } = await verifyDevice(input);
+      try {
+        const expiresAt = Math.min(claims.expiresAt, now() + deviceLoginLimit);
+        return { envelope: sealDeviceLogin({ token, expiresAt }, deps.cookieKey),
+          maxAge: Math.max(0, Math.floor((expiresAt - now()) / 1000)) };
+      } catch (error) {
+        await deps.signOut(token).catch(() => undefined);
+        throw error;
+      }
+    },
+    async identifyDeviceLogin(envelope: string | undefined, input: OperatorCredentials): Promise<OperatorLoginResult> {
+      const saved = openDeviceLogin(envelope, now(), deps.cookieKey);
+      if (!saved) return { status: 'session' };
+      let claims: Awaited<ReturnType<typeof verifiedClaims>>;
+      try {
+        claims = await verifiedClaims(saved.token);
+      } catch (error) {
+        return { status: error instanceof WorkshopContextError && error.status === 401 ? 'session' : 'unavailable' };
+      }
+      if (saved.expiresAt <= now()) return { status: 'session' };
+      try {
+        return { status: 'ok', ...await identifyOperator(saved.token, claims, input) };
+      } catch (error) {
+        if (error instanceof WorkshopContextError) {
+          if (error.status === 401) return { status: 'invalid' };
+          if (error.status === 403) return { status: 'forbidden' };
+        }
+        return { status: 'unavailable' };
+      }
+    },
+    async cancelDeviceLogin(envelope: string | undefined) {
+      const saved = openDeviceLogin(envelope, now(), deps.cookieKey);
+      if (saved) await deps.signOut(saved.token);
     },
     async load(envelope: string | undefined, selection: OperationSelection): Promise<OperationResult> {
       const saved = openOperationSession(envelope, now(), deps.cookieKey);

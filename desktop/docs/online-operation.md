@@ -4,7 +4,9 @@ O acesso em `/operacao` atende o operador no navegador pelo mesmo serviço Railw
 
 ## Identidade e oficina
 
-O navegador envia as credenciais ao servidor HTTPS do EM. Supabase Auth valida a conta do dispositivo, e o RPC de identificação do aplicativo valida a matrícula e a palavra-chave. O servidor guarda a sessão num cookie próprio, cifrado e `HttpOnly`, limitado ao caminho `/operacao`. A sessão dura até uma hora e também respeita as expirações do JWT e da delegação. Dispositivos com MFA configurado precisam satisfazer esse controle para entrar.
+O login segue as duas telas do Android. Primeiro, entre com o e-mail e a senha do dispositivo. Depois, informe a matrícula e a palavra-chave do operador. Supabase Auth valida o dispositivo, e o RPC de identificação do aplicativo valida o operador. Entre as telas, o navegador guarda um cookie cifrado, `HttpOnly`, limitado a `/operacao/login` e válido por até cinco minutos. **Trocar conta do dispositivo** cancela essa etapa e volta à primeira tela.
+
+A identificação do operador e a confirmação da oficina em Acessos dão início à sessão da operação. O cookie da sessão é cifrado, `HttpOnly` e limitado a `/operacao`. A sessão dura até uma hora e respeita as expirações do JWT e da delegação. Dispositivos com MFA configurado precisam satisfazer esse controle para entrar.
 
 A cada consulta, o servidor revalida a sessão e confirma a oficina em Acessos pelo par verificado. Na Central, cadastrar o **UUID do usuário em Supabase Auth** como identidade `device` e o **UUID do operador em `rm_users`** como identidade `operator`. Ambos devem estar vinculados à mesma oficina ativa. O EM usa o vínculo confirmado e orienta a regularização quando ele está ausente, revogado ou divergente.
 

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { fixedOriginPost, SSO_HEADERS } from '../../app/auth/sso/handlers';
 import { onlineFormSubmission, type OnlineFormSubmission } from '../../shared/online-form';
 import { WorkshopContextError } from '../web/workshop-context';
-import { OPERATION_COOKIE, operationCookieOptions, readOperationCredentials, readOperationText, type OperationSelection } from './policy';
+import { OPERATION_COOKIE, OPERATION_DEVICE_COOKIE, OPERATION_LOGIN_PATH, operationCookieOptions,
+  readOperationCredentials, readOperationText, readOperatorCredentials, type OperationSelection } from './policy';
 import { operationService } from './session';
 
 function publicOrigin() {
@@ -24,17 +25,35 @@ function denied() {
   return NextResponse.json({ error: 'Solicitação não autorizada.' }, { status: 403, headers: SSO_HEADERS });
 }
 
-export async function signInOperation(request: Request) {
+function setDeviceCookie(response: NextResponse, envelope = '', maxAge = 0) {
+  response.cookies.set(OPERATION_DEVICE_COOKIE, envelope, operationCookieOptions(maxAge, OPERATION_LOGIN_PATH));
+  return response;
+}
+
+function completeLogin(origin: string, { envelope, maxAge }: { envelope: string; maxAge: number }) {
+  const response = go('/operacao', origin);
+  response.cookies.set(OPERATION_COOKIE, envelope, operationCookieOptions(maxAge));
+  return setDeviceCookie(response);
+}
+
+export async function signInOperation(request: Request, previousDevice?: string) {
   const origin = publicOrigin();
   if (!origin) return go('/operacao/login?erro=unavailable');
   if (!fixedOriginPost(request, origin)) return denied();
   const input = await readOperationCredentials(request);
   if (!input) return go('/operacao/login?erro=invalid', origin);
   try {
-    const { envelope, maxAge } = await operationService.login(input);
-    const response = go('/operacao', origin);
-    response.cookies.set(OPERATION_COOKIE, envelope, operationCookieOptions(maxAge));
-    return response;
+    // An already open login page may still submit both sets of credentials during rollout.
+    if ('matricula' in input) {
+      const session = await operationService.login(input);
+      await operationService.cancelDeviceLogin(previousDevice).catch(() => undefined);
+      return completeLogin(origin, session);
+    }
+    const { envelope, maxAge } = await operationService.beginDeviceLogin(input);
+    await operationService.cancelDeviceLogin(previousDevice).catch(() => undefined);
+    const response = go('/operacao/login/operador', origin);
+    response.cookies.set(OPERATION_COOKIE, '', operationCookieOptions(0));
+    return setDeviceCookie(response, envelope, maxAge);
   } catch (error) {
     const code = error instanceof WorkshopContextError && error.status === 401 ? 'invalid'
       : error instanceof WorkshopContextError && error.status === 403 ? 'forbidden' : 'unavailable';
@@ -42,6 +61,26 @@ export async function signInOperation(request: Request) {
     response.cookies.set(OPERATION_COOKIE, '', operationCookieOptions(0));
     return response;
   }
+}
+
+export async function identifyOperation(request: Request, device?: string) {
+  const origin = publicOrigin();
+  if (!origin) return go('/operacao/login?erro=unavailable');
+  if (!fixedOriginPost(request, origin)) return denied();
+  const input = await readOperatorCredentials(request);
+  if (!input) return go('/operacao/login/operador?erro=invalid', origin);
+  const result = await operationService.identifyDeviceLogin(device, input);
+  if (result.status === 'session') return setDeviceCookie(go('/operacao/login?erro=session', origin));
+  if (result.status === 'ok') return completeLogin(origin, result);
+  return go(`/operacao/login/operador?erro=${result.status}`, origin);
+}
+
+export async function cancelOperationLogin(request: Request, device?: string) {
+  const origin = publicOrigin();
+  if (!origin) return go('/operacao/login?erro=unavailable');
+  if (!fixedOriginPost(request, origin)) return denied();
+  await operationService.cancelDeviceLogin(device).catch(() => undefined);
+  return setDeviceCookie(go('/operacao/login', origin));
 }
 
 export async function signOutOperation(request: Request, envelope?: string) {

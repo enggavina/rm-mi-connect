@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_ENVELOPE = 60_000;
-export type SsoPurpose = 'flow' | 'session' | 'operation' | 'operation-form';
+export type SsoPurpose = 'flow' | 'session' | 'operation' | 'operation-device' | 'operation-form';
 function encryptionKey(value = process.env.EM_SSO_ENCRYPTION_KEY): Buffer {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_+\/-]{43}=?$/.test(value)) throw new Error('Configuração de sessão corporativa indisponível.');
   const key = Buffer.from(value, 'base64url');
