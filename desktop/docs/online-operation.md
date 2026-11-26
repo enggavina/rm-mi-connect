@@ -30,6 +30,6 @@ Se a confirmação atrasar ou a conexão cair, mantenha a página aberta e selec
 
 ## Validação e piloto
 
-A suíte `rm-mobile-supabase/tests/online_operation_reads.sql` usa BMA, BRJ e BBH em banco descartável. Verifica acessos recíprocos, vínculos de célula, registros não classificados, contexto inválido, revogação e execução restrita ao servidor. As três oficinas têm identidades e registros próprios no teste. A conferência de Acessos em produção encontrou BMA ativa, BRJ e BBH inativas e zero vínculos de dispositivo ou operador. Para homologar com uma conta real, cadastrar o par autorizado na BMA e verificar acesso, células e projetos com essa conta.
+A suíte `rm-mobile-supabase/tests/online_operation_reads.sql` usa BMA, BRJ e BBH em banco descartável. Verifica acessos recíprocos, vínculos de célula, registros não classificados, contexto inválido, revogação e execução restrita ao servidor. As três oficinas têm identidades e registros próprios no teste. Em 26/11/2026, Acessos confirmou em produção o vínculo da conta Digital e do operador Igor Nascimento, matrícula `05`, à BMA ativa. Para homologar o envio, configurar a palavra-chave do operador, abrir um modelo compatível e conferir o registro em Formulários e aprovações.
 
 O próximo incremento é o registro de fotos obrigatórias e complementares. A expansão da escrita para BRJ e BBH depende dos vínculos reais, da classificação do acervo e da homologação da fila de revisão por oficina. [Publicação e evidências](web-platform.md#em-operacional-web--entrada-e-consultas-por-oficina).

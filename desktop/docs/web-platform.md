@@ -6,7 +6,9 @@ Publicado em **24/11/2026** para o piloto da BMA. O operador entra por senha, ab
 
 Migração **064** aplicada no Supabase `oficina-em-mi-off`. Railway **`77f4af70-7abd-4819-9045-203a685cdcfb`** com `SUCCESS`, consumidor `de89f5a82bc1ca2f98c9d7736f3c86db058d4662`. Passaram **664 testes web, 144 mobile, 63 suítes PostgreSQL, 20 cenários Chromium e 43 verificações públicas**. Retentativas concorrentes produziram um registro e um comprovante. A conferência em produção encontrou **76 de 80 vínculos de formulário compatíveis** no escopo consultado da BMA. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45527996065).
 
-Incremento em **3/4 marcos (75%)**. Implementação, testes e publicação concluídos. A homologação real depende do vínculo explícito do dispositivo e do operador da BMA na Central de Acessos e da conferência do registro pela equipe.
+Incremento em **3/4 marcos (75%)**. Implementação, testes e publicação concluídos. Em **26/11/2026**, os dois vínculos operacionais BMA foram registrados e verificados na Central. A homologação agora depende da palavra-chave do operador e da conferência do primeiro envio real pela equipe.
+
+**Vínculos operacionais BMA, 2/2 ativos (100%).** Conta de tablet Digital e operador Igor Nascimento, matrícula `05`. O cadastro autorizado foi aplicado em uma transação técnica com recibo imutável e dois eventos de auditoria, após ensaio com rollback. A regra de autoria técnica cobre somente o par aprovado nessa operação. A conferência posterior preservou os dois vínculos Microsoft e confirmou HTTP 200 no contrato de contexto, com as duas identidades e oficina BMA ativa.
 
 ## Consulta de formulários no EM Operacional
 
