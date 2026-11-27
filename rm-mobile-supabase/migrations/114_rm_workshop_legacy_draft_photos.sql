@@ -31,7 +31,10 @@ declare
  sources text:=rtrim(pg_get_viewdef('rm_private.workshop_archive_sources'::regclass),E';\r\n ');
  media text:=pg_get_functiondef('public.rm_mobile_workshop_media_v1(uuid,uuid,text,jsonb,text[])'::regprocedure);
  readiness text:=pg_get_functiondef('rm_private.workshop_legacy_media_readiness_v1(text)'::regprocedure);
- media_marker constant text:=$original$u.url like 'https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||p_auth_user_id::text||'/%'$original$;
+ media_marker constant text:=$original$  union all select u.url,'project_photo' from requested u join draft d on true
+   cross join lateral jsonb_array_elements(case when jsonb_typeof(d.payload->'fotos')='array' then d.payload->'fotos' else '[]'::jsonb end) f
+   where coalesce(f->>'uri',f#>>'{}')=u.url
+    and u.url like 'https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||p_auth_user_id::text||'/%'$original$;
  readiness_marker constant text:=$original$(strpos(d.payload::text,public_prefix)>0 or strpos(d.payload::text,authenticated_prefix)>0)$original$;
 begin
  if array_length(string_to_array(media,media_marker),1) is distinct from 2
@@ -42,8 +45,9 @@ begin
   union all
   select d.workshop_id,null::uuid,d.reference,encode(sha256(convert_to(d.reference,'UTF8')),'hex'),'em'
    from rm_private.workshop_legacy_draft_photos d$draft$;
- execute replace(media,media_marker,$allowed$exists(select 1 from rm_private.workshop_legacy_draft_photos l
-     where l.reference=u.url and l.auth_user_id=p_auth_user_id and l.operator_id=actor_id and l.workshop_id=office_id)$allowed$);
+ execute replace(media,media_marker,$allowed$  union all select u.url,'project_photo' from requested u
+   join rm_private.workshop_legacy_draft_photos l on l.reference=u.url
+   where l.auth_user_id=p_auth_user_id and l.operator_id=actor_id and l.workshop_id=office_id$allowed$);
  execute replace(readiness,readiness_marker,$pending$exists(
    select 1 from jsonb_path_query(d.payload,'strict $.** ? (@.type() == "string")') part
    cross join lateral (select part#>>'{}' reference) value
