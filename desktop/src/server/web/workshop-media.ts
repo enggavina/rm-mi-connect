@@ -6,7 +6,7 @@ export const workshopMediaMatch = z.object({ url: z.string().max(2048),
 
 const uuidSegment = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
 const nativePath = new RegExp(`^mobile-oficina/${uuidSegment}/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
-const archivePath = new RegExp(`^acervo-oficina/(${uuidSegment})/[a-f0-9]{64}\\.(jpg|png|pdf|webp|heic|heif)$`);
+const archivePath = new RegExp(`^acervo-oficina/(${uuidSegment})/[a-f0-9]{64}\\.(jpg|png|pdf|webp|heic|heif|docx)$`);
 const nativePrefix = '/storage/v1/object/authenticated/rm-documentos/';
 export function isNativeWorkshopMediaPath(path: string) {
   return nativePath.test(path);

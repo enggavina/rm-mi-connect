@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { adminClient, required } from '../../desktop/src/server/config';
+import { isWordDocument } from '../../desktop/src/server/bridge/docx-document';
 import { inspectLegacyPdf, MAX_LEGACY_PDF_BYTES } from '../../desktop/src/server/bridge/pdf-document';
 import { resolveWorkshopArchive, resolveWorkshopMedia } from '../../desktop/src/server/web/workshop-media';
 
@@ -67,6 +68,7 @@ function contentType(bytes: Buffer) {
   if (bytes.subarray(0, 3).toString('hex') === 'ffd8ff') return { mime: 'image/jpeg', suffix: 'jpg' };
   if (bytes.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') return { mime: 'image/png', suffix: 'png' };
   if (bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') return { mime: 'image/webp', suffix: 'webp' };
+  if (isWordDocument(bytes)) return { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', suffix: 'docx' };
   if (bytes.length > 16 && bytes.subarray(4, 8).toString('ascii') === 'ftyp') {
     const size = bytes.readUInt32BE(0);
     if (size < 16 || size > bytes.length || size % 4 !== 0) throw new Error('INVALID_FORMAT');

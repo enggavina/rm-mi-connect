@@ -1058,6 +1058,27 @@ begin
  end loop;
 end
 $archive_restore$;
+do $archive_word$
+declare
+ item uuid:=em_fixture.id(1490);
+ office uuid:=em_fixture.id(1);
+ reference constant text:='https://fixtures.cdn.bubble.io/oficina-1-word.docx';
+ mime constant text:='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+ path text:='acervo-oficina/'||office||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.docx';
+begin
+ if not exists(select 1 from storage.buckets where id='rm-documentos' and not public and mime=any(allowed_mime_types)) then
+  raise exception 'O armazenamento privado não aceita o tipo Word histórico.';
+ end if;
+ insert into public.rm_docs(id,projeto_id,nome,arquivo_url) values(item,em_fixture.id(101),'Anexo Word do ensaio',reference);
+ insert into storage.objects(bucket_id,name,metadata,user_metadata) values('rm-documentos',path,
+  jsonb_build_object('size',123,'mimetype',mime),jsonb_build_object('sha256',repeat('a',64)));
+ if public.rm_confirm_workshop_archive_v1(office,reference,repeat('a',64),mime,123) is distinct from path
+  or pg_temp.workshop_restore_read(1,'document_link',jsonb_build_object('id',item,'source','docs'))->>'archive_path' is distinct from path
+  or pg_temp.workshop_restore_read(2,'document_link',jsonb_build_object('id',item,'source','docs')) is not null then
+  raise exception 'O anexo Word não manteve o caminho privado ou permitiu consulta entre oficinas.';
+ end if;
+end
+$archive_word$;
 do $gantt_cutover$
 declare
  pending_project uuid:=em_fixture.id(1290); pending_cell uuid:=em_fixture.id(1291);
@@ -1295,3 +1316,4 @@ select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invo
 select 'PASS: restored pristine receiving protocols retain their original revisions, payloads and office in four workshops' result;
 select 'PASS: exact legacy receiving receipts become visible only in the verified workshop inbox in four offices' result;
 select 'PASS: restored archive copies authorize photos, form answers and invoices only in the original workshop' result;
+select 'PASS: archived Word attachments use the same private read and reject a foreign workshop' result;

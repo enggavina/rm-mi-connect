@@ -22,6 +22,16 @@ function location(path) {
   return url.href;
 }
 
+function signedMedia(response) {
+  assert.equal(response.status(), 303);
+  const copy = new URL(response.headers().location);
+  assert.equal(copy.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
+  assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina)\//);
+  assert.equal(copy.searchParams.size, 1);
+  assert.ok(copy.searchParams.get('token'));
+  return copy;
+}
+
 async function authenticate(page, office) {
   await page.goto(location('/login'));
   process.stdout.write(`Entre com a conta de ${office.code} na janela aberta.\n`);
@@ -62,17 +72,24 @@ async function main() {
             assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
             await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
             const preview = await context.request.get(location(src), { maxRedirects: 0 });
-            if (preview.status() === 303) {
-              const copy = new URL(preview.headers().location);
-              assert.equal(copy.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
-              assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina)\//);
-              assert.ok(copy.searchParams.get('token'));
-            } else {
+            if (preview.status() === 303) signedMedia(preview);
+            else {
               assert.equal(preview.status(), 200);
               assert.match(preview.headers()['content-type'] ?? '', /^image\//);
               assert.equal(preview.headers().location, undefined);
             }
             await preview.dispose();
+          }
+          if (step.document) {
+            const link = await context.request.get(location(step.document), { maxRedirects: 0 });
+            const copy = signedMedia(link);
+            assert.match(copy.pathname, /\.docx$/);
+            await link.dispose();
+            const file = await context.request.get(copy.href, { maxRedirects: 0 });
+            assert.equal(file.status(), 200);
+            assert.match(file.headers()['content-type'] ?? '', /^application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document\b/);
+            assert.equal((await file.body()).subarray(0, 4).toString('hex'), '504b0304');
+            await file.dispose();
           }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);

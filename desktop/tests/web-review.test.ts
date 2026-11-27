@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { isWordDocument } from '../src/server/bridge/docx-document';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
 import { relayLegacyWorkshopImage, resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 import { workshopMediaUrl } from '../src/shared/workshop-media';
@@ -119,6 +120,19 @@ test('archive signing accepts only an authorized path and the exact signed priva
   assert.equal(await resolveWorkshopArchive(path.replace('.heic', '.svg'), origin, async () => assert.fail('invalid media')), null);
   assert.equal(await resolveWorkshopArchive(path, origin, async () => url.replace(workshop, foreign)), null);
   assert.equal(workshopMediaTarget(`${origin}/storage/v1/object/authenticated/rm-documentos/${path}`, origin, 'document'), null);
+  assert.equal(await resolveWorkshopArchive(path.replace('.heic', '.docx'), origin,
+    async () => url.replace('.heic', '.docx'), workshop), url.replace('.heic', '.docx'));
+});
+
+test('archive distinguishes a Word container from a generic, truncated or encrypted ZIP', () => {
+  const fixture = Buffer.from('UEsDBBQAAAAIAM5Ke13HHBc8CgAAAAgAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbLMJqSxILda3AwBQSwMEFAAAAAgAzkp7XV9b0UwNAAAACwAAABEAAAB3b3JkL2RvY3VtZW50LnhtbLNJyU8uzU3NK9G3AwBQSwECFAAUAAAACADOSntdxxwXPAoAAAAIAAAAEwAAAAAAAAAAAAAAgAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUABQAAAAIAM5Ke11fW9FMDQAAAAsAAAARAAAAAAAAAAAAAACAATsAAAB3b3JkL2RvY3VtZW50LnhtbFBLBQYAAAAAAgACAIAAAAB3AAAAAAA=', 'base64');
+  assert.equal(isWordDocument(fixture), true);
+  assert.equal(isWordDocument(fixture.subarray(0, fixture.length - 4)), false);
+  const generic = Buffer.from(fixture.toString('latin1').replaceAll('word/document.xml', 'none/document.xml'), 'latin1');
+  assert.equal(isWordDocument(generic), false);
+  const encrypted = Buffer.from(fixture);
+  encrypted.writeUInt16LE(1, 6);
+  assert.equal(isWordDocument(encrypted), false);
 });
 
 test('the legacy image relay rejects unsafe types, failed responses and over-limit bodies', async t => {
