@@ -2332,6 +2332,8 @@ do $retired_direct_tables$
 declare
  office integer;
  device uuid;
+ local_cell uuid;
+ draft_id uuid;
  draft_count bigint;
 begin
  if exists(select 1 from unnest(array['anon','authenticated']) r(role)
@@ -2350,10 +2352,12 @@ begin
  select count(*) into draft_count from public.rm_respostas_temp;
  for office in 1..4 loop
   device:=em_fixture.id(710+office);
+  local_cell:=em_fixture.id(200+office);
+  draft_id:=em_fixture.id(1520+office);
   perform set_config('request.jwt.claim.sub',device::text,true);
   perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
   set local role authenticated;
-  perform id from public.rm_celulas where id=em_fixture.id(200+office);
+  perform id from public.rm_celulas where id=local_cell;
   if not found then raise exception 'A consulta de células ainda suportada deixou de retornar dados.'; end if;
   begin
    perform id from public.rm_respostas_temp;
@@ -2361,7 +2365,7 @@ begin
   exception when insufficient_privilege then null;
   end;
   begin
-   insert into public.rm_respostas_temp(id) values(em_fixture.id(1520+office));
+   insert into public.rm_respostas_temp(id) values(draft_id);
    raise exception 'Um cliente conseguiu escrever pela tabela de rascunhos antigos.';
   exception when insufficient_privilege then null;
   end;
