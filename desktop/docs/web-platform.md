@@ -8,7 +8,9 @@ Os anexos publicados no espaço privado do dossiê exigem a conferência da publ
 
 Passaram 703 testes web, 16 verificações de navegador em duas oficinas e a matriz PostgreSQL em quatro oficinas antes e depois da restauração. O ensaio verificou correções, pastas, seleção de fotos, publicação e substituição de anexos, reenvio e recusa cruzada, incluindo referências indiretas para arquivos de outra unidade.
 
-Passaram 75 verificações da API e oito do Operacional Web em produção. Um operador real da BMA baixou um PDF histórico com tamanho e SHA-256 conferidos. No emulador Android, o documento apareceu no catálogo com e sem conexão e abriu no visualizador com conexão. O teste não confirmou a reabertura do arquivo offline. A conferência com uma sessão Microsoft real segue pendente. O roteiro usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-dossie.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+Passaram 75 verificações da API e oito do Operacional Web em produção. Um operador real da BMA baixou um PDF histórico com tamanho e SHA-256 conferidos. O APK 1.2.22 abriu o mesmo PDF com conexão, sem conexão e depois de sair e voltar ao catálogo sem rede. A primeira checagem perdeu a indicação de cache, que estava abaixo da área visível. O roteiro passou a procurar o controle do documento também após rolar a tela. Rode `python mobile/tests/workshop-document-offline.py .tmp/workshop-dossier-android-target.json --serial emulator-5560` com sessão aberta no emulador. [Teste Android](../../mobile/tests/workshop-document-offline.py).
+
+A conferência com uma sessão Microsoft real segue pendente. A matriz do dossiê usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-dossie.json`. O mesmo executor confere PDFs e arquivos Word por MIME, assinatura do formato e, quando informado, SHA-256. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
 
 ## P0.2 — Edições de projetos, equipamentos e células por oficina
 

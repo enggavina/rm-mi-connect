@@ -3,6 +3,7 @@
 // npm install --prefix .tmp/em-qa --no-save playwright
 // node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto.json
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
@@ -26,10 +27,43 @@ function signedMedia(response) {
   assert.equal(response.status(), 303);
   const copy = new URL(response.headers().location);
   assert.equal(copy.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
-  assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina)\//);
+  assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina|web-dossier)\//);
   assert.equal(copy.searchParams.size, 1);
   assert.ok(copy.searchParams.get('token'));
   return copy;
+}
+
+function receiptChecks(receipt, ownOffice) {
+  if (!receipt) return [];
+  const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+  assert.match(receipt.projectId, uuid);
+  assert.ok(typeof receipt.search === 'string' && receipt.search.trim().length > 0 && receipt.search.length <= 100);
+  assert.ok(['receiving', 'planning'].includes(receipt.phase));
+  const projectPath = `/projetos/${receipt.projectId}`;
+  const link = `a[href="${projectPath}"]`;
+  const q = new URLSearchParams({ q: receipt.search });
+  const steps = [{ path: `/projetos?${q}`, heading: 'Projetos', selector: link }];
+  if (receipt.phase === 'receiving') {
+    if (receipt.withoutOs) q.set('reason', 'without_number');
+    steps.unshift({ path: `/recebimentos?${q}`, heading: 'Recebimentos',
+      selector: receipt.withoutOs ? `${link}.table-title:text-is("Recebimento sem OS")` : link });
+  } else {
+    assert.match(receipt.cellId, uuid);
+    assert.match(receipt.allocationId, uuid);
+    assert.match(receipt.start, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(new Date(receipt.start).toISOString().slice(0, 10), receipt.start);
+    for (const [scope, extra] of [['general', {}], ['cell', { cell: receipt.cellId }], ['project', { project: receipt.projectId }]]) {
+      const filters = new URLSearchParams({ view: 'gantt', scope, start: receipt.start, ...extra });
+      if (scope !== 'project' && receipt.includeClosed) filters.set('closed', 'yes');
+      steps.push({ path: `/cronograma?${filters}`, heading: 'Cronograma',
+        selector: `[data-gantt-row="${receipt.allocationId}"]`, scope });
+    }
+  }
+  if (ownOffice) return steps;
+  return [{ path: projectPath, heading: '404', absentSelector: link }, ...steps.map(({ path, heading, selector, scope }) => {
+    const direct = scope === 'project' || scope === 'cell';
+    return { path, heading: direct ? '404' : heading, absentSelector: selector, searchOnly: !direct };
+  })];
 }
 
 async function authenticate(page, office) {
@@ -43,14 +77,17 @@ async function main() {
   try {
     for (const office of matrix.offices) {
       assert.match(office.code, /^[A-Z0-9_-]+$/);
-      assert.ok(Array.isArray(office.allowed) && office.allowed.length > 0);
+      assert.ok(Array.isArray(office.allowed));
       assert.ok(Array.isArray(office.denied));
+      const receipt = receiptChecks(office.receipt, true);
+      const otherReceipts = matrix.offices.filter(other => other !== office).flatMap(other => receiptChecks(other.receipt, false));
+      assert.ok(office.allowed.length + receipt.length > 0);
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       try {
         const page = await context.newPage();
         stepDescription = `${office.code} · autenticação Microsoft`;
         await authenticate(page, office);
-        for (const [index, step] of office.allowed.entries()) {
+        for (const [index, step] of [...office.allowed, ...receipt].entries()) {
           stepDescription = `${office.code} · consulta própria ${index + 1}`;
           const expected = location(step.path);
           const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
@@ -58,6 +95,11 @@ async function main() {
           assert.equal(response?.status(), 200);
           await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
           if (step.selector) await page.locator(step.selector).first().waitFor();
+          if (step.scope) {
+            await page.locator(step.selector).getByRole('button', { name: /Abrir datas/ }).waitFor();
+            await page.getByRole('navigation', { name: 'Escopo do Gantt' })
+              .locator(`a[href$="scope=${step.scope}"][aria-current="page"]`).waitFor();
+          }
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.image) {
@@ -81,26 +123,33 @@ async function main() {
             await preview.dispose();
           }
           if (step.document) {
-            const link = await context.request.get(location(step.document), { maxRedirects: 0 });
+            const doc = typeof step.document === 'string' ? { path: step.document, type: 'docx' } : step.document;
+            const mime = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf' }[doc.type];
+            assert.ok(mime, 'Tipo de documento não suportado na matriz.');
+            const link = await context.request.get(location(doc.path), { maxRedirects: 0 });
             const copy = signedMedia(link);
-            assert.match(copy.pathname, /\.docx$/);
+            assert.ok(copy.pathname.toLowerCase().endsWith(`.${doc.type}`));
             await link.dispose();
             const file = await context.request.get(copy.href, { maxRedirects: 0 });
             assert.equal(file.status(), 200);
-            assert.match(file.headers()['content-type'] ?? '', /^application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document\b/);
-            assert.equal((await file.body()).subarray(0, 4).toString('hex'), '504b0304');
+            assert.equal(file.headers()['content-type']?.split(';')[0], mime);
+            const body = await file.body();
+            const magic = doc.type === 'pdf' ? Buffer.from('%PDF-') : Buffer.from('504b0304', 'hex');
+            assert.deepEqual(body.subarray(0, magic.length), magic);
+            if (doc.sha256) assert.equal(createHash('sha256').update(body).digest('hex'), doc.sha256);
             await file.dispose();
           }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
         }
-        for (const [index, value] of office.denied.entries()) {
+        for (const [index, value] of [...office.denied, ...otherReceipts].entries()) {
           stepDescription = `${office.code} · consulta cruzada ${index + 1}`;
           const step = typeof value === 'string' ? { path: value } : value;
           const expected = location(step.path);
           const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
           assert.equal(page.url(), expected, 'A rota testada deve permanecer no endereço esperado.');
+          if (step.searchOnly) assert.equal(response?.status(), 200);
           if (response?.status() === 200 && step.heading) {
             // Next can emit the not-found view after sending the portal shell.
             await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
