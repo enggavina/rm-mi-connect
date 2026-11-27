@@ -430,4 +430,32 @@ begin
   'own cell planning keeps the identity and exact replay');
 end$$;
 select 'PASS: scoped cell allocations, foreign project, cell and form refusal, and exact retry' result;
+
+do $$
+declare
+ bma uuid:=pg_temp.project_read_id(1);
+ brj uuid:=pg_temp.project_read_id(2);
+ project uuid:=pg_temp.project_read_id(127);
+ allocation uuid:=pg_temp.project_read_id(504);
+ snapshot jsonb;
+ p jsonb;
+begin
+ set local role authenticated;
+ snapshot:=public.rm_web_project_route_snapshot_v1(project);
+ reset role;
+ p:=jsonb_build_object('projeto_id',project,'expected_project_updated_at',snapshot->'project'->>'updated_at',
+  'expected_route_version',snapshot->>'route_version','items',(select jsonb_agg(jsonb_build_object('id',i->>'id',
+   'expected_updated_at',i->>'updated_at') order by ordinality) from jsonb_array_elements(snapshot->'items') with ordinality x(i,ordinality)));
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''save_project_route'',%L,%L)',gen_random_uuid(),p,bma),'42501');
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''save_project_route'',%L,%L)',gen_random_uuid(),
+  jsonb_set(p,'{items,0,id}',to_jsonb(pg_temp.project_read_id(501))),brj),'42501');
+ perform pg_temp.project_read_check(pg_temp.workshop_gantt_save(gen_random_uuid(),'save_project_route',p,brj)->>'operation'='save_project_route',
+  'authorized project can confirm its own route');
+ p:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'action','forms',
+  'forms_ids',jsonb_build_array(pg_temp.project_read_id(601)));
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''manage_project_route_cell'',%L,%L)',gen_random_uuid(),p,brj),'42501');
+ p:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'form_id',pg_temp.project_read_id(601));
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''assign_form_reviewer'',%L,%L)',gen_random_uuid(),p,brj),'42501');
+end$$;
+select 'PASS: scoped route edits, reviewer model and foreign stage refusal' result;
 rollback;

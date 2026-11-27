@@ -24,7 +24,8 @@ export function rootWriteCapability(operation: string, payload: Record<string, u
 }
 
 export function isScopedPlanningWrite(operation: string): boolean {
-  return operation === 'save_gantt_plan' || operation === 'save_gantt_settings' || operation === 'plan_cell';
+  return ['save_gantt_plan', 'save_gantt_settings', 'plan_cell', 'save_project_route',
+    'manage_project_route_cell', 'assign_form_reviewer'].includes(operation);
 }
 
 /** Request objects, not serializable session fields, retain the verified bearer.

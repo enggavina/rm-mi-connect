@@ -14,6 +14,7 @@ const origin = new URL(matrix.origin);
 assert.equal(origin.href, origin.origin + '/');
 assert.ok(origin.protocol === 'https:' || (origin.protocol === 'http:' && origin.hostname === 'localhost'));
 assert.ok(Array.isArray(matrix.offices) && matrix.offices.length >= 1);
+let stepDescription = 'iniciar o navegador';
 
 function location(path) {
   const url = new URL(path, origin);
@@ -37,8 +38,10 @@ async function main() {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       try {
         const page = await context.newPage();
+        stepDescription = `${office.code} · autenticação Microsoft`;
         await authenticate(page, office);
         for (const [index, step] of office.allowed.entries()) {
+          stepDescription = `${office.code} · consulta própria ${index + 1}`;
           const expected = location(step.path);
           const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
           assert.equal(page.url(), expected, 'A navegação foi redirecionada.');
@@ -51,6 +54,7 @@ async function main() {
           process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
         }
         for (const [index, path] of office.denied.entries()) {
+          stepDescription = `${office.code} · consulta cruzada ${index + 1}`;
           const response = await page.goto(location(path), { waitUntil: 'domcontentloaded' });
           assert.ok([403, 404].includes(response?.status()), 'A consulta de outra unidade deve devolver 403 ou 404.');
           process.stdout.write(`PASS ${office.code} consulta cruzada ${index + 1}\n`);
@@ -65,6 +69,6 @@ async function main() {
 }
 
 main().catch(error => {
-  process.stderr.write(`Falha no roteiro de homologação: ${error.name}.\n`);
+  process.stderr.write(`Falha no roteiro de homologação em ${stepDescription} (${error.name}).\n`);
   process.exitCode = 1;
 });
