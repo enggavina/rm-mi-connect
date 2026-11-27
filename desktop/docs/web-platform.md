@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Gantt por oficina
+
+A migração **095** e o consumidor **`cd25695`** foram publicados no Railway **`5aac8524-ca7e-4b46-80c1-cdac4283b76a`**. O Gantt geral, por célula e por projeto usa a oficina atual determinada por Acessos. Datas, dependências, calendário e linha de base seguem a autorização da oficina e o perfil de planejamento. Alocar ou reorganizar etapas exige a origem confirmada do projeto e da célula. Recebimentos de clientes legados continuam visíveis no fluxo de conferência e podem ser alocados depois da classificação. [Gantt do EM](https://em-web-production.up.railway.app/cronograma?view=gantt) · [Contrato](../../rm-mobile-supabase/WEB_WORKSHOP_OPERATIONS.md).
+
+A virada preservou as **1.495 alocações** e encerrou o acesso autenticado às consultas antigas do Gantt. Foram comparadas **242 consultas** da BMA antes e depois, incluindo 182 projetos, 29 células em duas modalidades e o Gantt geral em duas modalidades. As datas conferiram e a visão geral manteve **810 etapas abertas**. A API recusou tanto o acesso antigo com o dispositivo autenticado quanto a consulta por oficina sem autorização corporativa. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45979814975).
+
+Passaram 694 testes web, a regressão PostgreSQL, oito cenários no Chromium com duas oficinas locais e o ensaio de quatro oficinas antes e depois da restauração. O ensaio percorreu recebimento Android, confirmação no portal, alocação, três visões do Gantt, gravação de datas, dependências, calendário e linha de base, reenvio e recusas cruzadas. Em produção, passaram 69 verificações de API e sete passos do Operacional Web. No Moto G84, o APK 1.2.22 abriu uma foto existente com e sem conexão. [Ensaio](../../rm-mobile-supabase/tests/run-local-tests.ps1).
+
+A confirmação visual do Gantt com uma sessão Microsoft real da BMA segue no aceite. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-gantt.json`. A matriz confere a renderização das três visões e inclui Recebimentos e os demais pontos do piloto. Projetos e Planejamento continuam com a ativação geral separada, assim como a exigência de origem nos clientes antigos. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 e P0.4 — Anexos privados do rascunho de recebimento
 
 A migração **094** e o consumidor **`474ad72`** foram publicados no Railway **`eb44fdef-95e8-424f-b9a2-ea9821f3c6d2`**. O APK 1.2.22 envia fotos e a nota fiscal por um caminho privado determinado pela oficina, pelo protocolo e pelo arquivo. A consulta do rascunho confere a conta do dispositivo e o operador originais. Ao concluir o recebimento, os mesmos arquivos são vinculados ao projeto na transação do registro. Se o equipamento foi recebido sem OS, o projeto aparece em Recebimentos assim que a abertura é confirmada. [Recebimentos](https://em-web-production.up.railway.app/recebimentos).
