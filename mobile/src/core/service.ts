@@ -10,6 +10,7 @@ import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIden
 import { applyOperatorContext } from './operator-policy';
 import { operatorWorkshopDenied, readWorkshopOperatorCells } from './operator-workshop';
 import { operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows, type CatalogCursor, type CatalogSession } from './catalog-workshop';
+import { sendWorkshopMutation } from './mutation-workshop';
 import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
@@ -28,6 +29,7 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const scopedReceiving = process.env.EXPO_PUBLIC_EM_SCOPED_RECEIVING === 'true';
 const scopedOperatorCells = process.env.EXPO_PUBLIC_EM_SCOPED_OPERATOR_CELLS === 'true';
 const scopedCatalog = scopedOperatorCells && process.env.EXPO_PUBLIC_EM_SCOPED_CATALOG === 'true';
+const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTATIONS === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -792,6 +794,14 @@ class MobileService {
   }
 
   private async sendMutation(row: OutboxRow, params: Record<string, unknown>, token: string) {
+    if (scopedMutations && row.rpc_name !== 'rm_submit_recebimento_v1') {
+      const { data, error } = await this.supabase().auth.getSession();
+      if (error || !data.session || data.session.user.id !== this.snapshot.sessionUserId) {
+        throw new Error('Renove a sessão original do dispositivo. O registro permanece na fila.');
+      }
+      return sendWorkshopMutation({ deviceToken: data.session.access_token, operatorToken: token,
+        submission: row.id, operation: row.rpc_name, payload: params });
+    }
     const { data, error } = await this.supabase().rpc('rm_mobile_mutate_v1', {
       p_client_submission_id: row.id, p_rpc_name: row.rpc_name, p_params: params, p_operator_token: token,
     });

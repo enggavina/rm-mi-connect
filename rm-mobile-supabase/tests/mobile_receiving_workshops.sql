@@ -173,4 +173,42 @@ begin
  perform pg_temp.rx_check(pg_temp.rx_catalog(1,'rm_cadastro_fotos')->'rows'='[]'::jsonb,'unowned legacy photo title dictionary is not synced');
 end$$;
 select 'PASS: native related catalog, actors, media and historical workshop boundaries' result;
+
+create function pg_temp.rx_mutation(rid uuid,op text,p jsonb,office int default 1,actual jsonb default null) returns jsonb language plpgsql as $$
+declare result jsonb;
+begin
+ perform public.rm_authorize_mobile_workshop_mutation_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),rid,op,p);
+ set local role authenticated;
+ result:=public.rm_mobile_workshop_mutate_v1(rid,op,coalesce(actual,p),repeat('6',64));
+ reset role;
+ return result;
+exception when others then reset role;raise;
+end$$;
+
+insert into public.rm_celulas(id,nome) values(pg_temp.rx_id(801),'LOCAL BMA'),(pg_temp.rx_id(802),'LOCAL BRJ');
+insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(pg_temp.rx_id(801),pg_temp.rx_id(1)),(pg_temp.rx_id(802),pg_temp.rx_id(2));
+insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(pg_temp.rx_id(801),pg_temp.rx_id(14));
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
+ select pg_temp.rx_id(811),project_id,pg_temp.rx_id(801),true
+ from rm_private.receiving_openings where client_submission_id=pg_temp.rx_id(31);
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
+ values(pg_temp.rx_id(812),pg_temp.rx_id(779),pg_temp.rx_id(802),true);
+do $$
+declare rid uuid:=gen_random_uuid(); op text:='rm_add_cell_comment_v1'; p jsonb; result jsonb;
+begin
+ p:=jsonb_build_object('p_celula_projeto_id',pg_temp.rx_id(811),'p_comentario','LOCAL authorized offline comment',
+  'p_operador_id',pg_temp.rx_id(14));
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_workshop_mutate_v1(%L,%L,%L,repeat(''6'',64))',rid,op,p),'42501');
+ reset role;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L,2)',rid,op,p),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L,1,%L)',rid,op,p,jsonb_set(p,'{p_comentario}','"LOCAL changed"')),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L,1)',gen_random_uuid(),op,
+  jsonb_set(p,'{p_celula_projeto_id}',to_jsonb(pg_temp.rx_id(812)))),'42501');
+ result:=pg_temp.rx_mutation(rid,op,p);
+ perform pg_temp.rx_check(result is not null and (pg_temp.rx_mutation(rid,op,p)->>'idempotent_replay')::boolean
+  and (select count(*)=1 from public.rm_comentarios where evento='LOCAL authorized offline comment'
+   and cadastrado_por_id=pg_temp.rx_id(14)),'offline protocol returns one registered comment with the original author');
+end$$;
+select 'PASS: native queued mutation preserves author, exact payload and retry and refuses another workshop' result;
 rollback;

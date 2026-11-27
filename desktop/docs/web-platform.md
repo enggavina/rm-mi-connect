@@ -1,5 +1,17 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — sincronização dos catálogos relacionados do Android
+
+A migração **082** e o Railway **`65233573-abbb-42cd-b45d-98f0c41c14ba`** ampliaram o piloto para 22 catálogos. Projetos, formulários, fotos, documentos e atores são consultados pela oficina. Os nomes necessários à identificação dos registros usam uma projeção sem dados de autenticação. O cache mantém a lista de células autorizadas de cada operador e preserva o trabalho offline em aparelhos compartilhados.
+
+Passaram 151 testes mobile, a regressão SQL, o CI e 37 verificações da API com o par real da BMA. O APK **1.2.15/código 18** foi instalado no Moto G84, com 29 células conferidas online e offline. SHA-256 `2d8dff57d55d9bdf3979c2422a66a2d15605e7f913eb3cae15e66d87bedf66f4`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45928312146).
+
+## P0.4 — sincronização dos catálogos principais do Android
+
+A migração **081** e o Railway **`25f87a0b-1d0e-4fa8-9766-99bbfe679ad9`** publicaram `/api/mobile/sincronizacao` com o commit `fbc1dc3aad0ab1a80d0e5b4b48c46bf14605bef4`. Nove catálogos do piloto passam pela autorização da oficina antes da paginação. A reconciliação usa identificadores em ordem estável e mantém rascunhos e fila separados do catálogo.
+
+Passaram 150 testes mobile, a regressão SQL, o CI e 22 verificações com o par real da BMA em produção. O APK **1.2.14/código 17** foi instalado no Moto G84 com a assinatura anterior. Foram conferidas as 29 células após identificação online e offline, e a rede foi restaurada. SHA-256 `bc353b290f677fba1f672c41245143e7ceacef274757718b6fdc9ab95aa1c49e`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45927421418).
+
 ## P0.2 — consulta e decisão de aprovações por oficina
 
 As migrações **079–080** e o Railway **`32c8149a-f437-48bb-959b-ac3540335ff3`** foram publicados com o commit `5760c3e4b2f1fdb3a53130e0f09d0cf97cdd5ab2`. A consulta recorta fila, histórico e seletores antes da paginação. A decisão confirma projeto, célula de origem e destino antes da transição. A ação usa a permissão própria de aprovações e mantém o histórico original, inclusive no reenvio.
