@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Pessoas elegíveis nas atribuições por oficina
+
+A migração **093** e o consumidor **`8507ab9`** foram publicados no Railway **`dabdb146-1930-4511-beda-874d63939ef8`**. O portal usa o vínculo atual da Central para apresentar gestores de projeto, responsáveis por alocação, revisores de formulários e aprovadores de etapas. Revisores e aprovadores também precisam do vínculo exigido pela célula. O banco verifica a oficina e a lista atual ao salvar ou restaurar uma regra. Uma atribuição histórica permanece consultável depois da saída da pessoa da oficina. [Portal EM](https://em-web-production.up.railway.app) · [Contrato da Central](sso.md).
+
+A implantação preservou os dados das 137 tabelas anteriores. A inspeção de produção verificou 1.441 pares de alocação e formulário da BMA, todos com escopo da oficina, e verificou os destinos das regras dessa unidade. Passaram 693 testes web, os testes mobile do CI, a regressão PostgreSQL e o ensaio de restauração em quatro oficinas. Cada rodada do ensaio incluiu 36 recusas de consulta cruzada e 20 tentativas recusadas de atribuir pessoas externas. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45949344337) · [Ensaio](../../rm-mobile-supabase/tests/run-local-tests.ps1).
+
+A validação de interface passou em 14 cenários no Chromium com duas oficinas locais. Em produção, passaram 65 verificações de API e sete passos no Operacional Web com o operador piloto da BMA. A API recusou as duas consultas antigas de atribuição e o novo seletor quando chamados diretamente com a conta do dispositivo. O Moto G84 com o APK 1.2.21 abriu uma foto existente da BMA com e sem conexão. A rede foi restaurada ao final.
+
+A matriz local `.tmp/oficinas-piloto-bma-atribuicoes.json` inclui os seletores de projeto, Engenharia e as abas de formulários e etapas no Cronograma. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-atribuicoes.json` com uma conta Microsoft do EM autorizada na BMA. As gravações foram verificadas no banco isolado. [Roteiro](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Equipe com vínculo atual na Central
 
 A Central publicou `cp_my_em_workshop_team_v1()` e o EM recebeu a migração **092**, consumidor **`808b518`** no Railway **`104b270e-9eeb-4fe0-bebb-e75c156c8ec8`**. Cadastros → Equipe consulta os vínculos atuais da oficina e resolve as pessoas pelo ID corporativo ou pelo ID do operador. Busca e paginação são aplicadas após o filtro. Transferência e revogação aparecem na consulta seguinte. A conferência encontrou dois vínculos corporativos e um de operador da BMA com cadastro ativo no EM. A atribuição de responsáveis e aprovadores pelos seletores legados segue no escopo da P0.2. [Equipe](https://em-web-production.up.railway.app/cadastros?kind=users) · [Contrato](sso.md).
