@@ -13,6 +13,21 @@ alter policy rm_mobile_media_select on storage.objects using (
  and (storage.foldername(name))[1]=auth.uid()::text
 );
 
+-- Prevent an upload between the readiness check and the Storage API switch.
+-- A legacy retry in its original folder can proceed once the bucket is private.
+create function rm_private.workshop_signature_bucket_private_v1()
+returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from storage.buckets where id='rm-assinaturas' and public is false)
+$$;
+revoke all on function rm_private.workshop_signature_bucket_private_v1() from public,anon,authenticated,service_role;
+grant execute on function rm_private.workshop_signature_bucket_private_v1() to authenticated;
+
+create policy rm_legacy_signature_private_insert on storage.objects as restrictive for insert to authenticated
+ with check(bucket_id is distinct from 'rm-assinaturas' or (select rm_private.workshop_signature_bucket_private_v1()));
+create policy rm_legacy_signature_private_update on storage.objects as restrictive for update to authenticated
+ using(bucket_id is distinct from 'rm-assinaturas' or (select rm_private.workshop_signature_bucket_private_v1()))
+ with check(bucket_id is distinct from 'rm-assinaturas' or (select rm_private.workshop_signature_bucket_private_v1()));
+
 create function rm_private.workshop_legacy_media_readiness_v1(p_bucket text)
 returns jsonb language plpgsql stable set search_path='' as $$
 declare
@@ -64,12 +79,12 @@ begin
 end
 $$;
 
-create function rm_private.activate_workshop_legacy_media_v1(p_bucket text)
-returns void language plpgsql set search_path='' set lock_timeout='5s' as $$
+-- The release checks this read-only guard, then updates visibility through
+-- the Supabase Storage API, which owns the bucket configuration.
+create function rm_private.assert_workshop_legacy_media_ready_v1(p_bucket text)
+returns void language plpgsql stable set search_path='' as $$
 declare evidence jsonb;
 begin
- -- Prevent a new legacy upload from passing between the inventory and switch.
- lock table storage.buckets,storage.objects in share row exclusive mode;
  evidence:=rm_private.workshop_legacy_media_readiness_v1(p_bucket);
  if evidence is null or evidence->'references' is distinct from evidence->'verified_copies'
   or evidence->'uncatalogued_references' is distinct from '0'::jsonb
@@ -78,10 +93,9 @@ begin
   or evidence->'pending_drafts' is distinct from '0'::jsonb then
   raise exception 'Há arquivos ou rascunhos legados pendentes de conferência.' using errcode='PT409';
  end if;
- update storage.buckets set public=false where id=p_bucket and public;
 end
 $$;
 
-revoke all on function rm_private.workshop_legacy_media_readiness_v1(text),rm_private.activate_workshop_legacy_media_v1(text)
+revoke all on function rm_private.workshop_legacy_media_readiness_v1(text),rm_private.assert_workshop_legacy_media_ready_v1(text)
  from public,anon,authenticated,service_role;
 commit;

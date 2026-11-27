@@ -1955,7 +1955,7 @@ declare
  evidence jsonb;
  result jsonb;
 begin
- if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_media_v1(text)','execute')
+ if has_function_privilege('authenticated','rm_private.assert_workshop_legacy_media_ready_v1(text)','execute')
   or has_function_privilege('service_role','rm_private.workshop_legacy_media_readiness_v1(text)','execute') then
   raise exception 'Controles do armazenamento legado disponíveis à aplicação.';
  end if;
@@ -1975,11 +1975,16 @@ begin
    raise exception 'O cliente legado perdeu seus arquivos ou ganhou acesso ao arquivo de outro dispositivo.';
   end if;
   update storage.objects set user_metadata='{"legacy_retry":true}' where bucket_id='rm-assinaturas' and name=signature_path;
-  if not found then raise exception 'O dispositivo perdeu a possibilidade de repetir o próprio envio.';end if;
+  if found then raise exception 'O dispositivo conseguiu substituir uma assinatura pública.';end if;
+  begin
+   insert into storage.objects(bucket_id,name) values('rm-assinaturas',device::text||'/new.png');
+   raise exception 'O dispositivo conseguiu publicar uma nova assinatura.';
+  exception when insufficient_privilege then null;
+  end;
   reset role;
  end loop;
  begin
-  perform rm_private.activate_workshop_legacy_media_v1('rm-assinaturas');
+  perform rm_private.assert_workshop_legacy_media_ready_v1('rm-assinaturas');
   raise exception 'Armazenamento com assinaturas sem cópia foi fechado.';
  exception when sqlstate 'PT409' then null;
  end;
@@ -1993,13 +1998,22 @@ begin
    raise exception 'As assinaturas copiadas não foram reconhecidas.';
   end if;
  end loop;
- perform rm_private.activate_workshop_legacy_media_v1('rm-assinaturas');
+ perform rm_private.assert_workshop_legacy_media_ready_v1('rm-assinaturas');
+ -- Emulate the result of the Storage API in the disposable test database.
+ update storage.buckets set public=false where id='rm-assinaturas';
  evidence:=rm_private.workshop_legacy_media_readiness_v1('rm-assinaturas');
  if evidence->>'public' is distinct from 'false' or evidence->>'legacy_objects' is distinct from '4'
   or evidence->>'references' is distinct from '4' or evidence->>'verified_copies' is distinct from '4' then
   raise exception 'Mudança de visibilidade ocorreu sem preservar todas as assinaturas.';
  end if;
  for office in 1..4 loop
+  device:=em_fixture.id(710+office);
+  signature_path:=device::text||'/legacy.png';
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  set local role authenticated;
+  update storage.objects set user_metadata='{"legacy_retry":true}' where bucket_id='rm-assinaturas' and name=signature_path;
+  if not found then raise exception 'O dispositivo perdeu a possibilidade de repetir o próprio envio privado.';end if;
+  reset role;
   result:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(1460+office),'source','answer_signature'));
   if coalesce(result->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
    or pg_temp.workshop_restore_read((office%4)+1,'media_reference',jsonb_build_object('id',em_fixture.id(1460+office),'source','answer_signature')) is not null then
@@ -2007,7 +2021,7 @@ begin
   end if;
  end loop;
  begin
-  perform rm_private.activate_workshop_legacy_media_v1('rm-fotos');
+  perform rm_private.assert_workshop_legacy_media_ready_v1('rm-fotos');
   raise exception 'Armazenamento com foto sem garantia de cópia foi fechado.';
  exception when sqlstate 'PT409' then null;
  end;
