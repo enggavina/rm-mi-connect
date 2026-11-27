@@ -265,9 +265,10 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function listPlanning(filters: PlanningFilters = {}) {
     requireCapability('em.planning.read');
-    if (operationRead) {
+    const read = operationRead ?? workshopRead;
+    if (read) {
       const page = pageNumber(filters.page);
-      const result = checkedWorkshopPage(await operationRead('planning_list', {
+      const result = checkedWorkshopPage(await read('planning_list', {
         q: searchTerm(filters.q), status: filters.status || null, cell: filters.cell ? uuid.parse(filters.cell) : null,
         page, project_details: allowed('em.projects.read'),
       }), page, 50);

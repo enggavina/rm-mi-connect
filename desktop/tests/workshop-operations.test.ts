@@ -40,6 +40,22 @@ test('project not owned by the current workshop stops before related lookups', a
   assert.deepEqual(calls, [['project_entry', { id: project, cells: true, documents: false }]]);
 });
 
+test('planning uses the corporate workshop reader even before the general rollout', async () => {
+  const planningCaps = ['em.portal.read', 'em.planning.read'] as const;
+  const data = createWebData(client, planningCaps, async (resource, args) => {
+    assert.equal(resource, 'planning_list');
+    assert.deepEqual(args, { q: 'OS', status: 'pendente', cell, page: 2, project_details: false });
+    return { rows: [], total: 0, page: 2, pageSize: 50, projects: [], cells: [], statuses: [] };
+  });
+  assert.deepEqual(await data.listPlanning({ q: 'OS', status: 'pendente', cell, page: 2 }), {
+    rows: [], total: 0, page: 2, pageSize: 50, projects: [], cells: [], statuses: [],
+  });
+
+  const outage = new Error('workshop authority unavailable');
+  const unavailable = createWebData(client, planningCaps, async () => { throw outage; });
+  await assert.rejects(unavailable.listPlanning(), error => error === outage);
+});
+
 test('authority outage and divergent project identity fail closed', async () => {
   const outage = new Error('workshop authority unavailable');
   const data = createWebData(client, caps, undefined, async () => { throw outage; });
