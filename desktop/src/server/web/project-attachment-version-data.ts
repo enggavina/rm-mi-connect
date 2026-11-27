@@ -1,12 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 import { projectAttachmentSnapshotSchema, type ProjectAttachmentSnapshot } from './project-attachment-version-policy';
 import { MAX_PROJECT_ATTACHMENT_BYTES } from './project-dossier-policy';
 
 const scopes: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.documents.read'];
 const unavailable = () => new Error('Não foi possível consultar as versões deste anexo. Recarregue a página para tentar novamente.');
-export function createProjectAttachmentVersionData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectAttachmentVersionData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead) {
   async function getProjectAttachment(projectId: string, attachmentId: string, historyPage: unknown = 1): Promise<ProjectAttachmentSnapshot | null> {
     if (capabilities !== undefined && !scopes.every(capability => capabilities.includes(capability))) throw new Error('Acesso não autorizado aos documentos.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(attachmentId).success) return null;
@@ -14,7 +16,8 @@ export function createProjectAttachmentVersionData(client: SupabaseClient, capab
     const page = typeof historyPage === 'string' && /^[1-9]\d{0,5}$/.test(historyPage) ? Number(historyPage) : historyPage;
     if (typeof page !== 'number' || !Number.isInteger(page) || page < 1 || page > 100_000) throw new Error('Confira a página do histórico.');
     let result;
-    try { result = await client.rpc('rm_web_project_attachment_snapshot_v1', { p_project_id: projectId, p_attachment_id: attachmentId, p_history_page: page }); }
+    try { result = await readProjectDetail(client, read, 'project_attachment', 'rm_web_project_attachment_snapshot_v1',
+      { p_project_id: projectId, p_attachment_id: attachmentId, p_history_page: page }); }
     catch { throw unavailable(); }
     if (result.error) throw unavailable(); if (result.data === null) return null;
     const parsed = projectAttachmentSnapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
@@ -45,5 +48,5 @@ export function createProjectAttachmentVersionData(client: SupabaseClient, capab
 }
 export async function getProjectAttachment(projectId: string, attachmentId: string, historyPage: unknown = 1) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser(scopes);
-  return createProjectAttachmentVersionData(access.client, access.sso?.capabilities).getProjectAttachment(projectId, attachmentId, historyPage);
+  return createProjectAttachmentVersionData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectAttachment(projectId, attachmentId, historyPage);
 }

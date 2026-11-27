@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { required } from '../config';
 import { attachmentSignatureMatches, projectAttachmentPath, type ProjectAttachmentInput } from './project-dossier-policy';
-import { isNativeWorkshopMediaPath, resolveWorkshopArchive } from './workshop-media';
+import { isNativeWorkshopMediaPath, isWorkshopDossierPath, resolveWorkshopArchive } from './workshop-media';
 
 function documentStorage() {
   const url = required('SUPABASE_URL');
@@ -14,6 +14,12 @@ function documentStorage() {
 // Call after the workshop reader confirms the exact stored attachment.
 export async function signNativeWorkshopDocument(path: string) {
   if (!isNativeWorkshopMediaPath(path)) return undefined;
+  const { data, error } = await documentStorage().createSignedUrl(path, 60);
+  return error ? undefined : data?.signedUrl;
+}
+
+export async function signWorkshopDossierDocument(path: string) {
+  if (!isWorkshopDossierPath(path)) return undefined;
   const { data, error } = await documentStorage().createSignedUrl(path, 60);
   return error ? undefined : data?.signedUrl;
 }

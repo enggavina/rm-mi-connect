@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 
 const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
@@ -16,13 +18,13 @@ export type ProjectRouteSnapshot = z.infer<typeof projectRouteSchema>;
 export type ProjectRouteItem = ProjectRouteSnapshot['items'][number];
 const unavailable = () => new Error('Não foi possível consultar o roteiro do projeto. Tente novamente.');
 
-export function createProjectRouteData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectRouteData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead) {
   async function getProjectRoute(projectId: string): Promise<ProjectRouteSnapshot | null> {
     if (capabilities !== undefined && !['em.portal.read', 'em.planning.read', 'em.projects.read'].every(code => capabilities.includes(code as CorporateCapability))) {
       throw new Error('Acesso não autorizado a esta área.');
     }
     if (!uuid.safeParse(projectId).success) return null;
-    const result = await client.rpc('rm_web_project_route_snapshot_v1', { p_project_id: projectId });
+    const result = await readProjectDetail(client, read, 'project_route', 'rm_web_project_route_snapshot_v1', { p_project_id: projectId });
     if (result.error) throw unavailable();
     if (result.data === null) return null;
     const parsed = projectRouteSchema.safeParse(result.data);
@@ -48,5 +50,5 @@ export function createProjectRouteData(client: SupabaseClient, capabilities?: re
 export async function getProjectRoute(projectId: string) {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser('em.planning.read');
-  return createProjectRouteData(access.client, access.sso?.capabilities).getProjectRoute(projectId);
+  return createProjectRouteData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectRoute(projectId);
 }

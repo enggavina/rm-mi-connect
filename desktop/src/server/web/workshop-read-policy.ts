@@ -10,6 +10,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry', 'workshop_team',
   'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
   'root_edit_choices', 'project_delete_context',
+  'project_comments', 'project_documents', 'project_comment', 'project_attachment', 'project_audit', 'project_equipment', 'project_route',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -38,6 +39,22 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
       if (filters.scope === 'planning') return ['em.portal.read', 'em.planning.manage'];
       throw new Error('Seletores de edição indisponíveis.');
     case 'project_delete_context': return ['em.portal.read', 'em.projects.read', 'em.projects.manage'];
+    case 'project_comments': case 'project_comment': return ['em.portal.read', 'em.projects.read', 'em.history.read'];
+    case 'project_documents': case 'project_attachment': return ['em.portal.read', 'em.projects.read', 'em.documents.read'];
+    case 'project_equipment': return ['em.portal.read', 'em.projects.read'];
+    case 'project_route': return ['em.portal.read', 'em.projects.read', 'em.planning.read'];
+    case 'project_audit': {
+      const required: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.history.read'];
+      if (filters.p_kind === 'cells') required.push('em.planning.read');
+      else if (filters.p_kind !== 'operations') throw new Error('Histórico de projeto indisponível.');
+      if (!Array.isArray(filters.p_topics)) throw new Error('Histórico de projeto indisponível.');
+      const topics: unknown[] = filters.p_topics;
+      for (const topic of topics) {
+        if (topic !== 'photos' && topic !== 'forms' && topic !== 'approvals') throw new Error('Histórico de projeto indisponível.');
+        if (filters.p_kind === 'operations') required.push(`em.${topic}.read`);
+      }
+      return required;
+    }
     case 'template_list': case 'template_draft': case 'template_form': case 'template_choices': return ['em.portal.read', 'em.form_templates.read'];
     case 'project_list': return filters.planning === true || filters.cell != null
       ? ['em.portal.read', 'em.projects.read', 'em.planning.read'] : ['em.portal.read', 'em.projects.read'];

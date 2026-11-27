@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 import { projectCommentSnapshotSchema, type ProjectCommentSnapshot } from './project-comment-policy';
 
 const scopes: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.history.read'];
 const unavailable = () => new Error('Não foi possível consultar este comentário. Recarregue a página para tentar novamente.');
-export function createProjectCommentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectCommentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead) {
   async function getProjectComment(projectId: string, commentId: string, historyPage: unknown = 1): Promise<ProjectCommentSnapshot | null> {
     if (capabilities !== undefined && !scopes.every(capability => capabilities.includes(capability))) throw new Error('Acesso não autorizado aos comentários.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(commentId).success) return null;
@@ -13,7 +15,8 @@ export function createProjectCommentData(client: SupabaseClient, capabilities?: 
     const page = typeof historyPage === 'string' && /^[1-9]\d{0,5}$/.test(historyPage) ? Number(historyPage) : historyPage;
     if (typeof page !== 'number' || !Number.isInteger(page) || page < 1 || page > 100_000) throw new Error('Confira a página do histórico.');
     let result;
-    try { result = await client.rpc('rm_web_project_comment_snapshot_v1', { p_project_id: projectId, p_comment_id: commentId, p_history_page: page }); }
+    try { result = await readProjectDetail(client, read, 'project_comment', 'rm_web_project_comment_snapshot_v1',
+      { p_project_id: projectId, p_comment_id: commentId, p_history_page: page }); }
     catch { throw unavailable(); }
     if (result.error) throw unavailable(); if (result.data === null) return null;
     const parsed = projectCommentSnapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
@@ -31,5 +34,5 @@ export function createProjectCommentData(client: SupabaseClient, capabilities?: 
 }
 export async function getProjectComment(projectId: string, commentId: string, historyPage: unknown = 1) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser(scopes);
-  return createProjectCommentData(access.client, access.sso?.capabilities).getProjectComment(projectId, commentId, historyPage);
+  return createProjectCommentData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectComment(projectId, commentId, historyPage);
 }

@@ -5,7 +5,7 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { isNativeWorkshopMediaPath, resolveWorkshopMedia } from '@/server/web/workshop-media';
-import { signNativeWorkshopDocument, signWorkshopArchive } from '@/server/web/project-dossier-storage';
+import { signNativeWorkshopDocument, signWorkshopArchive, signWorkshopDossierDocument } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const source = documentSource(kind);
     if (!uuid.safeParse(id).success || !source) return Response.json({ error: 'Documento inválido.' }, { status: 400, headers });
     const read = await readWorkshopOperations(current);
-    let data: { id: string; file: unknown; archive_path?: unknown } | null;
+    let data: { id: string; file: unknown; archive_path?: unknown; web_dossier_path?: unknown } | null;
     if (read) {
       data = await read('document_link', { id, source: kind ?? 'documentos' });
       if (data && (data.id !== id.toLowerCase() || typeof data.file !== 'string' && data.file !== null)) {
@@ -46,6 +46,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (target.kind === 'private' && isNativeWorkshopMediaPath(target.path)) {
       if (!read) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
       const signed = typeof data.file === 'string' && await resolveWorkshopMedia(data.file, storageOrigin, 'document', (_bucket, path) => signNativeWorkshopDocument(path));
+      if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
+      destination = signed;
+    } else if (target.kind === 'private' && target.path.startsWith('web-dossier/') && read) {
+      if (data.web_dossier_path !== target.path || typeof data.file !== 'string') {
+        return Response.json({ error: 'Documento não encontrado.' }, { status: 404, headers });
+      }
+      const signed = await resolveWorkshopMedia(data.file, storageOrigin, 'document', (_bucket, path) => signWorkshopDossierDocument(path));
       if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
       destination = signed;
     } else if (target.kind === 'private') {

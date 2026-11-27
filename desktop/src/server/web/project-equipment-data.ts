@@ -1,17 +1,19 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 import { uuid } from './policy';
 import { projectEquipmentSnapshotSchema, type ProjectEquipmentSnapshot } from './project-equipment-policy';
 
 const scopes: CorporateCapability[] = ['em.portal.read', 'em.projects.read'];
 const unavailable = () => new Error('Não foi possível consultar os dados técnicos do equipamento. Tente novamente.');
-export function createProjectEquipmentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectEquipmentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead) {
   async function getProjectEquipment(projectId: string): Promise<ProjectEquipmentSnapshot | null> {
     if (capabilities !== undefined && !scopes.every(capability => capabilities.includes(capability))) throw new Error('Acesso não autorizado aos dados técnicos.');
     if (!uuid.safeParse(projectId).success) return null;
     projectId = projectId.toLowerCase();
     let result;
-    try { result = await client.rpc('rm_web_project_equipment_snapshot_v1', { p_project_id: projectId }); }
+    try { result = await readProjectDetail(client, read, 'project_equipment', 'rm_web_project_equipment_snapshot_v1', { p_project_id: projectId }); }
     catch { throw unavailable(); }
     if (result.error) throw unavailable();
     if (result.data === null) return null;
@@ -30,5 +32,5 @@ export function createProjectEquipmentData(client: SupabaseClient, capabilities?
 }
 export async function getProjectEquipment(projectId: string) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser(scopes);
-  return createProjectEquipmentData(access.client, access.sso?.capabilities).getProjectEquipment(projectId);
+  return createProjectEquipmentData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectEquipment(projectId);
 }

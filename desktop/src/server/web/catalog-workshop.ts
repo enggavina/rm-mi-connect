@@ -11,9 +11,13 @@ export function isScopedTemplateWrite(operation: string): boolean {
   return ['create_form_template', 'save_form_template', 'publish_form_template', 'delete_form_template'].includes(operation);
 }
 
+const projectEdits = new Set(['save_project', 'save_project_equipment', 'delete_project',
+  'add_project_comment', 'edit_project_comment', 'manage_project_documents', 'set_project_photo_selection',
+  'reserve_project_attachment', 'finalize_project_attachment', 'reserve_project_attachment_version', 'finalize_project_attachment_version']);
+
 export function rootWriteCapability(operation: string, payload: Record<string, unknown>, includeEdits = false): CorporateCapability | null {
   if (operation === 'delete_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
-  if (includeEdits && ['save_project', 'save_project_equipment', 'delete_project'].includes(operation)) return 'em.projects.manage';
+  if (includeEdits && projectEdits.has(operation)) return 'em.projects.manage';
   if (includeEdits || payload.expected_updated_at === null) {
     if (operation === 'save_project_with_equipment') return 'em.projects.manage';
     if (operation === 'save_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';

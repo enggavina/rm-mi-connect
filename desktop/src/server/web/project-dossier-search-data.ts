@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 import { projectCommentFiltersSchema, projectDocumentFiltersSchema, projectCommentPageSchema, projectDocumentPageSchema,
   type ProjectCommentPage, type ProjectDocumentPage } from './project-dossier-search-policy';
 
@@ -39,13 +41,13 @@ function consistent(page: ProjectCommentPage | ProjectDocumentPage, projectId: s
     && page.items.every(item => item.projeto_id === projectId)
     && unique(page.facets.authors.map(author => author.id));
 }
-export function createProjectDossierSearchData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectDossierSearchData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   function allow(capability: CorporateCapability) {
     if (capabilities !== undefined && ![...base, capability].every(value => capabilities.includes(value))) throw new Error('Acesso não autorizado à consulta do dossiê.');
   }
-  async function read(rpc: string, projectId: string, filters: Record<string, unknown>) {
+  async function read(resource: 'project_comments' | 'project_documents', rpc: string, projectId: string, filters: Record<string, unknown>) {
     try {
-      const result = await client.rpc(rpc, { p_project_id: projectId, p_filters: filters });
+      const result = await readProjectDetail(client, workshopRead, resource, rpc, { p_project_id: projectId, p_filters: filters });
       if (result.error) throw unavailable();
       return result.data;
     } catch { throw unavailable(); }
@@ -54,7 +56,7 @@ export function createProjectDossierSearchData(client: SupabaseClient, capabilit
     allow('em.history.read'); if (!uuid.safeParse(projectId).success) return null;
     projectId = projectId.toLowerCase();
     const input = projectCommentFiltersSchema.safeParse(filters); if (!input.success) throw new DossierSearchInputError();
-    const data = await read('rm_web_project_comments_v1', projectId, input.data); if (data === null) return null;
+    const data = await read('project_comments', 'rm_web_project_comments_v1', projectId, input.data); if (data === null) return null;
     const parsed = projectCommentPageSchema.safeParse(data);
     if (!parsed.success || !consistent(parsed.data, projectId, input.data) || !unique(parsed.data.items.map(item => item.id))
       || !unique(parsed.data.facets.cells.map(cell => cell.id))) throw unavailable();
@@ -64,7 +66,7 @@ export function createProjectDossierSearchData(client: SupabaseClient, capabilit
     allow('em.documents.read'); if (!uuid.safeParse(projectId).success) return null;
     projectId = projectId.toLowerCase();
     const input = projectDocumentFiltersSchema.safeParse(filters); if (!input.success) throw new DossierSearchInputError();
-    const data = await read('rm_web_project_documents_v1', projectId, input.data); if (data === null) return null;
+    const data = await read('project_documents', 'rm_web_project_documents_v1', projectId, input.data); if (data === null) return null;
     const parsed = projectDocumentPageSchema.safeParse(data);
     if (!parsed.success || !consistent(parsed.data, projectId, input.data) || !directoryConsistent(parsed.data, input.data)
       || !unique(parsed.data.items.map(item => `${item.source}:${item.id}`)) || !unique(parsed.data.facets.statuses.map(status => status.value))) throw unavailable();
@@ -74,9 +76,9 @@ export function createProjectDossierSearchData(client: SupabaseClient, capabilit
 }
 export async function getProjectComments(projectId: string, filters: unknown = {}) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser([...base, 'em.history.read']);
-  return createProjectDossierSearchData(access.client, access.sso?.capabilities).getProjectComments(projectId, filters);
+  return createProjectDossierSearchData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectComments(projectId, filters);
 }
 export async function getProjectDocuments(projectId: string, filters: unknown = {}) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser([...base, 'em.documents.read']);
-  return createProjectDossierSearchData(access.client, access.sso?.capabilities).getProjectDocuments(projectId, filters);
+  return createProjectDossierSearchData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectDocuments(projectId, filters);
 }

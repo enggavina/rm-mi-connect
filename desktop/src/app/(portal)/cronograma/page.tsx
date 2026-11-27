@@ -67,7 +67,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const operations = await readWorkshopOperations(session);
   const data = await createWebData(session.client, projectCapabilities, undefined, operations).getProject(projectId);
   if (!data) notFound();
-  const route = await createProjectRouteData(session.client, session.sso?.capabilities).getProjectRoute(projectId);
+  const route = await createProjectRouteData(session.client, session.sso?.capabilities, operations).getProjectRoute(projectId);
   const project = data.project;
   const allocations = orderedProjectAllocations(data.allocations, projectId);
   const current = selectedAllocation(allocations, projectId, params.allocation);

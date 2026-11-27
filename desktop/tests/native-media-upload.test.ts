@@ -4,6 +4,16 @@ import { nativeMediaReceipt, nativeMediaStoragePath, nativeMediaUpload } from '.
 import { isNativeWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`;
+
+test('private project dossier URLs use the exact document namespace', () => {
+  const origin = 'https://ellpxfbsrbhblyizvbbk.supabase.co';
+  const path = `web-dossier/${id(1)}/${id(2)}.pdf`;
+  const reference = `${origin}/storage/v1/object/authenticated/rm-documentos/${path}`;
+  assert.deepEqual(workshopMediaTarget(reference, origin, 'document'), { kind: 'storage', origin, bucket: 'rm-documentos', path });
+  assert.equal(workshopMediaTarget(reference.replace('web-dossier', 'web%2Ddossier'), origin, 'document'), null);
+  assert.equal(workshopMediaTarget(reference.replace('/authenticated/', '/public/'), origin, 'document'), null);
+  assert.equal(workshopMediaTarget(reference.replace('/rm-documentos/', '/rm-fotos/'), origin, 'project_photo'), null);
+});
 const invoice = { workshopOrigin: id(4), submission: id(5), asset: id(6), operation: 'rm_submit_recebimento_v1',
   payload: {}, kind: 'document', mime: 'application/pdf', size: 318, sha256: '8'.repeat(64), reference: `file:///local/rm-media/${id(6)}.pdf` };
 

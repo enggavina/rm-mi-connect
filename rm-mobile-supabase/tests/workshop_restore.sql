@@ -1570,6 +1570,116 @@ begin
  end loop;
 end
 $root_edit_cutover$;
+do $dossier$
+declare
+ project uuid; allocation uuid; attachment uuid; replacement uuid; comment uuid; submission uuid; photo uuid;
+ operation text; params jsonb; snapshot jsonb; result jsonb; reads jsonb; one record; slot uuid; file_reference text; object_path text;
+ visible boolean;
+begin
+ perform rm_private.activate_workshop_project_dossier_v1();
+ if not (select enforced from rm_private.workshop_dossier_settings where singleton) or exists(
+  select 1 from unnest(array['public.rm_web_project_comments_v1(uuid,jsonb)','public.rm_web_project_documents_v1(uuid,jsonb)',
+   'public.rm_web_project_equipment_snapshot_v1(uuid)','public.rm_web_project_route_snapshot_v1(uuid)',
+   'rm_private.project_comment_revision_context_v1(uuid,uuid,integer)','rm_private.project_attachment_version_context_v1(uuid,uuid,integer)']) f
+  where has_function_privilege('authenticated',f,'execute')) then
+  raise exception 'O acesso antigo ao dossiê ainda está disponível.';
+ end if;
+ for office in 1..4 loop
+  project:=em_fixture.id(100+office); allocation:=em_fixture.id(300+office); photo:=em_fixture.id(600+office);
+  attachment:=gen_random_uuid(); replacement:=gen_random_uuid(); comment:=gen_random_uuid();
+  update public.rm_celulas_projeto set visibilidade=true,bloqueada='n_o' where id=allocation;
+  foreach operation in array array['add_project_comment','edit_project_comment','manage_project_documents','set_project_photo_selection',
+   'reserve_project_attachment','finalize_project_attachment','reserve_project_attachment_version','finalize_project_attachment_version'] loop
+   submission:=gen_random_uuid();
+   params:=jsonb_build_object('projeto_id',project,'expected_project_updated_at',(select updated_at from public.rm_projetos where id=project));
+   case operation
+    when 'add_project_comment' then
+     submission:=comment;
+     params:=params||jsonb_build_object('celula_projeto_id',allocation,'evento','Comentário local '||office,
+      'expected_allocation_updated_at',(select updated_at from public.rm_celulas_projeto where id=allocation));
+    when 'edit_project_comment' then
+     snapshot:=pg_temp.workshop_restore_read(office,'project_comment',jsonb_build_object('p_project_id',project,'p_comment_id',comment,'p_history_page',1));
+     params:=params||jsonb_build_object('comentario_id',comment,'expected_comment_updated_at',snapshot->'comment'->'updated_at',
+      'expected_context_version',snapshot->'context_version','confirm_change',true,'evento','Correção local '||office,'motivo','Ensaio de oficina');
+    when 'manage_project_documents' then
+     params:=params||jsonb_build_object('action','create_folder','nome','Pasta da oficina '||office,'parent_id',null);
+    when 'set_project_photo_selection' then
+     params:=(params-'expected_project_updated_at')||jsonb_build_object('foto_id',photo,'selected',true,
+      'expected_updated_at',(select updated_at from public.rm_fotos where id=photo));
+    else
+     slot:=case when operation like '%_version' then replacement else attachment end;
+     if operation like 'reserve_%' then
+      params:=params||jsonb_build_object('upload_id',slot,'nome','Anexo local '||office,'descricao',null,'filename','arquivo.pdf',
+       'mime_type','application/pdf','byte_size',5,'sha256',repeat('a',64),'data_vencimento',null,'status','No prazo');
+      if slot=replacement then
+       snapshot:=pg_temp.workshop_restore_read(office,'project_attachment',
+        jsonb_build_object('p_project_id',project,'p_attachment_id',attachment,'p_history_page',1));
+       params:=params||jsonb_build_object('source_attachment_id',attachment,'expected_attachment_updated_at',snapshot->'attachment'->'updated_at',
+        'expected_context_version',snapshot->'context_version','motivo','Nova versão no ensaio','confirm_change',true);
+      end if;
+     else
+      submission:=slot;
+      params:=(params-'expected_project_updated_at')||jsonb_build_object('upload_id',slot);
+      insert into storage.objects(bucket_id,name,metadata,user_metadata)
+       values('rm-documentos','web-dossier/'||project||'/'||slot||'.pdf','{"size":5,"mimetype":"application/pdf"}',jsonb_build_object('sha256',repeat('a',64)));
+     end if;
+   end case;
+   begin
+    perform pg_temp.workshop_restore_root_write(office,submission,operation,params,false);
+    raise exception 'O dossiê aceitou uma gravação sem autorização da oficina.';
+   exception when insufficient_privilege then null;
+   end;
+   for other in 1..4 loop
+    if other=office then continue;end if;
+    begin
+     perform pg_temp.workshop_restore_root_write(other,submission,operation,params);
+     raise exception 'O dossiê aceitou uma gravação de outra oficina.';
+    exception when insufficient_privilege then null;
+    end;
+   end loop;
+   result:=pg_temp.workshop_restore_root_write(office,submission,operation,params);
+   if result->>'operation' is distinct from operation
+    or pg_temp.workshop_restore_root_write(office,submission,operation,params)->>'idempotent_replay' is distinct from 'true' then
+    raise exception 'O dossiê perdeu resultado, autor ou protocolo.';
+   end if;
+  end loop;
+  reads:=jsonb_build_object('project_comments',jsonb_build_object('p_project_id',project,'p_filters','{}'::jsonb),
+   'project_documents',jsonb_build_object('p_project_id',project,'p_filters','{}'::jsonb),
+   'project_comment',jsonb_build_object('p_project_id',project,'p_comment_id',comment,'p_history_page',1),
+   'project_attachment',jsonb_build_object('p_project_id',project,'p_attachment_id',replacement,'p_history_page',1),
+   'project_audit',jsonb_build_object('p_project_id',project,'p_kind','operations','p_page',1,'p_topics','["photos"]'::jsonb),
+   'project_equipment',jsonb_build_object('p_project_id',project),'project_route',jsonb_build_object('p_project_id',project));
+  for one in select key,value from jsonb_each(reads) loop
+   if pg_temp.workshop_restore_read(office,one.key,one.value) is null then raise exception 'O dossiê perdeu a consulta própria %',one.key;end if;
+   for other in 1..4 loop
+    if other<>office and pg_temp.workshop_restore_read(other,one.key,one.value) is not null then
+     raise exception 'O dossiê apresentou consulta de outra oficina %',one.key;end if;
+   end loop;
+  end loop;
+  if pg_temp.workshop_restore_read(office,'project_attachment',reads->'project_attachment')->'series'->>'head_revision' is distinct from '2'
+   or pg_temp.workshop_restore_read(office,'project_comment',reads->'project_comment')->'history'->>'total' is distinct from '1'
+   or not (pg_temp.workshop_restore_read(office,'project_audit',reads->'project_audit')->'items'
+    @> jsonb_build_array(jsonb_build_object('entity_id',photo,'topic','photos'))) then
+   raise exception 'O histórico perdeu a versão, a correção ou a trilha da foto.';
+  end if;
+  select arquivo_url into strict file_reference from public.rm_docs where id=replacement;
+  object_path:='web-dossier/'||project||'/'||replacement||'.pdf';
+  slot:=gen_random_uuid();
+  insert into public.rm_docs(id,projeto_id,nome,arquivo_url) values(slot,em_fixture.id(100+(office%4)+1),'Referência cruzada local',file_reference);
+  if pg_temp.workshop_restore_read(office,'document_link',jsonb_build_object('id',replacement,'source','docs'))->>'web_dossier_path' is distinct from object_path
+   or pg_temp.workshop_restore_read((office%4)+1,'document_link',jsonb_build_object('id',slot,'source','docs')) is not null
+   or not (pg_temp.workshop_restore_native(office,array[file_reference])->'files' @> jsonb_build_array(jsonb_build_object('url',file_reference)))
+   or pg_temp.workshop_restore_native((office%4)+1,array[file_reference])->'files' <> '[]'::jsonb then
+   raise exception 'O vínculo privado do anexo se perdeu ou permitiu um atalho entre oficinas.';
+  end if;
+  perform pg_temp.workshop_restore_sso(office);
+  set local role authenticated;
+  select exists(select 1 from storage.objects where bucket_id='rm-documentos' and name=object_path) into visible;
+  reset role;
+  if visible then raise exception 'O anexo voltou a aceitar leitura direta sem oficina.';end if;
+ end loop;
+end
+$dossier$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1585,3 +1695,4 @@ select 'PASS: archived Word attachments use the same private read and reject a f
 select 'PASS: review cutover preserves legacy actions and rejects foreign decisions in four workshops before the general root cutover' result;
 select 'PASS: receiving and project reads are isolated with the overview and twin in four workshops after retiring legacy receiving reads' result;
 select 'PASS: project and cell edits, equipment and deletion scopes hold in four workshops without closing mobile intake' result;
+select 'PASS: project dossier reads and writes, versioned private files and exact replay isolated in four workshops' result;

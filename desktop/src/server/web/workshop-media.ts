@@ -6,10 +6,15 @@ export const workshopMediaMatch = z.object({ url: z.string().max(2048),
 
 const uuidSegment = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
 const nativePath = new RegExp(`^mobile-oficina/${uuidSegment}/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
+const dossierPath = new RegExp(`^web-dossier/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
 const archivePath = new RegExp(`^acervo-oficina/(${uuidSegment})/[a-f0-9]{64}\\.(jpg|png|pdf|webp|heic|heif|docx)$`);
 const nativePrefix = '/storage/v1/object/authenticated/rm-documentos/';
 export function isNativeWorkshopMediaPath(path: string) {
   return nativePath.test(path);
+}
+
+export function isWorkshopDossierPath(path: string) {
+  return dossierPath.test(path);
 }
 
 export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source: WorkshopMediaSource | 'document') {
@@ -33,6 +38,8 @@ export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source
     const path = decodeURIComponent(url.pathname.slice(prefix.length));
     if (!path || path.startsWith('mobile-oficina/') || path.startsWith('acervo-oficina/') || /[%\\\x00-\x1f]/.test(path)
       || path.split('/').some(part => !part || part === '.' || part === '..')) return null;
+    if (path.startsWith('web-dossier/') && (source !== 'document' || !isWorkshopDossierPath(path)
+      || raw !== `${origin.origin}${nativePrefix}${path}`)) return null;
     return { kind: 'storage' as const, origin: origin.origin, bucket, path };
   } catch {
     return null;

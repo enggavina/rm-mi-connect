@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readProjectDetail, readWorkshopOperations } from './workshop-operation-reader';
 
 export const projectAuditKinds = ['cells', 'operations'] as const;
 export type ProjectAuditKind = typeof projectAuditKinds[number];
@@ -27,7 +29,7 @@ export type ProjectAuditEvent = ProjectAuditPage['items'][number];
 const base: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.history.read'];
 const unavailable = () => new Error('Não foi possível consultar a auditoria do projeto. Recarregue a página.');
 
-export function createProjectAuditData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createProjectAuditData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead) {
   async function getProjectAudit(projectId: string, kind: ProjectAuditKind, page: unknown = 1): Promise<ProjectAuditPage | null> {
     const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
     if (!base.every(allowed) || kind === 'cells' && !allowed('em.planning.read')) throw new Error('Acesso não autorizado ao histórico do projeto.');
@@ -37,7 +39,8 @@ export function createProjectAuditData(client: SupabaseClient, capabilities?: re
     if (typeof requestedPage !== 'number' || !Number.isSafeInteger(requestedPage) || requestedPage < 1 || requestedPage > 1000000) throw unavailable();
     const allowedTopics = (['photos', 'forms', 'approvals'] as const).filter(topic => allowed(`em.${topic}.read`));
     let result;
-    try { result = await client.rpc('rm_web_project_audit_v1', { p_project_id: projectId.toLowerCase(), p_kind: kind, p_page: requestedPage, p_topics: allowedTopics }); }
+    try { result = await readProjectDetail(client, read, 'project_audit', 'rm_web_project_audit_v1',
+      { p_project_id: projectId.toLowerCase(), p_kind: kind, p_page: requestedPage, p_topics: allowedTopics }); }
     catch { throw unavailable(); }
     if (result.error) throw unavailable();
     if (result.data === null) return null;
@@ -61,5 +64,5 @@ export function createProjectAuditData(client: SupabaseClient, capabilities?: re
 export async function getProjectAudit(projectId: string, kind: ProjectAuditKind, page: unknown = 1) {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser(kind === 'cells' ? [...base, 'em.planning.read'] : base);
-  return createProjectAuditData(access.client, access.sso?.capabilities).getProjectAudit(projectId, kind, page);
+  return createProjectAuditData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectAudit(projectId, kind, page);
 }
