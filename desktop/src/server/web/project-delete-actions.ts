@@ -4,10 +4,11 @@ import {hasWebCapability} from './auth-policy';
 import {deleteProjectSchema} from './project-delete-policy';
 import {createProjectDeleteData} from './project-delete-data';
 import {drainProjectDeleteFiles} from './project-delete-cleanup';
+import {readWorkshopOperations} from './workshop-operation-reader';
 export async function inspectProjectDeletion(projectId:string){
   const access=await actionUser('em.projects.manage');if('ok'in access)return access;
   if(access.profile.perfil!=='administrador'||!hasWebCapability(access,'em.projects.read')||!hasWebCapability(access,'em.portal.read'))return{ok:false as const,error:'Exclusão restrita aos administradores do EM.'};
-  try{return{ok:true as const,snapshot:await createProjectDeleteData(access.client,access.sso?.capabilities).getProjectDeleteSnapshot(projectId)};}
+  try{return{ok:true as const,snapshot:await createProjectDeleteData(access.client,access.sso?.capabilities,await readWorkshopOperations(access)).getProjectDeleteSnapshot(projectId)};}
   catch{return{ok:false as const,error:'Não foi possível conferir o projeto e suas dependências. Tente novamente.'};}
 }
 export async function deleteProject(input:unknown):Promise<WebActionResult>{

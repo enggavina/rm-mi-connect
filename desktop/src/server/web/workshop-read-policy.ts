@@ -9,6 +9,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'cell_queue', 'planning_load', 'execution_snapshot',
   'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry', 'workshop_team',
   'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
+  'root_edit_choices', 'project_delete_context',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -32,6 +33,11 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
     case 'operational_reviewers': case 'operational_stage_rules': return ['em.portal.read', 'em.projects.read', 'em.planning.read',
       resource === 'operational_reviewers' ? 'em.forms.read' : 'em.approvals.read', ...(filters.include === true ? ['em.planning.manage' as const] : [])];
     case 'catalog_entry': return ['em.portal.read', 'em.catalogs.read', 'em.catalogs.manage'];
+    case 'root_edit_choices':
+      if (filters.scope === 'project') return ['em.portal.read', 'em.projects.manage'];
+      if (filters.scope === 'planning') return ['em.portal.read', 'em.planning.manage'];
+      throw new Error('Seletores de edição indisponíveis.');
+    case 'project_delete_context': return ['em.portal.read', 'em.projects.read', 'em.projects.manage'];
     case 'template_list': case 'template_draft': case 'template_form': case 'template_choices': return ['em.portal.read', 'em.form_templates.read'];
     case 'project_list': return filters.planning === true || filters.cell != null
       ? ['em.portal.read', 'em.projects.read', 'em.planning.read'] : ['em.portal.read', 'em.projects.read'];

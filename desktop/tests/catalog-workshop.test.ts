@@ -144,8 +144,11 @@ test('enabled root edits use the current office and the established capability',
   const edit = { id: subject, expected_updated_at: new Date().toISOString() };
   assert.equal(await manager.authorize(context, 'edit-project', 'save_project', edit, 'em.projects.manage'), true);
   assert.equal(await manager.authorize(context, 'edit-equipment', 'save_project_with_equipment', edit, 'em.projects.manage'), true);
+  assert.equal(await manager.authorize(context, 'equipment', 'save_project_equipment', { projeto_id: subject }, 'em.projects.manage'), true);
+  assert.equal(await manager.authorize(context, 'remove-project', 'delete_project', edit, 'em.projects.manage'), true);
+  assert.equal(await manager.authorize(context, 'legacy-edit-replay', 'save_project', { ...edit, expected_updated_at: null }, 'em.projects.manage'), true);
   assert.equal(await manager.authorize(context, 'edit-cell', 'save_catalog', { ...edit, kind: 'cells' }, 'em.catalogs.manage'), true);
-  assert.deepEqual(minted, ['save_project', 'save_project_with_equipment', 'save_catalog']);
+  assert.deepEqual(minted, ['save_project', 'save_project_with_equipment', 'save_project_equipment', 'delete_project', 'save_project', 'save_catalog']);
 });
 
 test('assignment selectors ignore submitted membership and assignment retries recheck the current roster', async () => {

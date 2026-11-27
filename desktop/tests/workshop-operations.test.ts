@@ -106,16 +106,9 @@ test('overview uses only the requested workshop indicators and refuses injected 
   await assert.rejects(invalid.getOverview(), /Não foi possível/);
 });
 
-test('production rollout is opt-in and the enabled reader requires an SSO context', async () => {
-  const session = { client };
-  const previous = process.env.EM_WORKSHOP_OPERATION_READS;
-  try {
-    delete process.env.EM_WORKSHOP_OPERATION_READS;
-    assert.equal(await readWorkshopOperations(session), undefined);
-    process.env.EM_WORKSHOP_OPERATION_READS = 'true';
-    await assert.rejects(readWorkshopOperations(session), { code: 'WORKSHOP_FORBIDDEN' });
-  } finally {
-    if (previous === undefined) delete process.env.EM_WORKSHOP_OPERATION_READS;
-    else process.env.EM_WORKSHOP_OPERATION_READS = previous;
-  }
+test('the portal uses the workshop reader whenever the request has an SSO context', async () => {
+  assert.equal(await readWorkshopOperations({ client }), undefined);
+  const read = await readWorkshopOperations({ client,
+    sso: { sessionHash: 'a'.repeat(64), bindingId: project, subject: cell, capabilities: [...caps] } });
+  assert.equal(typeof read, 'function');
 });

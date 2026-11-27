@@ -13,13 +13,11 @@ export function isScopedTemplateWrite(operation: string): boolean {
 
 export function rootWriteCapability(operation: string, payload: Record<string, unknown>, includeEdits = false): CorporateCapability | null {
   if (operation === 'delete_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
-  if (includeEdits && typeof payload.expected_updated_at === 'string') {
-    if (operation === 'save_project' || operation === 'save_project_with_equipment') return 'em.projects.manage';
+  if (includeEdits && ['save_project', 'save_project_equipment', 'delete_project'].includes(operation)) return 'em.projects.manage';
+  if (includeEdits || payload.expected_updated_at === null) {
+    if (operation === 'save_project_with_equipment') return 'em.projects.manage';
     if (operation === 'save_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
   }
-  if (payload.expected_updated_at !== null) return null;
-  if (operation === 'save_project_with_equipment') return 'em.projects.manage';
-  if (operation === 'save_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
   return null;
 }
 

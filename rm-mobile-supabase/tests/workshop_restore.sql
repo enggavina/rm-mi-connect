@@ -1464,6 +1464,112 @@ begin
  end loop;
 end
 $receiving_read_cutover$;
+create function pg_temp.workshop_restore_root_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
+returns jsonb language plpgsql as $$
+declare context jsonb:=pg_temp.workshop_restore_sso(office); result jsonb; hash text:=repeat(office::text,64);
+begin
+ if scoped then perform public.rm_sso_root_creation_permit_v1(hash,submission,operation,payload,context);
+ else perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,
+  case when operation='save_catalog' then 'em.catalogs.manage' else 'em.projects.manage' end);end if;
+ set local role authenticated;
+ result:=public.rm_web_mutate_v1(submission,operation,payload);
+ reset role;
+ return result;
+exception when others then reset role;raise;
+end
+$$;
+
+do $root_edit_cutover$
+declare
+ project uuid; equipment uuid; cell uuid; submission uuid;
+ choices jsonb; forms jsonb; cells jsonb; context jsonb; params jsonb; result jsonb; operation text;
+begin
+ perform rm_private.activate_root_workshop_edits_v1();
+ if (select activated_at is not null from rm_private.workshop_root_enforcement where singleton)
+  or not (select edits_enforced from rm_private.root_creation_settings where singleton)
+  or has_function_privilege('authenticated','public.rm_web_project_delete_snapshot_v1(uuid)','execute') then
+  raise exception 'A ativação das edições mudou o contrato Android ou manteve a consulta antiga de exclusão.';
+ end if;
+ for office in 1..4 loop
+  project:=em_fixture.id(1650+office); equipment:=em_fixture.id(1660+office); cell:=em_fixture.id(200+office);
+  insert into public.rm_projetos(id,nome,status_pcp) values(project,'Edição local '||office,'executando');
+  insert into rm_private.workshop_project_ownership(id,workshop_id) values(project,em_fixture.id(office));
+  insert into public.rm_equipamentos(id,projeto_id,tipo_equipamento_id) values(equipment,project,em_fixture.id(1100+office));
+  update public.rm_projetos set equipamento_id=equipment where id=project;
+  choices:=pg_temp.workshop_restore_read(office,'root_edit_choices','{"scope":"project"}');
+  forms:=pg_temp.workshop_restore_read(office,'root_edit_choices','{"scope":"planning"}');
+  cells:=pg_temp.workshop_restore_read(office,'catalog_list','{"kind":"cells","q":"","page":1}');
+  if not choices->'clients' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1300+office)))
+   or not choices->'types' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1100+office)))
+   or not forms->'forms' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(400+office)))
+   or not cells->'rows' @> jsonb_build_array(jsonb_build_object('id',cell))
+   or (pg_temp.workshop_restore_read(office,'catalog_entry',jsonb_build_object('kind','cells','id',cell))->>'id')::uuid is distinct from cell
+   or (pg_temp.workshop_restore_read(office,'project_delete_context',jsonb_build_object('id',project))->'project'->>'id')::uuid is distinct from project then
+   raise exception 'Um cadastro, seletor ou contexto autorizado ficou indisponível.';
+  end if;
+  for other in 1..4 loop
+   if other=office then continue;end if;
+   if choices->'clients' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1300+other)))
+    or choices->'types' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1100+other)))
+    or forms->'forms' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(400+other)))
+    or cells->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(200+other)))
+    or pg_temp.workshop_restore_read(other,'project_delete_context',jsonb_build_object('id',project)) is not null
+    or pg_temp.workshop_restore_read(other,'catalog_entry',jsonb_build_object('kind','cells','id',cell)) is not null then
+    raise exception 'Uma consulta de edição mostrou dados de outra oficina.';
+   end if;
+  end loop;
+  foreach operation in array array['save_project','save_project_with_equipment','save_project_equipment','save_catalog','delete_project'] loop
+   perform pg_temp.workshop_restore_sso(office);
+   if operation='save_project' then
+    select jsonb_build_object('id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('nome','Nome confirmado '||office))
+     into params from public.rm_projetos where id=project;
+   elsif operation='save_project_with_equipment' then
+    context:=public.rm_web_project_equipment_snapshot_v1(project);
+    params:=jsonb_build_object('id',project,'expected_updated_at',context->'project'->'updated_at',
+     'changes',jsonb_build_object('escopo_abreviado','Escopo confirmado '||office),
+     'equipment',jsonb_build_object('id',equipment,'expected_updated_at',context->'equipment'->'updated_at',
+      'expected_context_version',context->'context_version','changes',jsonb_build_object('modelo','Modelo confirmado '||office)));
+   elsif operation='save_project_equipment' then
+    context:=public.rm_web_project_equipment_snapshot_v1(project);
+    params:=jsonb_build_object('projeto_id',project,'equipamento_id',equipment,'confirm_change',true,
+     'expected_project_updated_at',context->'project'->'updated_at','expected_equipment_updated_at',context->'equipment'->'updated_at',
+     'expected_context_version',context->'context_version','changes',jsonb_build_object('fabricante','Fabricante confirmado '||office));
+   elsif operation='save_catalog' then
+    select jsonb_build_object('kind','cells','id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('nome','Célula confirmada '||office))
+     into params from public.rm_celulas where id=cell;
+   else
+    context:=pg_temp.workshop_restore_read(office,'project_delete_context',jsonb_build_object('id',project));
+    params:=jsonb_build_object('id',project,'expected_updated_at',context->'project'->'updated_at',
+     'expected_context_version',context->'context_version','confirm_delete',true,'justificativa','Ensaio isolado da exclusão');
+   end if;
+   submission:=gen_random_uuid();
+   begin
+    perform pg_temp.workshop_restore_root_write(office,submission,operation,params,false);
+    raise exception 'Uma gravação aceitou o protocolo antigo.';
+   exception when insufficient_privilege then null;
+   end;
+   for other in 1..4 loop
+    if other=office then continue;end if;
+    begin
+     perform pg_temp.workshop_restore_root_write(other,submission,operation,params);
+     raise exception 'Uma gravação foi aceita em outra oficina.';
+    exception when insufficient_privilege then null;
+    end;
+   end loop;
+   result:=pg_temp.workshop_restore_root_write(office,submission,operation,params);
+   if result->>'operation' is distinct from operation or result->>'idempotent_replay' is distinct from 'false'
+    or pg_temp.workshop_restore_root_write(office,submission,operation,params)->>'idempotent_replay' is distinct from 'true' then
+    raise exception 'A gravação autorizada ou sua retentativa perdeu o resultado.';
+   end if;
+  end loop;
+  if exists(select 1 from public.rm_projetos where id=project)
+   or not exists(select 1 from rm_private.workshop_origin_retirements where object_kind='project' and object_id=project)
+   or (select nome from public.rm_celulas where id=cell) is distinct from ('Célula confirmada '||office) then
+   raise exception 'A edição ou a exclusão perdeu os vínculos de origem.';
+  end if;
+ end loop;
+end
+$root_edit_cutover$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1478,3 +1584,4 @@ select 'PASS: restored archive copies authorize photos, form answers and invoice
 select 'PASS: archived Word attachments use the same private read and reject a foreign workshop' result;
 select 'PASS: review cutover preserves legacy actions and rejects foreign decisions in four workshops before the general root cutover' result;
 select 'PASS: receiving and project reads are isolated with the overview and twin in four workshops after retiring legacy receiving reads' result;
+select 'PASS: project and cell edits, equipment and deletion scopes hold in four workshops without closing mobile intake' result;

@@ -124,8 +124,10 @@ select 'PASS: portal root creation, atomic office assignment, authorization and 
 
 select pg_temp.root_denied('select rm_private.activate_root_workshop_edits_v1()','PT409');
 select pg_temp.root_call(48,'save_catalog',pg_temp.root_payload(47,true),2);
-update rm_private.workshop_root_enforcement set activated_at=clock_timestamp(),activated_by=session_user where singleton;
+insert into rm_private.workshop_project_ownership(id,workshop_id) values(pg_temp.root_id(25),pg_temp.root_id(1));
 select rm_private.activate_root_workshop_edits_v1();
+select pg_temp.verify_root(not exists(select 1 from rm_private.workshop_root_enforcement where singleton and activated_at is not null),
+ 'portal edit activation preserves the mobile rollout');
 do $edit$
 declare command jsonb;
 begin
@@ -137,6 +139,7 @@ begin
  reset role;
  perform pg_temp.root_denied(format('select pg_temp.root_call(50,''save_project'',%L,2)',command),'42501');
  perform pg_temp.root_call(50,'save_project',command);
+ perform pg_temp.verify_root((pg_temp.root_call(50,'save_project',command)->>'idempotent_replay')::boolean,'same edit receipt');
  perform pg_temp.verify_root((select nome='Updated own project 070' from public.rm_projetos where id=pg_temp.root_id(21)),'own portal project can be edited');
 
  select jsonb_build_object('kind','cells','id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('nome','Updated BRJ cell 070'))

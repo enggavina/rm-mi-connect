@@ -312,7 +312,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) {
     requireCapability('em.catalogs.read');
     const kind: CatalogKind = catalogKinds.includes(filters.kind as CatalogKind) ? filters.kind as CatalogKind : 'clients';
-    if (workshopRead && ['clients', 'types', 'forms', 'users'].includes(kind)) {
+    if (workshopRead) {
       const current = pageNumber(filters.page);
       const query = { q: searchTerm(filters.q), page: current };
       const raw = kind === 'users' ? await workshopRead('workshop_team', query) : await workshopRead('catalog_list', { ...query, kind });
@@ -327,10 +327,20 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function editorChoices(scope: 'project' | 'planning' = 'project') {
     requireCapability(scope === 'project' ? 'em.projects.manage' : 'em.planning.manage');
+    if (workshopRead) {
+      const [choices, users, statuses] = await Promise.all([
+        workshopRead('root_edit_choices', { scope }),
+        workshopRead('assignment_people', { purpose: scope }),
+        scope === 'project' ? options('status_pcp') : [],
+      ]);
+      if (!rowArray(choices?.clients) || !rowArray(choices?.types) || !rowArray(choices?.forms) || !rowArray(users)) throw queryUnavailable();
+      return { clients: choices.clients as WebRow[], types: choices.types as WebRow[], users: users as WebRow[],
+        forms: await withFormVersionLabels(client, choices.forms), statuses };
+    }
     const [clients, types, users, forms, statuses] = await Promise.all([
       scope === 'project' ? all('rm_clientes', 'id,nome', undefined, 'nome') : [],
       scope === 'project' ? all('rm_tipos_equipamento', 'id,nome,sigla', undefined, 'nome') : [],
-      workshopRead ? workshopRead('assignment_people', { purpose: scope }) : all('rm_users', 'id,nome,status', undefined, 'nome'),
+      all('rm_users', 'id,nome,status', undefined, 'nome'),
       scope === 'planning' ? all('rm_forms', 'id,titulo,ativo', undefined, 'titulo') : [],
       scope === 'project' ? options('status_pcp') : [],
     ]);
@@ -340,7 +350,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getCatalogEntry(kind: EditableCatalogKind, id: string) {
     requireCapability('em.catalogs.manage');
     if (!editableCatalogKindSchema.safeParse(kind).success) return null;
-    if (workshopRead && ['clients', 'types'].includes(kind)) {
+    if (workshopRead) {
       if (!uuid.safeParse(id).success) return null;
       const result = await workshopRead('catalog_entry', { kind, id });
       if (result !== null && result?.id !== id) throw new Error('O cadastro retornado não pôde ser validado.');
