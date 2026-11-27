@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — Retomada de envios Android por operador e oficina
+
+O APK **1.2.23/código 26** consulta e processa somente a fila do operador identificado e da oficina confirmada. Uma pendência de outro operador permanece no dispositivo para a retomada pelo autor. A ordem dos envios do operador ativo é preservada. Uma operação antiga sem oficina registrada só pode ser retomada pelo próprio autor. O servidor confirma a oficina do projeto e da célula antes de autorizar a foto ou assinatura pelo armazenamento privado. A recuperação usa o mesmo protocolo e preserva a origem que já estiver registrada.
+
+Passaram 164 testes mobile, o CI web/mobile, a restauração em quatro oficinas e nove verificações do Operacional Web e do portal em produção. O instalador atualizou a versão 1.2.22 no emulador com o mesmo certificado. Depois da atualização, a conta real da BMA abriu as 29 células autorizadas. Recebimento, projeto e formulário existente abriram com e sem conexão. A retentativa com um arquivo antigo foi exercitada em ambiente isolado.
+
+Instalador do piloto `artifacts/em-mi-electric-brasil-1.2.23-piloto-bma.apk`, commit **`9de05b7`**, SHA-256 `a53a66c93585fb9c669ee255e7c469131bca79d7a283e3ddd23233804332e5c0`. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46037262074) · [EM em produção](https://em-web-production.up.railway.app).
+
 ## P0.1 — Evidência de criação no recebimento
 
 A migração **113**, publicada no Supabase `oficina-em-mi-off`, registra em qual fase o aplicativo criou de fato o projeto pela oficina validada. A abertura online e a criação direta pela fila offline ficam identificadas pela mesma referência de protocolo usada no recebimento. Reenvios, recuperação de registros anteriores e entradas por QR preservam a autoria e o projeto. A ativação geral exige evidência de abertura e conclusão do mesmo novo recebimento na oficina piloto. [Portal em produção](https://em-web-production.up.railway.app/recebimentos) · [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46035447051).
