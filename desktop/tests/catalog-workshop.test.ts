@@ -102,3 +102,17 @@ test('project bundles and cell creation and deletion use their exact workshop au
     { operation: 'save_catalog', payload: cell }, { operation: 'delete_catalog', payload: deleteCell }]);
   assert.equal(reads, 3);
 });
+
+test('enabled root edits use the current office and the established capability', async () => {
+  const context = sso();
+  context.capabilities = ['em.catalogs.manage', 'em.projects.manage'];
+  const minted: string[] = [];
+  const manager = createCatalogWorkshopAuthorizer({ enableRootEdits: true,
+    reader: { async readWeb() { return workshop(); } }, async mint(args) { minted.push(args.operation); } });
+  manager.remember(context, session());
+  const edit = { id: subject, expected_updated_at: new Date().toISOString() };
+  assert.equal(await manager.authorize(context, 'edit-project', 'save_project', edit, 'em.projects.manage'), true);
+  assert.equal(await manager.authorize(context, 'edit-equipment', 'save_project_with_equipment', edit, 'em.projects.manage'), true);
+  assert.equal(await manager.authorize(context, 'edit-cell', 'save_catalog', { ...edit, kind: 'cells' }, 'em.catalogs.manage'), true);
+  assert.deepEqual(minted, ['save_project', 'save_project_with_equipment', 'save_catalog']);
+});

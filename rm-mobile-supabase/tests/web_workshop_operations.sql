@@ -111,6 +111,15 @@ begin
   perform pg_temp.project_read_deny(format('select pg_temp.project_read_call(''receiving_list'',%L,%L)',
    '{"q":"","reason":"all","page":1,"office":"BRJ"}',bma),'22023');
 
+  v:=pg_temp.project_read_call('project_qr',jsonb_build_object('id',project_bma),bma);
+  perform pg_temp.project_read_check((v->>'id')::uuid=project_bma and not(v?'arquivo_nota_fiscal_url'),'own QR exposes only identity fields');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('project_qr',jsonb_build_object('id',project_bma),brj) is null,
+   'QR of another office is unavailable');
+  v:=pg_temp.project_read_call('document_link',jsonb_build_object('id',project_bma,'source','invoice'),bma);
+  perform pg_temp.project_read_check(v->>'file'='https://private.invalid/invoice','own invoice uses the existing file reference');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('document_link',jsonb_build_object('id',project_bma,'source','invoice'),brj) is null,
+   'direct download of another office has no file location');
+
   v:=pg_temp.project_read_call('project_list',list_args,bma);
   perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'rows')=25
     and jsonb_array_length(v->'clients')=1 and jsonb_array_length(v->'cells')=1,'project counts and selectors are filtered before paging');

@@ -102,6 +102,19 @@ test('QR metadata enforces current scopes before SQL and distinguishes a missing
   for (const options of [{ error: true }, { thrown: true }]) await assert.rejects(database(project(), options).getProjectQr(id(1)), error => error instanceof Error && /Não foi possível consultar/.test(error.message) && !/private/.test(error.message));
 });
 
+test('scoped QR consumes only the verified project resource and never falls back to a table read', async () => {
+  const client = { from() { assert.fail('Scoped QR bypassed workshop authorization'); } } as unknown as SupabaseClient;
+  const expected = project();
+  const reader = createProjectQrData(client, caps, async (resource, args) => {
+    assert.equal(resource, 'project_qr');
+    assert.deepEqual(args, { id: expected.id });
+    return expected;
+  });
+  assert.deepEqual(await reader.getProjectQr(expected.id), expected);
+  assert.equal(await createProjectQrData(client, caps, async () => null).getProjectQr(expected.id), null);
+  await assert.rejects(createProjectQrData(client, caps, async () => ({ ...expected, id: id(42) })).getProjectQr(expected.id), /Não foi possível consultar/);
+});
+
 test('QR image endpoint authenticates current identity and read capabilities before querying or rendering', async () => {
   const anonymous = route({ anonymous: true }); assert.equal((await anonymous.handle()).status, 401); assert.equal(anonymous.calls.length, 0);
   for (const role of ['cliente', 'operador', 'unknown']) {

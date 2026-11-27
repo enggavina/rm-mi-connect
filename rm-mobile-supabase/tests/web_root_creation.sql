@@ -121,4 +121,30 @@ select pg_temp.verify_root(not has_function_privilege('authenticated','public.rm
  and not has_function_privilege('service_role','rm_private.activate_root_creation_v1(text,uuid)','execute')
  and not has_table_privilege('service_role','rm_private.root_creation_permits','select'),'permit and activation privileges');
 select 'PASS: portal root creation, atomic office assignment, authorization and replay' result;
+
+select pg_temp.root_denied('select rm_private.activate_root_workshop_edits_v1()','PT409');
+select pg_temp.root_call(48,'save_catalog',pg_temp.root_payload(47,true),2);
+update rm_private.workshop_root_enforcement set activated_at=clock_timestamp(),activated_by=session_user where singleton;
+select rm_private.activate_root_workshop_edits_v1();
+do $edit$
+declare command jsonb;
+begin
+ select jsonb_build_object('id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('nome','Updated own project 070'))
+ into command from public.rm_projetos where id=pg_temp.root_id(21);
+ perform public.rm_sso_action_permit_v1(repeat('5',64),pg_temp.root_id(50),'save_project',command,'em.projects.manage');
+ set local role authenticated;
+ perform pg_temp.root_denied(format('select public.rm_web_mutate_v1(pg_temp.root_id(50),''save_project'',%L)',command),'42501');
+ reset role;
+ perform pg_temp.root_denied(format('select pg_temp.root_call(50,''save_project'',%L,2)',command),'42501');
+ perform pg_temp.root_call(50,'save_project',command);
+ perform pg_temp.verify_root((select nome='Updated own project 070' from public.rm_projetos where id=pg_temp.root_id(21)),'own portal project can be edited');
+
+ select jsonb_build_object('kind','cells','id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('nome','Updated BRJ cell 070'))
+ into command from public.rm_celulas where id=pg_temp.root_id(47);
+ perform pg_temp.root_denied(format('select pg_temp.root_call(51,''save_catalog'',%L)',command),'42501');
+ perform pg_temp.root_call(51,'save_catalog',command,2);
+ perform pg_temp.verify_root((select nome='Updated BRJ cell 070' from public.rm_celulas where id=pg_temp.root_id(47)),'own cell can be edited');
+end
+$edit$;
+select 'PASS: existing project and cell edits require the verified scope when enabled' result;
 rollback;

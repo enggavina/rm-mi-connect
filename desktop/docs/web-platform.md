@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 e P0.2 — preparação do corte e do Gantt por oficina
+
+As migrações **067–069** foram publicadas em **26/11/2026** no Railway **`9a155edb-8aa3-4607-ab91-ca7ae8acd06e`**, com commit `8a7ee486052682a275959cada2587de4f48b98ff`. Recebimentos ganhou uma consulta que filtra projetos e alocações antes da busca e dos indicadores. O Gantt ganhou autorização por oficina para gravar datas, dependências, referências, calendários e marcos. O banco passou a aceitar referências de novos códigos oficiais e recebeu a guarda transacional de origem para projetos e células.
+
+A ativação ampla aguarda a homologação do recebimento no Android e a verificação dos escritores legados. As consultas gerais e o Gantt permanecem na configuração de produção anterior até o corte. Os testes isolados cobriram BMA e BRJ, recusas cruzadas, reenvios, uma quarta referência e rollback das criações sem origem. O ensaio revertido e a aplicação preservaram os dados das 122 tabelas e as identidades e permissões das 248 funções anteriores. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45919125677).
+
 ## P0.1 — piloto de recebimentos Android por oficina
 
 A migração **066** e o Railway **`42e46e25-b785-41a5-82e1-07f79d0b4dfa`** publicaram a abertura e a conclusão com autorização atual do dispositivo e operador. A autorização é específica para o conteúdo, o protocolo e a fase do recebimento. A origem de um recebimento novo é confirmada pelo cliente selecionado no rascunho. O QR e os recebimentos já vinculados usam a origem registrada do projeto. O reenvio preserva autoria, anexos e identificadores.
