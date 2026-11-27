@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Avaliadores de formulários por oficina
+
+A migração **108** e o deploy Railway **`7ea46098-dee5-4366-9703-b75764942fbe`** publicaram o commit **`8159889`**. A aba Formulários do Cronograma usa os vínculos vigentes em Acessos e o cadastro da célula para selecionar avaliadores e calcular a versão das atribuições. A edição confere a mesma versão. Uma alteração na equipe de outra oficina fica fora dessa conferência. Uma atribuição anterior permanece no histórico quando o vínculo é revogado, e um reenvio com o mesmo protocolo mantém o resultado já registrado. A consulta da configuração exige o fluxo autorizado do portal. [Portal do EM](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46021129361).
+
+As 40 comparações de 20 alocações da BMA preservaram o histórico das atribuições e registros. A auditoria confirmou a preservação dos dados das 143 tabelas conferidas. Passaram 706 testes web, a regressão PostgreSQL, o ensaio de restauração em quatro oficinas e 32 verificações de navegador em duas oficinas locais. Em produção, as oito verificações da API confirmaram os acessos autorizados da BMA e o bloqueio da consulta direta às atribuições. As oito verificações do Operacional Web abriram um formulário real da BMA. O emulador Android abriu o mesmo projeto e conferiu o formulário vinculado com e sem conexão.
+
+A conferência em uma sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-avaliadores.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Regras de aprovação e versão da equipe por oficina
 
 A migração **107** e o Railway **`c4dc2d4b-134c-4e0a-8348-e9826e4808b2`** publicaram o commit **`683e672`**. As regras no Roteiro e no Cronograma usam os vínculos atuais da oficina para selecionar aprovadores e calcular a versão da configuração. Uma alteração na equipe de outra oficina ficou fora dessa conferência. O histórico preserva a autoria quando o aprovador perde o vínculo. Uma nova edição exige a versão atual, e o reenvio de uma gravação registrada conserva seu resultado. O acesso direto à prova antiga de aprovações foi encerrado. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46018775381).
