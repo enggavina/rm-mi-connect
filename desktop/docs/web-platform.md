@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 e P0.3 — Formulários e prévias de fotos por oficina
+
+O Railway **0b7a8ed1-72ed-47a5-9d94-16f5831cfc6c** recebeu o commit **`b8ac47c`**. A lista e a consulta de formulários com SSO Microsoft usam a oficina atual em Acessos para recuperar registros e respostas. A galeria de projetos e as respostas com fotos ou assinatura usam endereços internos do EM. O portal autoriza cada visualização por sessão e oficina. Nas prévias históricas, o navegador recebe a imagem pela própria hospedagem do EM e o endereço original permanece no acervo. Os arquivos privados novos continuam com autorização por oficina e endereço temporário. [Formulários em produção](https://em-web-production.up.railway.app/formularios) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45992697799).
+
+O inventário somente leitura confirmou origem para **778 registros de formulário e 5.951 fotos de projeto**. Passaram 700 testes web, seis cenários em cada uma das duas oficinas simuladas no navegador e o ensaio de restauração em quatro oficinas. Em produção, cinco verificações públicas conferiram saúde e exigência de sessão, oito passos do Operacional Web conferiram a jornada da BMA e o emulador Android 1.2.22 abriu uma foto autorizada com e sem rede.
+
+A homologação Microsoft com uma conta real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-fotos-formularios.json`. O roteiro abre a lista, o formulário e a galeria e confere a entrega das imagens pelo EM. A migração e o fechamento do acesso direto aos arquivos no armazenamento histórico continuam no aceite de P0.3. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.1 — Recuperar origem de recebimentos legados no reenvio
 
 A migração **098**, commit **`965890f`**, foi aplicada no Supabase `oficina-em-mi-off`. Se o Android legado já abriu ou concluiu um recebimento antes da atribuição de oficina, o dispositivo e o operador originais podem reprocessar o mesmo protocolo pela API atual. O banco confere os dados imutáveis da abertura ou do recibo, o cliente da oficina, o autor e o equipamento do projeto antes de registrar a origem. A auditoria é privada e registra uma confirmação por protocolo. Um QR de um projeto que já existia exige origem comprovada por outro registro. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45990531173).
