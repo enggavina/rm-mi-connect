@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1, P0.4 e P0.5 — Consulta de protocolos do Android
+
+Em **Projetos → Protocolo do Android**, o gestor autorizado consulta o código exibido no aplicativo. A página mostra a abertura ou o envio confirmado e liga o protocolo ao projeto. Para formulários, oferece o atalho ao registro original. Quando o serviço recebe o mesmo protocolo e o mesmo conteúdo novamente, o resultado mostra a hora do reenvio confirmado. [Migração 130](../../rm-mobile-supabase/migrations/130_rm_android_protocol_lookup.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46072970265).
+
+A tela exige sessão Microsoft, acesso ao histórico e as permissões do módulo consultado. A origem vem da confirmação persistida pela oficina no serviço Android. A consulta incorpora recibos anteriores quando o serviço confirma novamente o protocolo original em um reenvio autorizado. Os ensaios em quatro oficinas, antes e depois da restauração, verificaram a primeira confirmação e o reenvio das sete operações da fila. No navegador isolado, passaram 11 verificações, incluindo um recebimento sem OS, o formulário original, consulta cruzada e revogação. O ensaio revertido preservou as 151 tabelas auditadas e os quatro recibos existentes.
+
+O Supabase `oficina-em-mi-off` recebeu a migração **130**, e o Railway publicou o commit **`5fc38ab`** na implantação **`82c5b048-a80d-424e-8dd9-7ef1567c7134`**. Passaram 11 verificações no navegador em produção, incluindo a exigência de sessão Microsoft na página. O emulador abriu o rascunho existente de Recebimento com e sem rede e restabeleceu a conexão. A consulta de prontidão passou a informar confirmações e reenvios da fila por oficina e ainda mostrou zero protocolos no novo fluxo. [Protocolo do Android em produção](https://em-web-production.up.railway.app/projetos/protocolo) · [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql).
+
 ## P0.4 e P0.5 — Confirmação dos envios da fila Android
 
 A migração **129** faz o serviço de registros conferir o recibo gravado antes de confirmar o envio ao Android. A confirmação inclui o protocolo, a operação, a oficina, o projeto, o dispositivo e o operador. Se o servidor detectar ausência ou divergência, o item continua disponível para retentativa. Um reenvio válido devolve o mesmo recibo. [Migração](../../rm-mobile-supabase/migrations/129_rm_offline_mutation_confirmation.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46071139855).

@@ -1,4 +1,4 @@
--- Run as the database owner on the EM database. Results contain counts only.
+-- Run as the database owner on the EM database after migration 130. Results contain counts only.
 begin isolation level repeatable read read only;
 set local statement_timeout = '20s';
 set local search_path = '';
@@ -37,6 +37,15 @@ with protocols as materialized (
         and slot.data_inicio is not null and slot.data_limite >= slot.data_inicio
     )) as with_dated_allocation
   from evidence o group by o.code
+), queue_progress as (
+  select w.code, count(*) as confirmed_protocols,
+    count(*) filter (where a.last_retry_at is not null) as with_confirmed_retry
+  from rm_private.workshop_android_receipt_confirmations a
+  join rm_private.workshop_references w on w.id=a.workshop_id
+  join rm_private.mobile_mutation_receipts r on r.client_submission_id=a.submission_id
+  where r.result->'resource_deleted' is distinct from 'true'::jsonb
+    and rm_private.workshop_project_owned_v1(a.project_id,a.workshop_id)
+  group by w.code
 )
 select jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only') = 'on',
@@ -50,7 +59,8 @@ select jsonb_build_object(
     where receipt.rpc_name='rm_submit_recebimento_v1' and not exists(select 1 from rm_private.receiving_workshop_protocols scoped
       where scoped.submission_id=receipt.client_submission_id and scoped.completed_at is not null)),
   'without_confirmed_origin', (select count(*) from evidence where not origin_confirmed),
-  'by_workshop', coalesce((select jsonb_agg(to_jsonb(progress) order by code) from progress), '[]'::jsonb)
+  'by_workshop', coalesce((select jsonb_agg(to_jsonb(progress) order by code) from progress), '[]'::jsonb),
+  'android_queue_by_workshop', coalesce((select jsonb_agg(to_jsonb(queue_progress) order by code) from queue_progress), '[]'::jsonb)
 ) report;
 
 commit;
