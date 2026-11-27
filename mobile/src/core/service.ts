@@ -16,7 +16,7 @@ import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { readWorkshopMedia, workshopMediaCacheKey } from './media-workshop';
-import { mediaUploadMime, queuedMediaIntents, receivingMediaTransfer, sendWorkshopMediaUpload, type AuthorizedMediaTransfer, type MediaIntent } from './media-upload-workshop';
+import { mediaUploadMime, queuedMediaIntents, queuedWorkshopMediaTransfer, receivingMediaTransfer, sendWorkshopMediaUpload, type AuthorizedMediaTransfer, type MediaIntent } from './media-upload-workshop';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
 import { EXECUTION_CONTEXT_SQL, EXECUTION_OPERATIONS_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
@@ -25,6 +25,7 @@ import { readWorkshopExecution } from './execution-workshop';
 import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningState, receivingOpeningKey, storeReceivingOpening, type ReceivingOpeningState } from './receiving-opening';
 import { sendScopedReceiving, sendWorkshopReceivingDraft, type ReceivingDraftCommand } from './receiving-workshop';
 import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
+import { queueMatchesWorkshop, type QueueScope } from './workshop-queue-scope';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -84,11 +85,14 @@ class MobileService {
       this.update({});
     },
     send: async (owner, row, params) => {
+      const scope = scopedCatalog ? await this.operatorWorkshop() : null;
+      if (scope && (scope.owner !== owner || !queueMatchesWorkshop(row, scope))) throw new Error('Confirme o operador e a oficina do recebimento original.');
       const { data: auth, error: authError } = await this.supabase().auth.getSession();
       if (authError || !auth.session || auth.session.user.id !== owner || owner !== await secureStorage.getItem('rm.device.owner') || this.snapshot.sessionUserId !== owner) throw new Error('Renove o login da conta original para solicitar a abertura. O recebimento permanece salvo.');
       const token = await secureStorage.getItem(row.token_key);
       if (!token) throw new Error('Identifique novamente o operador responsável para autorizar a abertura.');
       if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante a abertura.');
+      scope?.assertCurrent();
       const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
       try {
         if (scopedReceiving) return await sendScopedReceiving({
@@ -227,17 +231,23 @@ class MobileService {
           o.operador_id, o.matricula, o.nome, o.cargo ?? null, o.perfil, JSON.stringify(o.perfil_assinante ?? []), o.equipe_id ?? null, JSON.stringify(o.celulas_vinculadas ?? []), o.authenticated_at);
       });
       // Refresh only this actor's queued grants. Other operators retain their original attribution.
-      const pending = await this.listQueue();
-      for (const item of pending) if (item.actor_id === identity.operator.operador_id) {
+      const actor = identity.operator.operador_id;
+      const workshop = verifiedWorkshop ?? (scopedCatalog ? await secureStorage.getItem(`rm.workshop.device.${owner}`) : null);
+      for (const item of await this.pendingQueue()) {
+        if (item.actor_id !== actor || (scopedCatalog && (!workshop || !queueMatchesWorkshop(item, { actor, workshop })))) continue;
         await secureStorage.setItem(item.token_key, identity.token);
       }
       this.scheduleSync();
-    } finally { this.identityBusy = false; }
+    } finally {
+      this.identityBusy = false;
+      await this.refreshCounts().catch(() => undefined);
+    }
   }
   async switchOperator() {
     await Promise.allSettled([...this.mediaWork]);
     await this.database.idle();
     this.operatorToken = null; this.update({ operator: null, error: null });
+    await this.refreshCounts();
   }
   list = async (table: string, filter?: CatalogFilter) => {
     const rows = await this.database.list(table, filter);
@@ -574,12 +584,23 @@ class MobileService {
       return committed.view;
     }));
   }
-  async listQueue(): Promise<OutboxRow[]> {
+  private async pendingQueue(): Promise<OutboxRow[]> {
     return this.database.connection().getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json,m.workshop_id FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE status<>'completed' ORDER BY o.created_at,o.rowid`);
   }
+  async listQueue(): Promise<OutboxRow[]> {
+    if (!scopedCatalog) return this.pendingQueue();
+    const scope = await this.operatorWorkshop().catch(() => null);
+    if (!scope) return [];
+    const rows = await this.pendingQueue();
+    scope.assertCurrent();
+    return rows.filter(row => queueMatchesWorkshop(row, scope));
+  }
   async operation(id: string): Promise<(OutboxRow & { result?: unknown }) | null> {
+    const scope = scopedCatalog ? await this.operatorWorkshop().catch(() => null) : null;
+    if (scopedCatalog && !scope) return null;
     const row = await this.database.connection().getFirstAsync<OutboxRow>('SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json,m.workshop_id FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
-    return row ? { ...row, result: row.result_json ? JSON.parse(row.result_json) : undefined } : null;
+    scope?.assertCurrent();
+    return row && (!scope || queueMatchesWorkshop(row, scope)) ? { ...row, result: row.result_json ? JSON.parse(row.result_json) : undefined } : null;
   }
   async receivingOpeningInfo(id: string): Promise<ReceivingOpeningState | null> {
     const owner = this.snapshot.sessionUserId, actor = this.snapshot.operator?.operador_id;
@@ -865,43 +886,39 @@ class MobileService {
     if (this.operatorToken === token && this.snapshot.operator?.operador_id === operator.operador_id) this.update({ operator: refreshed });
   }
   private async mediaReadyToSend() {
-    const queue = await this.listQueue();
+    const scope = await this.operatorWorkshop().catch(() => null);
+    const queue = scope ? (await this.pendingQueue()).filter(row => queueMatchesWorkshop(row, scope)) : [];
     const intents = queuedMediaIntents(queue);
-    const actor = this.snapshot.operator?.operador_id;
+    const actor = scope?.actor;
     const entry = actor ? await this.readReceivingEntry(this.database.connection(), actor) : null;
-    const draft = entry && !entry.data.submitted ? entry : null;
+    scope?.assertCurrent();
+    const draft = scopedDraftMedia && entry && !entry.data.submitted ? entry : null;
     const cloudDraft = new Set(draft ? [draft.data.arquivoNotaFiscal, ...draft.data.fotos.map(photo => photo.uri)] : []);
     const waitsForReceiving = queue.some(row => row.rpc_name === 'rm_submit_recebimento_v1' && row.actor_id === actor);
-    return { intents, actor, draft, waitsForReceiving, included: (uri: string) => intents.has(uri) || cloudDraft.has(uri) };
+    return { intents, scope, draft, waitsForReceiving, included: (uri: string) => intents.has(uri) || cloudDraft.has(uri) };
   }
-  private async resolveMediaTransfer(row: MediaRow, intent?: MediaIntent, draft?: ReceivingDraftEntry | null, actor?: string): Promise<AuthorizedMediaTransfer | null> {
-    if (scopedDraftMedia && intent?.operation === 'rm_submit_recebimento_v1' && intent.kind !== 'signature') {
+  private async resolveScopedMediaTransfer(row: MediaRow, scope: QueueScope & { token: string; assertCurrent(): void },
+    intent?: MediaIntent, draft?: ReceivingDraftEntry | null): Promise<AuthorizedMediaTransfer> {
+    scope.assertCurrent();
+    if (intent) {
+      const transfer = queuedWorkshopMediaTransfer(intent, scope, row.local_uri, scopedDraftMedia);
       const operatorToken = await secureStorage.getItem(intent.row.token_key);
-      let workshopOrigin = intent.row.workshop_id;
-      if (!workshopOrigin && this.snapshot.operator?.operador_id === intent.row.actor_id) workshopOrigin = (await this.operatorWorkshop()).workshop;
-      if (!workshopOrigin || !operatorToken) throw new Error('Confirme o operador e a oficina do recebimento original.');
-      return { ...receivingMediaTransfer(intent.row.id, intent.row.actor_id, intent.payload.p_cliente_id, intent.payload.p_projeto_id,
-        row.local_uri, intent.kind), workshopOrigin, operatorToken };
-    }
-    if (intent?.row.workshop_id) {
-      const operatorToken = await secureStorage.getItem(intent.row.token_key);
+      scope.assertCurrent();
       if (!operatorToken) throw new Error('Identifique o operador do protocolo original para enviar o arquivo.');
-      return { submission: intent.row.id, operation: intent.operation, payload: intent.payload, kind: intent.kind,
-        workshopOrigin: intent.row.workshop_id, operatorToken };
+      return { ...transfer, workshopOrigin: scope.workshop, operatorToken };
     }
-    if (scopedDraftMedia && !intent && draft && actor) {
-      await this.assertReceivingDraftOrigin(actor, draft);
-      const scope = await this.operatorWorkshop();
-      if (scope.actor !== actor) throw new Error('Identifique o operador original do rascunho antes de enviar o arquivo.');
+    if (scopedDraftMedia && !intent && draft) {
+      await this.assertReceivingDraftOrigin(scope.actor, draft);
+      scope.assertCurrent();
       const kind = row.local_uri === draft.data.arquivoNotaFiscal ? 'document' : 'photo';
-      return { ...receivingMediaTransfer(draft.data.id, actor, draft.data.cliente, draft.data.projeto_id, row.local_uri, kind),
+      return { ...receivingMediaTransfer(draft.data.id, scope.actor, draft.data.cliente, draft.data.projeto_id, row.local_uri, kind),
         workshopOrigin: scope.workshop, operatorToken: scope.token };
     }
-    return null;
+    throw new Error('Confirme a oficina e o operador do arquivo. O envio continua salvo no dispositivo.');
   }
-  private async uploadScopedMedia(row: MediaRow, transfer: AuthorizedMediaTransfer, owner: string | null, file: Uint8Array): Promise<string> {
+  private async uploadScopedMedia(row: MediaRow, transfer: AuthorizedMediaTransfer, scope: { owner: string; assertCurrent(): void }, file: Uint8Array): Promise<string> {
     const { data, error } = await this.supabase().auth.getSession();
-    if (error || !data.session || !owner || data.session.user.id !== owner || this.snapshot.sessionUserId !== owner) {
+    if (error || data.session?.user.id !== scope.owner) {
       throw new Error('Identifique novamente o operador do protocolo original para enviar o arquivo.');
     }
     const mime = mediaUploadMime(row.bucket, row.mime_type);
@@ -909,6 +926,7 @@ class MobileService {
     const sha256 = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
     const name = row.remote_path.split('/').at(-1) || row.id;
     const attachment = { uri: row.local_uri, name, type: mime } as unknown as Blob;
+    scope.assertCurrent();
     return sendWorkshopMediaUpload({ ...transfer, deviceToken: data.session.access_token, asset: row.id,
       reference: row.local_uri, mime, size: file.byteLength, sha256 }, attachment, url);
   }
@@ -919,11 +937,11 @@ class MobileService {
     return row.bucket === 'rm-documentos' ? `${url}/storage/v1/object/authenticated/rm-documentos/${row.remote_path}` : bucket.getPublicUrl(row.remote_path).data.publicUrl;
   }
   private async pushMedia(force: boolean) {
-    const owner = this.snapshot.sessionUserId;
     const rows = await this.database.connection().getAllAsync<MediaRow>(`SELECT q.*,m.next_retry_at FROM local_media_upload_queue q JOIN local_queue_meta m USING(id) WHERE q.status<>'uploaded' ORDER BY q.created_at,q.rowid`);
     const selection = scopedUploads ? await this.mediaReadyToSend() : null;
     for (const row of rows) {
-      if (selection && !selection.included(row.local_uri)) continue;
+      if (selection && (!selection.scope || !selection.included(row.local_uri))) continue;
+      selection?.scope?.assertCurrent();
       const intent = selection?.intents.get(row.local_uri);
       if (scopedDraftMedia && !intent && selection?.draft && (selection.waitsForReceiving
         || !selection.draft.data.cliente && !selection.draft.data.projeto_id)) continue;
@@ -932,8 +950,12 @@ class MobileService {
       try {
         const base64 = await FileSystem.readAsStringAsync(row.local_uri, { encoding: FileSystem.EncodingType.Base64 });
         const bytes = decodeBase64(base64);
-        const transfer = await this.resolveMediaTransfer(row, intent, selection?.draft, selection?.actor);
-        const remoteUrl = transfer ? await this.uploadScopedMedia(row, transfer, owner, bytes) : await this.uploadLegacyMedia(row, bytes);
+        let transfer: AuthorizedMediaTransfer | undefined;
+        let remoteUrl: string;
+        if (selection?.scope) {
+          transfer = await this.resolveScopedMediaTransfer(row, selection.scope, intent, selection.draft);
+          remoteUrl = await this.uploadScopedMedia(row, transfer, selection.scope, bytes);
+        } else remoteUrl = await this.uploadLegacyMedia(row, bytes);
         await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploaded',public_url=?,last_error=NULL WHERE id=?", remoteUrl, row.id));
         await this.database.saveLocal(`media:${remoteUrl}`, row.local_uri);
         if (transfer?.operation === 'receiving_draft' && typeof transfer.payload.p_operador_id === 'string') {
@@ -950,12 +972,17 @@ class MobileService {
     if (!owner) throw new Error('A sessão do dispositivo não está disponível.');
     const media = await this.database.connection().getAllAsync<{local_uri: string; public_url: string}>("SELECT local_uri,public_url FROM local_media_upload_queue WHERE status='uploaded'");
     const uploaded = new Map(media.map(m => [m.local_uri, m.public_url]));
-    for (const row of await this.listQueue()) {
+    const scope = scopedCatalog ? await this.operatorWorkshop() : null;
+    const queue = await this.pendingQueue();
+    for (const row of queue) {
+      if (scope && !queueMatchesWorkshop(row, scope)) continue;
+      scope?.assertCurrent();
       if (!force && row.next_retry_at > Date.now()) throw new Error('Uma operação aguarda nova tentativa automática.');
       await this.database.write(db => db.runAsync("UPDATE local_rpc_outbox SET status='syncing' WHERE id=?", row.id));
       try {
         const token = await secureStorage.getItem(row.token_key);
         if (!token) throw new Error('Identifique novamente o operador responsável para autorizar o envio.');
+        scope?.assertCurrent();
         // Execution has no media fields. A free-text note beginning with file:
         // remains text and must not become a missing-upload dependency.
         const raw = JSON.parse(row.params_json);
@@ -1175,11 +1202,11 @@ class MobileService {
       (SELECT count(*) FROM local_media_upload_queue WHERE status<>'uploaded') AS pendingMedia,
       (SELECT count(*) FROM local_rpc_outbox WHERE status<>'completed') AS pendingMutations`);
     let pendingMedia = counts?.pendingMedia ?? 0;
-    const pendingMutations = counts?.pendingMutations ?? 0;
+    const pendingMutations = scopedCatalog ? (await this.listQueue().catch(() => [])).length : counts?.pendingMutations ?? 0;
     if (scopedUploads && pendingMedia) {
-      const selection = await this.mediaReadyToSend();
+      const selection = await this.mediaReadyToSend().catch(() => null);
       const candidates = await db.getAllAsync<{ local_uri: string }>("SELECT local_uri FROM local_media_upload_queue WHERE status<>'uploaded'");
-      pendingMedia = candidates.filter(row => selection.included(row.local_uri)).length;
+      pendingMedia = candidates.filter(row => selection?.included(row.local_uri)).length;
     }
     this.update({ pendingMedia, pendingMutations, syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, {
       type: 'queue', online: this.snapshot.online, pendingMedia, pendingMutations, restoring: !this.snapshot.ready,

@@ -1,4 +1,5 @@
 import type { Bucket, OutboxRow } from './types';
+import { queueMatchesWorkshop, type QueueScope } from './workshop-queue-scope';
 
 const destination = 'https://em-web-production.up.railway.app/api/mobile/midia/envio';
 const MIME_EXTENSIONS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' } as const;
@@ -17,6 +18,14 @@ export function receivingMediaTransfer(submission: string, actor: string, custom
       p_projeto_id: project || null, ...(kind === 'document' ? { p_arquivo_nota_fiscal_url: reference } :
         { p_fotos_recebimento: [{ foto_url: reference }] }) },
   };
+}
+
+export function queuedWorkshopMediaTransfer(intent: MediaIntent, scope: QueueScope, reference: string, draftMedia: boolean): MediaTransfer {
+  if (!queueMatchesWorkshop(intent.row, scope)) throw new Error('O arquivo pertence a outro operador ou a outra oficina. O envio continua salvo no dispositivo.');
+  if (draftMedia && intent.operation === 'rm_submit_recebimento_v1' && intent.kind !== 'signature') {
+    return receivingMediaTransfer(intent.row.id, scope.actor, intent.payload.p_cliente_id, intent.payload.p_projeto_id, reference, intent.kind);
+  }
+  return { submission: intent.row.id, operation: intent.operation, payload: intent.payload, kind: intent.kind };
 }
 
 function record(value: unknown): Record<string, unknown> {
