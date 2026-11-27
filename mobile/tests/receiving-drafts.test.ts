@@ -63,6 +63,17 @@ test('every local edit survives closing/reopening offline with its original prot
   assert.deepEqual((await store.load('actor'))?.data, values);
 });
 
+test('the first captured draft origin survives offline edits and a change of office', async () => {
+  const { coordinator, store } = setup();
+  const original = { workshop: 'bma', device: 'original-tablet' };
+  const changed = { workshop: 'brj', device: 'replacement' };
+  const initial = await coordinator.open('actor', draft, undefined, original);
+  await coordinator.save('actor', { ...initial.data, notaFiscal: '1234' }, changed);
+  const resumed = await new ReceivingDraftCoordinator(store, () => 'unused').open('actor', draft, undefined, changed);
+  assert.deepEqual(resumed.meta.origin, original);
+  assert.equal(resumed.data.notaFiscal, '1234');
+});
+
 test('lost autosave response retries the exact persisted request before sending newer local edits', async () => {
   const { store, remote, coordinator, sync } = setup();
   await coordinator.open('actor', draft);

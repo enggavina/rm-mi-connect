@@ -332,4 +332,81 @@ begin
   'blocked transfer preserves the original unfinished draft');
 end$$;
 select 'PASS: receiving draft workshop, original ownership, exact retry and blocked cross-workshop recovery' result;
+
+create function pg_temp.rx_draft_media_upload(office int,draft uuid,asset uuid,kind text,mime text,payload jsonb,ref text,stored boolean)
+returns jsonb language sql as $$
+ select public.rm_mobile_workshop_upload_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),
+  pg_temp.rx_id(office),draft,'receiving_draft',payload,asset,kind,ref,mime,24,repeat('a',64),stored)
+$$;
+do $draft_media$
+declare sid uuid:=pg_temp.rx_id(956); inv uuid:=pg_temp.rx_id(961); photo uuid:=pg_temp.rx_id(962);
+ base text:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/';
+ inv_name text; photo_name text; inv_url text; photo_url text; result jsonb; context jsonb; save_args jsonb;
+ receipt jsonb; snapshot jsonb; project uuid; kind text; asset uuid; mime text; local_uri text; intent jsonb; remote_path text;
+begin
+ context:=jsonb_build_object('p_receiving_draft_id',sid,'p_operador_id',pg_temp.rx_id(14),'p_cliente_id',pg_temp.rx_id(20));
+ for asset,kind,mime,local_uri in select * from (values
+   (inv,'document','application/pdf','file:///storage/'||inv||'.pdf'),(photo,'photo','image/jpeg','file:///storage/'||photo||'.jpg')) v loop
+  intent:=context||case kind when 'document' then jsonb_build_object('p_arquivo_nota_fiscal_url',local_uri)
+   else jsonb_build_object('p_fotos_recebimento',jsonb_build_array(jsonb_build_object('foto_url',local_uri))) end;
+  perform pg_temp.rx_reject(format('select pg_temp.rx_draft_media_upload(2,%L,%L,%L,%L,%L,%L,false)',
+   sid,asset,kind,mime,intent,local_uri),'42501');
+  perform pg_temp.rx_reject(format('select pg_temp.rx_draft_media_upload(1,%L,%L,%L,%L,%L,%L,false)',
+   sid,asset,kind,mime,intent||jsonb_build_object('p_receiving_draft_id',pg_temp.rx_id(970)),local_uri),'22023');
+  result:=pg_temp.rx_draft_media_upload(1,sid,asset,kind,mime,intent,local_uri,false);
+  remote_path:=result->>'path';
+  perform pg_temp.rx_check(not (result->>'stored')::boolean
+    and (select project_id is null from rm_private.mobile_workshop_uploads where id=asset),'draft file reserves no project');
+  perform pg_temp.rx_reject(format('select pg_temp.rx_draft_media_upload(1,%L,%L,%L,%L,%L,%L,true)',
+   sid,asset,kind,mime,intent,local_uri),'PT409');
+  insert into storage.objects(bucket_id,name,metadata,user_metadata)
+   values('rm-documentos',remote_path,jsonb_build_object('size',24,'mimetype',mime),jsonb_build_object('sha256',repeat('a',64)));
+  result:=pg_temp.rx_draft_media_upload(1,sid,asset,kind,mime,intent,local_uri,true);
+  perform pg_temp.rx_check((result->>'stored')::boolean
+    and result=pg_temp.rx_draft_media_upload(1,sid,asset,kind,mime,intent,local_uri,true),'draft file receipt continues exactly after a lost acknowledgement');
+  perform pg_temp.rx_check(pg_temp.rx_media(1,array[base||remote_path])->'files'='[]'::jsonb,'unpublished draft attachment cannot be downloaded');
+  if kind='document' then inv_name:=remote_path; else photo_name:=remote_path;end if;
+ end loop;
+ inv_url:=base||inv_name; photo_url:=base||photo_name;
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.receiving_openings where client_submission_id=sid)
+  and not exists(select 1 from rm_private.mobile_mutation_receipts where client_submission_id=sid),'draft attachments do not open a project');
+ snapshot:=(pg_temp.rx_payload(sid,'complete')->'p_receiving_draft_snapshot')||
+  jsonb_build_object('arquivoNotaFiscal',inv_url,'fotos',jsonb_build_array(jsonb_build_object('uri',photo_url,'tipo','frente')));
+ save_args:=jsonb_build_object('action','save','draftId',sid,'expectedRevision',1,'saveId',gen_random_uuid(),'payload',snapshot);
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L)',jsonb_set(save_args,'{payload,arquivoNotaFiscal}',
+  to_jsonb(base||replace(inv_name,inv::text,pg_temp.rx_id(998)::text)))),'42501');
+ result:=pg_temp.rx_draft_workshop(1,save_args);
+ perform pg_temp.rx_check(result->>'revision'='2' and pg_temp.rx_draft_workshop(1,save_args)=result
+  and jsonb_array_length(pg_temp.rx_media(1,array[inv_url,photo_url])->'files')=2
+  and pg_temp.rx_media(2,array[inv_url,photo_url])->'files'='[]'::jsonb,
+  'only the original office and actor recover the private draft files after saving');
+ set local role authenticated;
+ perform pg_temp.rx_check(not exists(select 1 from storage.objects where bucket_id='rm-documentos' and name in(inv_name,photo_name)),
+  'authenticated direct storage bypass is blocked for draft files');
+ reset role;
+
+ receipt:=pg_temp.rx_payload(sid,'complete')||jsonb_build_object('p_receiving_draft_revision',2,
+  'p_receiving_draft_snapshot',snapshot,'p_arquivo_nota_fiscal_url',inv_url);
+ receipt:=jsonb_set(receipt,'{p_fotos_recebimento,0,foto_url}',to_jsonb(photo_url));
+ result:=pg_temp.rx_call(sid,'open',jsonb_set(jsonb_set(receipt,'{p_arquivo_nota_fiscal_url}','"file:///local/invoice.pdf"'),
+  '{p_fotos_recebimento,0,foto_url}','"file:///local/front.jpg"'));
+ project:=(result->>'projeto_id')::uuid;
+ perform pg_temp.rx_check(project is not null and (result->>'attachments_pending')::boolean and
+  rm_private.workshop_project_link_v1('document_link',jsonb_build_object('id',project,'source','invoice'),pg_temp.rx_id(1))->>'file' is null,
+  'early opening still creates the project before publishing its attachments');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''complete'',%L)',sid,jsonb_set(receipt,'{p_arquivo_nota_fiscal_url}',
+  to_jsonb(base||replace(inv_name,inv::text,pg_temp.rx_id(998)::text)))),'42501');
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.mobile_mutation_receipts where client_submission_id=sid)
+  and exists(select 1 from rm_private.receiving_drafts where id=sid and revision=2 and state='draft'),'rejection preserves pending draft and opening');
+ result:=pg_temp.rx_call(sid,'complete',receipt);
+ perform pg_temp.rx_check(result->>'projeto_id'=project::text and (select count(*)=2 from rm_private.mobile_workshop_uploads
+   where id in(inv,photo) and project_id=project)
+  and (pg_temp.rx_call(sid,'complete',receipt)->>'idempotent_replay')::boolean
+  and (select count(*)=1 from public.rm_fotos where projeto_id=project and foto_url=photo_url)
+  and rm_private.workshop_project_link_v1('document_link',jsonb_build_object('id',project,'source','invoice'),pg_temp.rx_id(1))->>'file'=inv_url
+  and jsonb_array_length(pg_temp.rx_media(1,array[inv_url,photo_url])->'files')=2,
+  'completion promotes the same stored bytes and preserves a single receiving across retries');
+end
+$draft_media$;
+select 'PASS: private receiving draft media before opening, cross-office denial, exact replay and atomic promotion' result;
 rollback;

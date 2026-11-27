@@ -26,3 +26,12 @@ test('media issuance requires the exact workshop, protocol and server path to co
   assert.equal(isNativeWorkshopMedia(stored.replace('/authenticated/', '/public/'), origin), false);
   assert.equal(isNativeWorkshopMedia(stored.replace('/mobile-oficina/', '/other/../mobile-oficina/'), origin), false);
 });
+
+test('private receiving draft uploads name the same protocol and reject signatures', () => {
+  const draft = { ...invoice, operation: 'receiving_draft', payload: { p_receiving_draft_id: invoice.submission } };
+  assert.equal(nativeMediaUpload.safeParse(draft).success, true);
+  assert.equal(nativeMediaUpload.safeParse({ ...draft, payload: {} }).success, false);
+  assert.equal(nativeMediaUpload.safeParse({ ...draft, payload: { p_receiving_draft_id: id(8) } }).success, false);
+  assert.equal(nativeMediaUpload.safeParse({ ...draft, kind: 'signature', mime: 'image/png',
+    reference: draft.reference.replace('.pdf', '.png') }).success, false);
+});

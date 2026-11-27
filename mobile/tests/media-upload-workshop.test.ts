@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mediaUploadMime, queuedMediaIntents, sendWorkshopMediaUpload } from '../src/core/media-upload-workshop';
+import { mediaUploadMime, queuedMediaIntents, receivingMediaTransfer, sendWorkshopMediaUpload } from '../src/core/media-upload-workshop';
 import type { OutboxRow } from '../src/core/types';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -48,4 +48,14 @@ test('binary uploads accept only the stored response for the original file and w
   assert.equal(saved, url);
   await assert.rejects(sendWorkshopMediaUpload(input, file, origin, async () => Response.json({ ...result, workshop_id: id(99) })));
   await assert.rejects(sendWorkshopMediaUpload(input, file, origin, async () => Response.json({ ...result, stored: false })));
+});
+
+test('the same receiving asset uses a stable upload contract before and after queuing its draft', () => {
+  const fromDraft = receivingMediaTransfer(submission, id(11), id(12), null, receipt, 'document');
+  const pending = outbox('rm_submit_recebimento_v1', { p_cliente_id: id(12), p_arquivo_nota_fiscal_url: receipt }, 7);
+  const intent = queuedMediaIntents([pending]).get(receipt)!;
+  assert.deepEqual(receivingMediaTransfer(pending.id, pending.actor_id, intent.payload.p_cliente_id, intent.payload.p_projeto_id, receipt, 'document'), fromDraft);
+  assert.equal(fromDraft.payload.p_receiving_draft_id, pending.id);
+  assert.equal(fromDraft.payload.p_arquivo_nota_fiscal_url, receipt);
+  assert.deepEqual(receivingMediaTransfer(submission, id(11), id(12), null, photo, 'photo').payload.p_fotos_recebimento, [{ foto_url: photo }]);
 });

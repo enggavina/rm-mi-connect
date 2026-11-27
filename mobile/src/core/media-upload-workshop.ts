@@ -3,8 +3,21 @@ import type { Bucket, OutboxRow } from './types';
 const destination = 'https://em-web-production.up.railway.app/api/mobile/midia/envio';
 const MIME_EXTENSIONS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' } as const;
 type Mime = keyof typeof MIME_EXTENSIONS;
-type UploadOperation = 'rm_submit_recebimento_v1' | 'rm_record_cell_photo_v1' | 'rm_submit_form_inspection_v1' | 'rm_submit_form_revision_v1';
-export type MediaIntent = { row: OutboxRow; operation: UploadOperation; payload: Record<string, unknown>; kind: 'photo' | 'signature' | 'document' };
+type UploadOperation = 'receiving_draft' | 'rm_submit_recebimento_v1' | 'rm_record_cell_photo_v1' | 'rm_submit_form_inspection_v1' | 'rm_submit_form_revision_v1';
+type MediaKind = 'photo' | 'signature' | 'document';
+export type MediaIntent = { row: OutboxRow; operation: Exclude<UploadOperation, 'receiving_draft'>; payload: Record<string, unknown>; kind: MediaKind };
+export type MediaTransfer = { submission: string; operation: UploadOperation; payload: Record<string, unknown>; kind: MediaKind };
+export type AuthorizedMediaTransfer = MediaTransfer & { operatorToken: string; workshopOrigin: string };
+
+export function receivingMediaTransfer(submission: string, actor: string, customer: unknown, project: unknown,
+  reference: string, kind: 'photo' | 'document'): MediaTransfer {
+  return {
+    submission, operation: 'receiving_draft', kind,
+    payload: { p_receiving_draft_id: submission, p_operador_id: actor, p_cliente_id: customer || null,
+      p_projeto_id: project || null, ...(kind === 'document' ? { p_arquivo_nota_fiscal_url: reference } :
+        { p_fotos_recebimento: [{ foto_url: reference }] }) },
+  };
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

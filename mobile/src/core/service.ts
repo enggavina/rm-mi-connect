@@ -16,7 +16,7 @@ import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { readWorkshopMedia, workshopMediaCacheKey } from './media-workshop';
-import { mediaUploadMime, queuedMediaIntents, sendWorkshopMediaUpload, type MediaIntent } from './media-upload-workshop';
+import { mediaUploadMime, queuedMediaIntents, receivingMediaTransfer, sendWorkshopMediaUpload, type AuthorizedMediaTransfer, type MediaIntent } from './media-upload-workshop';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
 import { EXECUTION_CONTEXT_SQL, EXECUTION_OPERATIONS_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
@@ -36,6 +36,7 @@ const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTAT
 const scopedMedia = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MEDIA === 'true';
 const scopedUploads = scopedMedia && scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_UPLOADS === 'true';
 const scopedDrafts = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_DRAFTS === 'true';
+const scopedDraftMedia = scopedDrafts && scopedUploads && scopedReceiving;
 const scopedExecution = scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_EXECUTION === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
@@ -308,8 +309,9 @@ class MobileService {
   }
   async openReceivingDraft(): Promise<Receiving> {
     const actor = this.actor(), token = this.operatorToken!;
+    const origin = await this.receivingDraftOrigin(actor.operador_id);
     const entry = await this.receivingDrafts.open(actor.operador_id, () => newReceiving(Crypto.randomUUID(), timestamp()),
-      this.snapshot.online ? this.receivingTransport(token) : undefined);
+      this.snapshot.online ? this.receivingTransport(token) : undefined, origin);
     if (await this.operation(entry.data.id)) {
       entry.data = { ...entry.data, submitted: true };
       await this.database.saveLocal(`recebimento:${actor.operador_id}`, entry.data);
@@ -321,8 +323,20 @@ class MobileService {
     // Local writes keep the actor captured when editing began, even if the turn
     // expires or the operator changes while SQLite is draining pending writes.
     if (!operatorId) throw new Error('O responsável pelo rascunho não foi identificado.');
-    await this.receivingDrafts.save(operatorId, data);
+    await this.receivingDrafts.save(operatorId, data, await this.receivingDraftOrigin(operatorId));
     this.update({}); this.scheduleReceivingSync();
+  }
+  private async receivingDraftOrigin(actor: string): Promise<ReceivingDraftMeta['origin']> {
+    if (!scopedDraftMedia || this.snapshot.operator?.operador_id !== actor) return undefined;
+    const scope = await this.operatorWorkshop().catch(() => null);
+    if (scope?.actor === actor) return { workshop: scope.workshop, device: scope.owner };
+  }
+  private async assertReceivingDraftOrigin(actor: string, entry?: ReceivingDraftEntry | null) {
+    if (!scopedDraftMedia || !entry?.meta.origin) return;
+    const current = await this.receivingDraftOrigin(actor);
+    if (current?.workshop !== entry.meta.origin.workshop || current.device !== entry.meta.origin.device) {
+      throw new Error('O rascunho pertence à oficina ou ao dispositivo original. Os dados continuam salvos.');
+    }
   }
   async receivingDraftInfo(): Promise<ReceivingDraftMeta | null> {
     const actor = this.snapshot.operator;
@@ -336,7 +350,7 @@ class MobileService {
     await this.database.idle();
     const local = await this.readReceivingEntry(this.database.connection(), actor.operador_id);
     if (local && await this.operation(local.data.id)) throw new Error('Consulte o recebimento já colocado na fila antes de trocar o rascunho.');
-    const entry = await this.receivingDrafts.recover(actor.operador_id, this.receivingTransport(token));
+    const entry = await this.receivingDrafts.recover(actor.operador_id, this.receivingTransport(token), await this.receivingDraftOrigin(actor.operador_id));
     this.update({}); return entry.data;
   }
   private scheduleReceivingSync() {
@@ -353,6 +367,7 @@ class MobileService {
     const media = await this.database.connection().getAllAsync<{local_uri: string; public_url: string}>("SELECT local_uri,public_url FROM local_media_upload_queue WHERE status='uploaded'");
     const uploaded = new Map(media.map(row => [row.local_uri, row.public_url]));
     try {
+      if (scopedDraftMedia) await this.assertReceivingDraftOrigin(actor.operador_id, await this.readReceivingEntry(this.database.connection(), actor.operador_id));
       await this.receivingDrafts.sync(actor.operador_id, this.receivingTransport(token), value => replaceMedia(value, uploaded), async id => !!await this.operation(id));
     } finally { this.update({}); }
   }
@@ -361,6 +376,7 @@ class MobileService {
     return this.receivingDrafts.submission(actor.operador_id, async entry => {
       if (this.snapshot.operator?.operador_id !== actor.operador_id) throw new Error('O operador mudou. Retome com o responsável antes de enviar.');
       if (await this.operation(entry.data.id)) return entry.data.id;
+      await this.assertReceivingDraftOrigin(actor.operador_id, entry);
       if (this.snapshot.online) {
         const transport = this.receivingTransport(this.operatorToken!);
         const cloud = await transport.read(entry.data.id).catch(() => null);
@@ -849,18 +865,43 @@ class MobileService {
     if (this.operatorToken === token && this.snapshot.operator?.operador_id === operator.operador_id) this.update({ operator: refreshed });
   }
   private async mediaReadyToSend() {
-    const intents = queuedMediaIntents(await this.listQueue());
+    const queue = await this.listQueue();
+    const intents = queuedMediaIntents(queue);
     const actor = this.snapshot.operator?.operador_id;
     const entry = actor ? await this.readReceivingEntry(this.database.connection(), actor) : null;
-    const cloudDraft = new Set(entry && !entry.data.submitted ? [entry.data.arquivoNotaFiscal, ...entry.data.fotos.map(photo => photo.uri)] : []);
-    return { intents, included: (uri: string) => intents.has(uri) || cloudDraft.has(uri) };
+    const draft = entry && !entry.data.submitted ? entry : null;
+    const cloudDraft = new Set(draft ? [draft.data.arquivoNotaFiscal, ...draft.data.fotos.map(photo => photo.uri)] : []);
+    const waitsForReceiving = queue.some(row => row.rpc_name === 'rm_submit_recebimento_v1' && row.actor_id === actor);
+    return { intents, actor, draft, waitsForReceiving, included: (uri: string) => intents.has(uri) || cloudDraft.has(uri) };
   }
-  private async uploadScopedMedia(row: MediaRow, intent: MediaIntent, file: Uint8Array): Promise<string> {
-    const owner = this.snapshot.sessionUserId;
-    const workshopOrigin = intent.row.workshop_id;
-    const operatorToken = await secureStorage.getItem(intent.row.token_key);
+  private async resolveMediaTransfer(row: MediaRow, intent?: MediaIntent, draft?: ReceivingDraftEntry | null, actor?: string): Promise<AuthorizedMediaTransfer | null> {
+    if (scopedDraftMedia && intent?.operation === 'rm_submit_recebimento_v1' && intent.kind !== 'signature') {
+      const operatorToken = await secureStorage.getItem(intent.row.token_key);
+      let workshopOrigin = intent.row.workshop_id;
+      if (!workshopOrigin && this.snapshot.operator?.operador_id === intent.row.actor_id) workshopOrigin = (await this.operatorWorkshop()).workshop;
+      if (!workshopOrigin || !operatorToken) throw new Error('Confirme o operador e a oficina do recebimento original.');
+      return { ...receivingMediaTransfer(intent.row.id, intent.row.actor_id, intent.payload.p_cliente_id, intent.payload.p_projeto_id,
+        row.local_uri, intent.kind), workshopOrigin, operatorToken };
+    }
+    if (intent?.row.workshop_id) {
+      const operatorToken = await secureStorage.getItem(intent.row.token_key);
+      if (!operatorToken) throw new Error('Identifique o operador do protocolo original para enviar o arquivo.');
+      return { submission: intent.row.id, operation: intent.operation, payload: intent.payload, kind: intent.kind,
+        workshopOrigin: intent.row.workshop_id, operatorToken };
+    }
+    if (scopedDraftMedia && !intent && draft && actor) {
+      await this.assertReceivingDraftOrigin(actor, draft);
+      const scope = await this.operatorWorkshop();
+      if (scope.actor !== actor) throw new Error('Identifique o operador original do rascunho antes de enviar o arquivo.');
+      const kind = row.local_uri === draft.data.arquivoNotaFiscal ? 'document' : 'photo';
+      return { ...receivingMediaTransfer(draft.data.id, actor, draft.data.cliente, draft.data.projeto_id, row.local_uri, kind),
+        workshopOrigin: scope.workshop, operatorToken: scope.token };
+    }
+    return null;
+  }
+  private async uploadScopedMedia(row: MediaRow, transfer: AuthorizedMediaTransfer, owner: string | null, file: Uint8Array): Promise<string> {
     const { data, error } = await this.supabase().auth.getSession();
-    if (error || !data.session || !owner || data.session.user.id !== owner || this.snapshot.sessionUserId !== owner || !operatorToken || !workshopOrigin) {
+    if (error || !data.session || !owner || data.session.user.id !== owner || this.snapshot.sessionUserId !== owner) {
       throw new Error('Identifique novamente o operador do protocolo original para enviar o arquivo.');
     }
     const mime = mediaUploadMime(row.bucket, row.mime_type);
@@ -868,8 +909,7 @@ class MobileService {
     const sha256 = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
     const name = row.remote_path.split('/').at(-1) || row.id;
     const attachment = { uri: row.local_uri, name, type: mime } as unknown as Blob;
-    return sendWorkshopMediaUpload({ deviceToken: data.session.access_token, operatorToken, workshopOrigin,
-      submission: intent.row.id, operation: intent.operation, payload: intent.payload, asset: row.id, kind: intent.kind,
+    return sendWorkshopMediaUpload({ ...transfer, deviceToken: data.session.access_token, asset: row.id,
       reference: row.local_uri, mime, size: file.byteLength, sha256 }, attachment, url);
   }
   private async uploadLegacyMedia(row: MediaRow, file: Uint8Array) {
@@ -879,19 +919,26 @@ class MobileService {
     return row.bucket === 'rm-documentos' ? `${url}/storage/v1/object/authenticated/rm-documentos/${row.remote_path}` : bucket.getPublicUrl(row.remote_path).data.publicUrl;
   }
   private async pushMedia(force: boolean) {
+    const owner = this.snapshot.sessionUserId;
     const rows = await this.database.connection().getAllAsync<MediaRow>(`SELECT q.*,m.next_retry_at FROM local_media_upload_queue q JOIN local_queue_meta m USING(id) WHERE q.status<>'uploaded' ORDER BY q.created_at,q.rowid`);
     const selection = scopedUploads ? await this.mediaReadyToSend() : null;
     for (const row of rows) {
       if (selection && !selection.included(row.local_uri)) continue;
       const intent = selection?.intents.get(row.local_uri);
+      if (scopedDraftMedia && !intent && selection?.draft && (selection.waitsForReceiving
+        || !selection.draft.data.cliente && !selection.draft.data.projeto_id)) continue;
       if (!force && row.next_retry_at > Date.now()) throw new Error('Envio de mídia aguardando nova tentativa automática.');
       await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploading' WHERE id=?", row.id));
       try {
         const base64 = await FileSystem.readAsStringAsync(row.local_uri, { encoding: FileSystem.EncodingType.Base64 });
         const bytes = decodeBase64(base64);
-        const remoteUrl = intent?.row.workshop_id ? await this.uploadScopedMedia(row, intent, bytes) : await this.uploadLegacyMedia(row, bytes);
+        const transfer = await this.resolveMediaTransfer(row, intent, selection?.draft, selection?.actor);
+        const remoteUrl = transfer ? await this.uploadScopedMedia(row, transfer, owner, bytes) : await this.uploadLegacyMedia(row, bytes);
         await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploaded',public_url=?,last_error=NULL WHERE id=?", remoteUrl, row.id));
         await this.database.saveLocal(`media:${remoteUrl}`, row.local_uri);
+        if (transfer?.operation === 'receiving_draft' && typeof transfer.payload.p_operador_id === 'string') {
+          await this.database.saveLocal(workshopMediaCacheKey(transfer.workshopOrigin, transfer.payload.p_operador_id, remoteUrl), row.local_uri);
+        }
       } catch (error) {
         await this.fail('local_media_upload_queue', row.id, row.attempts, error);
         throw error;

@@ -10,6 +10,7 @@ export interface ReceivingDraftRequest {
 }
 export interface ReceivingDraftMeta {
   id: string; revision: number; localVersion: number; syncedVersion: number;
+  origin?: { workshop: string; device: string };
   pending?: ReceivingDraftRequest; state: 'pending' | 'saved' | 'conflict' | 'finalized';
   error?: string; result?: Record<string, unknown> | null;
 }
@@ -26,13 +27,13 @@ export interface ReceivingDraftTransport {
   read(id: string | null): Promise<ReceivingDraftRemote | null>;
   save(id: string, request: ReceivingDraftRequest): Promise<ReceivingDraftRemote>;
 }
-export function receivingDraftMeta(data: Receiving): ReceivingDraftMeta {
-  return { id: data.id, revision: 0, localVersion: 1, syncedVersion: 0, state: 'pending' };
+export function receivingDraftMeta(data: Receiving, origin?: ReceivingDraftMeta['origin']): ReceivingDraftMeta {
+  return { id: data.id, revision: 0, localVersion: 1, syncedVersion: 0, state: 'pending', ...(origin && { origin }) };
 }
-function adopted(remote: ReceivingDraftRemote): ReceivingDraftEntry {
+function adopted(remote: ReceivingDraftRemote, origin?: ReceivingDraftMeta['origin']): ReceivingDraftEntry {
   return { data: { ...remote.payload, submitted: remote.state === 'finalized' }, meta: {
     id: remote.id, revision: remote.revision, localVersion: 1, syncedVersion: 1,
-    state: remote.state === 'finalized' ? 'finalized' : 'saved', result: remote.result,
+    state: remote.state === 'finalized' ? 'finalized' : 'saved', result: remote.result, ...(origin && { origin }),
   } };
 }
 const message = (error: unknown) => error instanceof Error ? error.message : (error as {message?: string})?.message || 'Falha ao salvar no banco. O rascunho permanece neste dispositivo.';
@@ -47,7 +48,7 @@ export class ReceivingDraftCoordinator {
   private finalizing = new Set<string>();
   constructor(private store: ReceivingDraftStore, private uuid: () => string) {}
 
-  async open(actor: string, fresh: () => Receiving, remote?: ReceivingDraftTransport): Promise<ReceivingDraftEntry> {
+  async open(actor: string, fresh: () => Receiving, remote?: ReceivingDraftTransport, origin?: ReceivingDraftMeta['origin']): Promise<ReceivingDraftEntry> {
     let local = await this.store.load(actor);
     if (remote) {
       try {
@@ -57,31 +58,31 @@ export class ReceivingDraftCoordinator {
             // Keep the original local fields/media even when another device finished.
             if (local.meta.state !== 'finalized' && !local.data.submitted) await this.store.archive(actor, local);
             local = await this.store.change(actor, previous => {
-              if (!previous || previous.data.id !== cloud.id) return previous ?? adopted(cloud);
+              if (!previous || previous.data.id !== cloud.id) return previous ?? adopted(cloud, origin);
               return { data: { ...previous.data, submitted: true }, meta: { ...previous.meta,
                 revision: cloud.revision, state: 'finalized', result: cloud.result, pending: undefined, error: undefined } };
             });
           } else if (!local || (!local.data.submitted && !local.meta.pending && local.meta.localVersion === local.meta.syncedVersion)) {
             local = await this.store.change(actor, previous => {
               if (previous && (previous.data.id !== cloud.id || previous.meta.pending || previous.meta.localVersion !== previous.meta.syncedVersion)) return previous;
-              return adopted(cloud);
+              return adopted(cloud, previous?.meta.origin ?? origin);
             });
           }
         }
       } catch { /* Opening never sacrifices a durable local draft to a network failure. */ }
     }
-    if (!local) local = await this.store.change(actor, previous => previous ?? (() => { const data = fresh(); return { data, meta: receivingDraftMeta(data) }; })());
+    if (!local) local = await this.store.change(actor, previous => previous ?? (() => { const data = fresh(); return { data, meta: receivingDraftMeta(data, origin) }; })());
     return local;
   }
 
-  async save(actor: string, data: Receiving): Promise<ReceivingDraftEntry> {
+  async save(actor: string, data: Receiving, origin?: ReceivingDraftMeta['origin']): Promise<ReceivingDraftEntry> {
     return this.store.change(actor, previous => {
       if (previous && previous.data.id !== data.id && !previous.data.submitted && previous.meta.state !== 'finalized') throw new Error('Conclua o rascunho atual antes de iniciar outro recebimento.');
       if (previous?.data.id === data.id && (previous.data.submitted || previous.meta.state === 'finalized')) {
         if (canonicalJson(previous.data) !== canonicalJson(data)) throw new Error('Este recebimento já foi confirmado. Inicie outro recebimento.');
         return previous;
       }
-      const meta = previous?.data.id === data.id ? previous.meta : receivingDraftMeta(data);
+      const meta = previous?.data.id === data.id ? previous.meta : receivingDraftMeta(data, origin);
       return { data, meta: { ...meta, localVersion: meta.localVersion + 1,
         state: meta.state === 'conflict' ? 'conflict' : 'pending', error: meta.state === 'conflict' ? meta.error : undefined } };
     });
@@ -144,7 +145,7 @@ export class ReceivingDraftCoordinator {
     } finally { this.finalizing.delete(actor); }
   }
 
-  async recover(actor: string, remote: ReceivingDraftTransport): Promise<ReceivingDraftEntry> {
+  async recover(actor: string, remote: ReceivingDraftTransport, origin?: ReceivingDraftMeta['origin']): Promise<ReceivingDraftEntry> {
     if (this.finalizing.has(actor)) throw new Error('Aguarde o envio em andamento.');
     this.finalizing.add(actor);
     try {
@@ -156,7 +157,7 @@ export class ReceivingDraftCoordinator {
       if (local) await this.store.archive(actor, local);
       return this.store.change(actor, previous => {
         if (canonicalJson(previous) !== canonicalJson(local)) throw new Error('O rascunho mudou durante a consulta. Seus dados locais foram preservados; tente novamente.');
-        return adopted(cloud);
+        return adopted(cloud, origin);
       });
     } finally { this.finalizing.delete(actor); }
   }

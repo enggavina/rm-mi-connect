@@ -10,10 +10,11 @@ const limits = { photo: 15 * 1024 ** 2, signature: 5 * 1024 ** 2, document: MAX_
 const kinds = { photo: ['image/jpeg', 'image/png'], signature: ['image/png'], document: Object.keys(extensions) };
 
 export const nativeMediaUpload = z.object({ workshopOrigin: z.uuid(), submission: z.uuid(), asset: z.uuid(),
-  operation: z.enum(['rm_submit_recebimento_v1', 'rm_record_cell_photo_v1', 'rm_submit_form_inspection_v1', 'rm_submit_form_revision_v1']),
+  operation: z.enum(['receiving_draft', 'rm_submit_recebimento_v1', 'rm_record_cell_photo_v1', 'rm_submit_form_inspection_v1', 'rm_submit_form_revision_v1']),
   payload: z.record(z.string(), z.unknown()), kind: uploadKind, mime: uploadMime, size: z.number().int().positive(),
   reference: z.string().min(40).max(1024).regex(/^file:\/\/\/[^\p{C}]+$/u), sha256: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict().refine(input => input.size <= limits[input.kind] && kinds[input.kind].includes(input.mime)
+  && (input.operation !== 'receiving_draft' || (input.kind !== 'signature' && input.payload.p_receiving_draft_id === input.submission))
   && input.reference.endsWith(`/${input.asset}.${extensions[input.mime]}`));
 export type NativeMediaUpload = z.infer<typeof nativeMediaUpload>;
 
