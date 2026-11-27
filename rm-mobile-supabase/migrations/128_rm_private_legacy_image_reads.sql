@@ -40,7 +40,8 @@ declare
  definition text:=pg_get_functiondef('rm_private.workshop_media_reference_v1(jsonb,uuid)'::regprocedure);
  android text:=pg_get_functiondef('public.rm_mobile_workshop_media_v1(uuid,uuid,text,jsonb,text[])'::regprocedure);
  marker constant text:=' return result||rm_private.workshop_archive_link_v1(result->>''file'',p_office);';
- android_marker constant text:='into files from matches where rm_private.workshop_stored_media_owned_v1(url,office_id,source);';
+ android_marker constant text:=$previous$into files from matches where rm_private.workshop_stored_media_owned_v1(url,office_id,source)
+  or rm_private.receiving_draft_media_readable_v1(url,source,office_id,p_auth_user_id,actor_id);$previous$;
 begin
  if array_length(string_to_array(definition,marker),1) is distinct from 2
   or array_length(string_to_array(android,android_marker),1) is distinct from 2 then
@@ -53,7 +54,8 @@ begin
   if not (result?'private_legacy_image_path') then result:=result||'{"file":null}'::jsonb;end if;
  end if;
  return result;$replacement$);
- execute replace(android,android_marker,$native$into files from matches where rm_private.workshop_stored_media_owned_v1(url,office_id,source)
+ execute replace(android,android_marker,$native$into files from matches where (rm_private.workshop_stored_media_owned_v1(url,office_id,source)
+  or rm_private.receiving_draft_media_readable_v1(url,source,office_id,p_auth_user_id,actor_id))
   and (not rm_private.workshop_private_legacy_image_reference_v1(url)
    or rm_private.workshop_archive_link_v1(url,office_id)?'archive_path'
    or rm_private.workshop_private_legacy_image_path_v1(url,source,office_id) is not null);$native$);
