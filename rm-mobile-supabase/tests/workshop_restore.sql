@@ -926,6 +926,9 @@ begin
    or pg_temp.workshop_restore_read(office,'operational_reviewers',(args-'members')||'{"include":false}')->'eligible_users'<>'[]' then
    raise exception 'O histórico ou seletor de avaliadores não corresponde à oficina.';
   end if;
+  reviewer:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'form_id',model,'avaliador_user_id',operator_id,
+   'expected_project_updated_at',result->'project'->'updated_at','expected_allocation_updated_at',result->'allocation'->'updated_at',
+   'expected_context_version',result->'forms'->0->'context_version','confirm_replace',true);
   result:=pg_temp.workshop_restore_read(office,'operational_stage_rules',args);
   if result->>'eligible_total' is distinct from '1' or result->>'memberships_total' is distinct from '2'
    or result->'eligible_users'->0->>'id' is distinct from operator_id::text then
@@ -993,9 +996,9 @@ begin
   exception when sqlstate 'PT409' then null;
   end;
   result:=pg_temp.workshop_restore_read(office,'operational_reviewers',args);
-  reviewer:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'form_id',model,'avaliador_user_id',operator_id,
+  reviewer:=reviewer||jsonb_build_object(
    'expected_project_updated_at',result->'project'->'updated_at','expected_allocation_updated_at',result->'allocation'->'updated_at',
-   'expected_context_version',result->'forms'->0->'context_version','confirm_replace',true);
+   'expected_context_version',result->'forms'->0->'context_version');
   perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'assign_form_reviewer',reviewer,roster);
   result:=pg_temp.workshop_restore_read(office,'operational_reviewers',args||jsonb_build_object('members',roster-1));
   if result->'forms'->0->'assignment'->>'avaliador_user_id' is distinct from operator_id::text
