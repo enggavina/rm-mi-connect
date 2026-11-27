@@ -62,6 +62,25 @@ test('one atomic stage configuration snapshot preserves exact revisions, null le
   f.set(managed); assert.equal((await f.reader.getOperationalStageRules(id(1), id(2), true))?.rules[0].can_edit, true, 'An unused managed rule remains independent from unrelated historical return paths.');
 });
 
+test('workshop stage reads preserve historical approvers who are no longer eligible for selection', async () => {
+  const client = { rpc: async () => assert.fail('unexpected legacy reader') } as unknown as SupabaseClient;
+  const historical = snapshot();
+  historical.eligible_users = [historical.eligible_users[1]];
+  historical.eligible_total = historical.memberships_total = 1;
+  historical.rules = historical.rules.map(rule => ({ ...rule, can_restore: false,
+    approvers: rule.approvers.map(person => ({ ...person, eligible: false })) }));
+  const reader = createOperationalStageRuleData(client, capabilities, async (resource, filters) => {
+    assert.equal(resource, 'operational_stage_rules');
+    assert.deepEqual(filters, { project: id(1), allocation: id(2), include: true });
+    return historical;
+  });
+  const result = await reader.getOperationalStageRules(id(1), id(2), true);
+  assert.deepEqual(result?.eligible_users.map(person => person.id), [id(21)]);
+  assert.equal(result?.rules[0].approvers[0].id, id(20));
+  assert.equal(result?.rules[0].approvers[0].eligible, false);
+  assert.equal(result?.rules[3].used, true);
+});
+
 test('stage configuration rejects crossed scope, impossible permissions, duplicate identities and partial editable collections', async () => {
   const f = fixture();
   const cases: unknown[] = [

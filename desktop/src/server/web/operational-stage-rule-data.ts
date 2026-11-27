@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import type { WorkshopRead } from './workshop-read-policy';
+import { readWorkshopOperations } from './workshop-operation-reader';
 import { STAGE_RULE_STATUSES } from './operational-stage-rule-policy';
 
 const timestamp = z.string().datetime({ offset: true }), text = z.string().nullable();
@@ -35,7 +36,7 @@ const readCapabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.
 const unique = (ids: readonly string[]) => new Set(ids).size === ids.length;
 const unavailable = () => new Error('Não foi possível consultar as regras de etapas desta célula. Tente novamente.');
 
-/** The snapshot contains all configuration revisions and only project-scoped choices. */
+/** Historical revisions stay readable alongside choices from the current workshop roster. */
 export function createOperationalStageRuleData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getOperationalStageRules(projectId: string, allocationId: string, includeChoices = false): Promise<OperationalStageRuleSnapshot | null> {
     if (capabilities !== undefined && (!readCapabilities.every(capability => capabilities.includes(capability))
@@ -87,10 +88,9 @@ export function createOperationalStageRuleData(client: SupabaseClient, capabilit
 
 export async function getOperationalStageRules(projectId: string, allocationId: string) {
   const { requireWebUser } = await import('./auth');
-  const { ssoWorkshopRead } = await import('./sso-bridge');
   const access = await requireWebUser(readCapabilities);
   const includeChoices = ['administrador', 'padr_o'].includes(access.profile.perfil)
     && (!access.sso || access.sso.capabilities.includes('em.planning.manage'));
-  return createOperationalStageRuleData(access.client, access.sso?.capabilities, access.sso && ssoWorkshopRead(access.sso, access.client))
+  return createOperationalStageRuleData(access.client, access.sso?.capabilities, await readWorkshopOperations(access))
     .getOperationalStageRules(projectId, allocationId, includeChoices);
 }
