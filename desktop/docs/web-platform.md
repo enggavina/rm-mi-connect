@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Exportação, QR e documentos por oficina
+
+A migração **096** e o consumidor **`83f4a29`** foram publicados no Railway **`07d4b324-432e-4bf9-b8bd-cc385462c724`**. O Excel de Planejamento, o QR do projeto e os links de documentos, anexos e nota fiscal verificam a oficina atual em Acessos a cada solicitação. A ativação encerrou as consultas antigas de exportação e do gêmeo digital para contas autenticadas. O gêmeo continua usando a consulta da própria oficina. Os arquivos históricos acessíveis pelo portal conservam o destino autorizado. [Planejamento](https://em-web-production.up.railway.app/planejamento) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45983570156).
+
+Antes e depois da publicação, conferiram **30 seleções de Excel**, incluindo as 29 células da BMA e a seleção conjunta de **1.494 alocações**. Também conferiram **182 identificações por QR e 190 referências de arquivo**, entre documentos, anexos e notas fiscais. Passaram 697 testes web, 16 cenários de navegador em duas oficinas locais e o ensaio de quatro oficinas antes e depois da restauração. A regressão em produção incluiu 71 verificações de API e oito passos no navegador. O Moto G84 com o APK 1.2.22 abriu o projeto usando a entrada manual da etiqueta e abriu uma foto existente, com e sem conexão.
+
+O roteiro com Microsoft interativo exercita 21 telas e cinco saídas reais da BMA, sem criar registros da operação. Execute `node .tmp/workshop-output-cutover-pilot.cjs .tmp/oficinas-piloto-bma-saidas.json`. A confirmação visual com uma sessão Microsoft real e a validação operacional de outra oficina continuam no aceite.
+
 ## P0.2 — Lista de Planejamento por oficina
 
 O consumidor **`d484800`** foi publicado no Railway **`bf6081f5-6db3-4827-a16f-737669e9b953`** sobre a migração 095. A lista de Planejamento usa o vínculo atual do SSO para filtrar alocações e células antes de calcular totais e páginas. Conta sem permissão de Projetos pesquisa os campos disponíveis na alocação. [Planejamento](https://em-web-production.up.railway.app/planejamento) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45981628086).
