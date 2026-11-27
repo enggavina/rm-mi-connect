@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — Origem e reenvio do protocolo de recebimento
+
+A migração **109**, publicada no Supabase `oficina-em-mi-off`, vincula o protocolo do Android à oficina, ao dispositivo, ao operador e ao projeto verificados. A confirmação emitida por Acessos vale na transação que grava o recebimento. A abertura antes dos anexos e a conclusão pela fila offline deixam evidências distintas. O reenvio mantém o projeto e a autoria originais. O caminho legado exige o fluxo autorizado quando o protocolo já tem oficina verificada ou quando o QR, o cliente ou o tipo pertencem a uma unidade diferente da oficina legada. [Recebimentos](https://em-web-production.up.railway.app/recebimentos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46023812513).
+
+Passaram 66 suítes PostgreSQL, a matriz de quatro oficinas antes e depois da restauração, oito verificações do navegador em produção e a abertura da tela de recebimento do Android 1.2.22 com e sem conexão após a publicação. O ensaio e a aplicação preservaram os registros das 143 tabelas auditadas, incluindo os dois recibos históricos. A consulta de prontidão em produção ainda não encontrou uma abertura ou uma conclusão com o protocolo novo. O primeiro recebimento real e a ativação da exigência geral de origem continuam no aceite. [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql) · [Roteiro de homologação no navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Avaliadores de formulários por oficina
 
 A migração **108** e o deploy Railway **`7ea46098-dee5-4366-9703-b75764942fbe`** publicaram o commit **`8159889`**. A aba Formulários do Cronograma usa os vínculos vigentes em Acessos e o cadastro da célula para selecionar avaliadores e calcular a versão das atribuições. A edição confere a mesma versão. Uma alteração na equipe de outra oficina fica fora dessa conferência. Uma atribuição anterior permanece no histórico quando o vínculo é revogado, e um reenvio com o mesmo protocolo mantém o resultado já registrado. A consulta da configuração exige o fluxo autorizado do portal. [Portal do EM](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46021129361).
