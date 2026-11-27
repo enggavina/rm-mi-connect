@@ -12,6 +12,15 @@ import { isNativeWorkshopMedia } from './workshop-media';
 // rm_users never uses select('*') or exposes Auth/credential metadata.
 export type WebRow = { id: string; [key: string]: any };
 export type WebPage = { rows: WebRow[]; total: number; page: number; pageSize: number };
+type ProjectDetail = {
+  project: WebRow; client: WebRow | null; equipment: WebRow | null; hasAllocations: boolean;
+  allocations: WebRow[]; cells: WebRow[]; records: WebRow[]; forms: WebRow[]; stages: WebRow[];
+  comments: WebRow[]; documents: WebRow[]; attachments: WebRow[]; users: WebRow[];
+  photos: WebRow[]; photoTotal: number; photoPage: number; photoPageSize: number;
+};
+type RecordDetail = {
+  record: WebRow; project: WebRow | null; form: WebRow | null; answers: WebRow[]; questions: WebRow[]; items: WebRow[]; users: WebRow[];
+};
 export type ProjectFilters = { q?: string; status?: string; client?: string; cell?: string; page?: number | string };
 export type PlanningFilters = { q?: string; status?: string; cell?: string; page?: number | string };
 export type FormFilters = { q?: string; status?: string; page?: number | string };
@@ -185,42 +194,65 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       descricao_equipamento_exibicao: projectEquipmentDisplay(row, equipmentById.get(row.equipamento_id)) }));
     return { ...result, clients, cells, statuses };
   }
-  async function getProject(id: string, filters: ProjectReadFilters = {}) {
+  async function getProject(id: string, filters: ProjectReadFilters = {}): Promise<ProjectDetail | null> {
     requireCapability('em.projects.read');
     if (!uuid.safeParse(id).success) return null;
-    const scoped = operationRead ? await operationRead('project_entry', {
-      id, documents: allowed('em.documents.read'), cells: allowed('em.planning.read') || allowed('em.history.read'),
-    }) : undefined;
-    if (operationRead && scoped === null) return null;
-    if (operationRead && (!scoped || scoped.project?.id !== id.toLowerCase() || !rowArray(scoped.cells)
-      || scoped.client !== null && scoped.client?.id !== scoped.project.cliente_id)) throw queryUnavailable();
-    const project: WebRow | null = operationRead ? scoped.project : await one('rm_projetos', projectColumns, id);
-    if (!project) return null;
     const photoFilters = projectPhotoFilters(filters);
+    if (operationRead) {
+      const args = {
+        id: id.toLowerCase(), planning: allowed('em.planning.read'), forms: allowed('em.forms.read'), photos: allowed('em.photos.read'),
+        history: allowed('em.history.read'), documents: allowed('em.documents.read'), equipment: filters.includeEquipment !== false,
+        dossier: filters.includeDossier !== false, edit: !allowed('em.planning.read') && allowed('em.projects.manage'),
+        photo_page: pageNumber(filters.photoPage), selected_only: photoFilters.selectedOnly, selected_first: photoFilters.selectedFirst,
+      };
+      const value = await operationRead('project_detail', args);
+      if (value === null) return null;
+      if (!value || value.complete !== true || value.project?.id !== args.id || typeof value.hasAllocations !== 'boolean'
+        || value.client !== null && (!uuid.safeParse(value.client?.id).success || value.client.id !== value.project.cliente_id)
+        || value.equipment !== null && (!args.equipment || value.equipment?.id !== value.project.equipamento_id || value.equipment.projeto_id !== args.id)
+        || !args.documents && (Object.hasOwn(value.project, 'arquivo_nota_fiscal_url') || Object.hasOwn(value.project, 'documento_proposta_url'))
+        || ['allocations', 'cells', 'forms', 'records', 'stages', 'comments', 'photos', 'documents', 'attachments', 'users']
+          .some(key => !rowArray(value[key]))
+        || !args.planning && value.allocations.length || !args.planning && !args.edit && value.hasAllocations
+        || args.planning && value.hasAllocations !== (value.allocations.length > 0)
+        || !args.planning && !args.history && value.cells.length || !args.forms && (value.records.length || value.forms.length)
+        || !args.history && value.stages.length || (!args.history || !args.dossier) && value.comments.length
+        || (!args.documents || !args.dossier) && (value.documents.length || value.attachments.length)
+        || !args.photos && (value.photos.length || value.photoTotal)
+        || !Number.isSafeInteger(value.photoTotal) || value.photoTotal < 0 || value.photoPage !== args.photo_page || value.photoPageSize !== 24
+        || value.photos.length !== Math.min(24, Math.max(0, value.photoTotal - (value.photoPage - 1) * 24))
+        || ['allocations', 'records', 'stages', 'comments', 'photos', 'documents', 'attachments']
+          .some(key => value[key].some((row: WebRow) => row.projeto_id !== args.id))) throw queryUnavailable();
+      const { project, client: customer, equipment, allocations, hasAllocations, cells, forms, records, stages, comments,
+        photos, photoTotal, photoPage, photoPageSize, documents, attachments, users } = value as ProjectDetail;
+      return { project: { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) },
+        client: customer, equipment, allocations, hasAllocations, cells, forms, records, stages, comments, documents, attachments, users,
+        photos: photos.map((photo: WebRow) => ({ ...photo, foto_url: workshopMediaUrl(photo.id, 'project_photo') })), photoTotal, photoPage, photoPageSize };
+    }
+    const project = await one('rm_projetos', projectColumns, id);
+    if (!project) return null;
     const projectPictures = () => {
       let query = client.from('rm_fotos').select(PHOTO, { count: 'exact' }).eq('projeto_id', id).eq('lixeira', false).not('foto_url', 'is', null).neq('foto_url', '');
       if (photoFilters.selectedOnly) query = query.eq('selecao_relatorio', true);
       if (photoFilters.selectedFirst) query = query.order('selecao_relatorio', { ascending: false });
       return page(query.order('numero').order('id'), filters.photoPage, 24);
     };
-    const [customers, equipmentRows, projectAllocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
-      operationRead ? scoped.client ? [scoped.client as WebRow] : [] : byIds('rm_clientes', CLIENT, [project.cliente_id]),
+    const [customers, equipmentRows, allocations, cells, records, stages, comments, pictures, documents, attachments] = await Promise.all([
+      byIds('rm_clientes', CLIENT, [project.cliente_id]),
       filters.includeEquipment !== false ? all('rm_equipamentos', 'id,projeto_id,tipo_equipamento_id,descricao,placa_motor,fabricante,modelo,numero_serie,potencia,tensao_estator,corrente_estator,rotacao,frequencia,classe_isolamento,grau_ip,forma,regime,peso,ligacao,certificado,norma,updated_at', q => q.eq('projeto_id', id)) : [],
       allowed('em.planning.read') ? all('rm_celulas_projeto', ALLOCATION, q => q.eq('projeto_id', id), 'posicao') : [],
-      operationRead ? scoped.cells as WebRow[] : allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
+      allowed('em.planning.read') || allowed('em.history.read') ? all('rm_celulas', CELL, undefined, 'indice') : [],
       allowed('em.forms.read') ? all('rm_registros_formulario', RECORD, q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.history.read') ? all('rm_aprovacoes_etapas', 'id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status,status_cel_proj,aprovador_id,aprovado_por_id,data_aprovacao,updated_at', q => q.eq('projeto_id', id)) : [],
       filters.includeDossier !== false && allowed('em.history.read') ? all('rm_comentarios', 'id,projeto_id,celula_id,cadastrado_por_id,evento,created_at', q => q.eq('projeto_id', id), 'created_at') : [],
       allowed('em.photos.read') ? projectPictures() : { rows: [], total: 0, page: 1, pageSize: 24 },
       filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_documentos', DOCUMENT, q => q.eq('projeto_id', id), 'ordem_compilacao') : [], filters.includeDossier !== false && allowed('em.documents.read') ? all('rm_docs', ATTACHMENT, q => q.eq('projeto_id', id), 'nome') : [],
     ]);
-    const scopedCells = operationRead ? new Set(cells.map(row => row.id)) : null;
-    const allocations = scopedCells ? projectAllocations.filter(row => scopedCells.has(row.celula_id)) : projectAllocations;
     const [forms, users] = await Promise.all([
       allowed('em.forms.read') ? byIds('rm_forms', FORM, [...allocations.flatMap(row => row.forms_ids || []), ...records.map(row => row.form_id)]) : [],
       byIds('rm_users', userColumns, [...records.flatMap(row => [row.identidade_user_id, row.created_by_user_id, row.responsavel_user_id, row.avaliador_user_id, row.user_revisao_id]), ...comments.map(row => row.cadastrado_por_id), ...attachments.map(row => row.created_by), ...stages.flatMap(row => [row.aprovador_id, row.aprovado_por_id]), ...allocations.map(row => row.responsavel_id)]),
     ]);
-    const hasAllocations = projectAllocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
+    const hasAllocations = allocations.length > 0 || (!allowed('em.planning.read') && allowed('em.projects.manage') && await count('rm_celulas_projeto', q => q.eq('projeto_id', id)) > 0);
     const equipment = equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null;
     const displayProject: WebRow = { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) };
     return { project: displayProject, client: customers[0] || null, equipment,
@@ -231,22 +263,9 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getRecord(id: string) {
     requireCapability('em.forms.read');
     if (!uuid.safeParse(id).success) return null;
-    const origin = operationRead ? await operationRead('form_record_project', { id }) : undefined;
-    if (operationRead) {
-      if (origin === null) return null;
-      if (!uuid.safeParse(origin?.project_id).success || !uuid.safeParse(origin?.form_id).success
-        || (origin.cell_id !== null && !uuid.safeParse(origin.cell_id).success)) throw queryUnavailable();
-    }
-    const record = await one('rm_registros_formulario', RECORD, id);
-    if (!record) return null;
-    if (operationRead && (record.projeto_id !== origin.project_id || record.form_id !== origin.form_id || record.celula_id !== origin.cell_id)) return null;
-    const [project, form, answers, questions, items, users] = await Promise.all([
-      allowed('em.projects.read') ? one('rm_projetos', projectColumns, record.projeto_id) : null, one('rm_forms', FORM, record.form_id),
-      all('rm_respostas', answerColumns, q => q.eq('registro_formulario_id', id), 'indice'),
-      all('rm_questoes', QUESTION, q => q.eq('form_id', record.form_id), 'indice'),
-      all('rm_itens_questoes', ITEM, q => q.eq('form_id', record.form_id), 'indice'),
-      byIds('rm_users', userColumns, [record.identidade_user_id, record.created_by_user_id, record.responsavel_user_id, record.avaliador_user_id, record.user_revisao_id]),
-    ]);
+    const source = operationRead ? await workshopRecord(operationRead, id.toLowerCase()) : await legacyRecord(id);
+    if (!source) return null;
+    const { record, project, form, answers, questions, items, users } = source;
     const visibleAnswers = answers.map(answer => {
       if (allowed('em.photos.read')) {
         const photos: unknown[] = Array.isArray(answer.fotos_urls) ? answer.fotos_urls : [];
@@ -261,7 +280,34 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       }
       return answer;
     });
-    return { record, project, form: form ? (await withFormVersionLabels(client, [form]))[0] : null, answers: visibleAnswers, questions, items, users };
+    return { record, project, form, answers: visibleAnswers, questions, items, users };
+  }
+  async function workshopRecord(read: WorkshopRead, id: string): Promise<RecordDetail | null> {
+    const args = { id, projects: allowed('em.projects.read'),
+      documents: allowed('em.projects.read') && allowed('em.documents.read'), photos: allowed('em.photos.read') };
+    const value = await read('form_record_detail', args);
+    if (value === null) return null;
+    if (!value || value.complete !== true || value.record?.id !== id || !uuid.safeParse(value.record.projeto_id).success
+      || !uuid.safeParse(value.record.form_id).success || value.form?.id !== value.record.form_id
+      || (args.projects ? value.project?.id !== value.record.projeto_id : value.project !== null)
+      || ['answers', 'questions', 'items', 'users'].some(key => !rowArray(value[key]))
+      || !args.documents && value.project && (Object.hasOwn(value.project, 'arquivo_nota_fiscal_url') || Object.hasOwn(value.project, 'documento_proposta_url'))
+      || value.answers.some((row: WebRow) => row.registro_formulario_id !== id
+        || !args.photos && (Object.hasOwn(row, 'fotos_urls') || Object.hasOwn(row, 'assinatura_url')))
+      || ['questions', 'items'].some(key => value[key].some((row: WebRow) => row.form_id !== value.record.form_id))) throw queryUnavailable();
+    return value as RecordDetail;
+  }
+  async function legacyRecord(id: string) {
+    const record = await one('rm_registros_formulario', RECORD, id);
+    if (!record) return null;
+    const [project, form, answers, questions, items, users] = await Promise.all([
+      allowed('em.projects.read') ? one('rm_projetos', projectColumns, record.projeto_id) : null, one('rm_forms', FORM, record.form_id),
+      all('rm_respostas', answerColumns, q => q.eq('registro_formulario_id', id), 'indice'),
+      all('rm_questoes', QUESTION, q => q.eq('form_id', record.form_id), 'indice'),
+      all('rm_itens_questoes', ITEM, q => q.eq('form_id', record.form_id), 'indice'),
+      byIds('rm_users', userColumns, [record.identidade_user_id, record.created_by_user_id, record.responsavel_user_id, record.avaliador_user_id, record.user_revisao_id]),
+    ]);
+    return { record, project, form: form ? (await withFormVersionLabels(client, [form]))[0] : null, answers, questions, items, users };
   }
   async function listPlanning(filters: PlanningFilters = {}) {
     requireCapability('em.planning.read');

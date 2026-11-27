@@ -298,18 +298,23 @@ test('corporate gallery and form responses use scoped URLs and preserve the stor
   const client = db as unknown as SupabaseClient;
   const raw = 'https://files.cdn.bubble.io/historical.jpg';
   const project = { id: id(1) };
-  db.tables.set('rm_projetos', [project]);
-  db.tables.set('rm_fotos', [{ id: id(2), projeto_id: project.id, lixeira: false, foto_url: raw }]);
-  db.tables.set('rm_registros_formulario', [{ id: id(3), projeto_id: project.id, form_id: id(4), celula_id: null }]);
-  db.tables.set('rm_respostas', [{ id: id(5), registro_formulario_id: id(3), fotos_urls: [null, raw], assinatura_url: raw }]);
-  const gallery = await createWebData(client, ['em.portal.read', 'em.projects.read', 'em.photos.read'],
-    async () => assert.fail('a preview authorizes its own request')).getProject(project.id);
+  const record = { id: id(3), projeto_id: project.id, form_id: id(4), celula_id: null };
+  const gallery = await createWebData(client, ['em.portal.read', 'em.projects.read', 'em.photos.read'], undefined,
+    async () => ({
+      project, client: null, equipment: null, hasAllocations: false, complete: true, allocations: [], cells: [], records: [],
+      forms: [], stages: [], comments: [], documents: [], attachments: [], users: [],
+      photos: [{ id: id(2), projeto_id: project.id }], photoTotal: 1, photoPage: 1, photoPageSize: 24,
+    })).getProject(project.id);
   const form = await createWebData(client, ['em.portal.read', 'em.forms.read', 'em.photos.read'], undefined,
-    async () => ({ project_id: project.id, form_id: id(4), cell_id: null })).getRecord(id(3));
+    async () => ({
+      record, project: null, form: { id: id(4) }, questions: [], items: [], users: [], complete: true,
+      answers: [{ id: id(5), registro_formulario_id: record.id, fotos_urls: [null, raw], assinatura_url: raw }],
+    })).getRecord(id(3));
   assert.equal(gallery?.photos[0].foto_url, `/api/web/media/${id(2)}?source=project_photo`);
   assert.deepEqual(form?.answers[0].fotos_urls, [null, `/api/web/media/${id(5)}?source=answer_photo&index=1`]);
   assert.equal(form?.answers[0].assinatura_url, `/api/web/media/${id(5)}?source=answer_signature`);
   assert.ok(!JSON.stringify({ gallery, form }).includes(raw));
+  assert.deepEqual(db.calls, []);
 });
 
 test('planning without project capability does not join or load the project table', async () => {

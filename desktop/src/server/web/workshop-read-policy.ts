@@ -11,7 +11,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
   'root_edit_choices', 'project_delete_context',
   'project_comments', 'project_documents', 'project_comment', 'project_attachment', 'project_audit', 'project_equipment', 'project_route',
-  'project_route_cell', 'operational_photos',
+  'project_route_cell', 'operational_photos', 'project_detail', 'form_record_detail',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -65,6 +65,14 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
       ? ['em.portal.read', 'em.projects.read', 'em.planning.read'] : ['em.portal.read', 'em.projects.read'];
     case 'project_entry': return filters.documents === true
       ? ['em.portal.read', 'em.projects.read', 'em.documents.read'] : ['em.portal.read', 'em.projects.read'];
+    case 'project_detail': {
+      const capabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.read'];
+      for (const key of ['planning', 'forms', 'photos', 'history', 'documents'] as const) {
+        if (filters[key] === true) capabilities.push(`em.${key}.read`);
+      }
+      if (filters.edit === true) capabilities.push('em.projects.manage');
+      return capabilities;
+    }
     case 'planning_list': return filters.project_details === true
       ? ['em.portal.read', 'em.planning.read', 'em.projects.read'] : ['em.portal.read', 'em.planning.read'];
     case 'gantt_snapshot': {
@@ -94,6 +102,13 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
       return capabilities;
     }
     case 'form_record_project': return ['em.portal.read', 'em.forms.read'];
+    case 'form_record_detail': {
+      const capabilities: CorporateCapability[] = ['em.portal.read', 'em.forms.read'];
+      for (const key of ['projects', 'documents', 'photos'] as const) {
+        if (filters[key] === true) capabilities.push(`em.${key}.read`);
+      }
+      return capabilities;
+    }
     case 'form_record_list': return filters.project_details === true
       ? ['em.portal.read', 'em.forms.read', 'em.projects.read'] : ['em.portal.read', 'em.forms.read'];
     case 'operation_validation': case 'workshop_twin': case 'planning_export':

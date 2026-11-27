@@ -1892,6 +1892,59 @@ begin
  end loop;
 end
 $reviewer_proof$;
+do $isolated_details$
+declare
+ project uuid;
+ record_id uuid;
+ project_args jsonb;
+ record_args jsonb;
+ value jsonb;
+begin
+ if has_function_privilege('authenticated','rm_private.workshop_project_detail_v1(jsonb,uuid)','execute')
+  or has_function_privilege('service_role','rm_private.workshop_form_record_detail_v1(jsonb,uuid)','execute') then
+  raise exception 'Consulta de detalhe disponível sem autorização por oficina.';
+ end if;
+ for office in 1..4 loop
+  project:=em_fixture.id(100+office);
+  record_id:=em_fixture.id(500+office);
+  project_args:=jsonb_build_object('id',project,'planning',true,'forms',true,'photos',true,'history',true,'documents',true,
+   'equipment',true,'dossier',true,'edit',false,'photo_page',1,'selected_only',false,'selected_first',true);
+  record_args:=jsonb_build_object('id',record_id,'projects',true,'documents',true,'photos',true);
+  value:=pg_temp.workshop_restore_read(office,'project_detail',project_args);
+  if value->'project'->>'id' is distinct from project::text or value->>'hasAllocations' is distinct from 'true'
+   or not value->'allocations' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(300+office),'projeto_id',project))
+   or not value->'records' @> jsonb_build_array(jsonb_build_object('id',record_id))
+   or not value->'forms' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(400+office)))
+   or not value->'photos' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1450+office)))
+   or exists(select 1 from jsonb_array_elements(value->'photos') p where p?'foto_url') then
+   raise exception 'O dossiê perdeu vínculos autorizados ou expôs o endereço bruto da galeria.';
+  end if;
+  value:=pg_temp.workshop_restore_read(office,'project_detail',project_args||'{"planning":false,"forms":false,"photos":false,"history":false,"documents":false,"equipment":false,"edit":true}');
+  if value->>'hasAllocations' is distinct from 'true' or value->'allocations' is distinct from '[]'
+   or value->'records' is distinct from '[]' or value->>'photoTotal' is distinct from '0' or value->'project'?'arquivo_nota_fiscal_url' then
+   raise exception 'O editor sem escopo de planejamento recebeu detalhes não autorizados.';
+  end if;
+  value:=pg_temp.workshop_restore_read(office,'form_record_detail',record_args);
+  if value->'record'->>'id' is distinct from record_id::text or value->'project'->>'id' is distinct from project::text
+   or not value->'questions' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1480+office),'form_id',em_fixture.id(400+office)))
+   or not value->'answers' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1460+office),'registro_formulario_id',record_id)) then
+   raise exception 'O formulário autorizado perdeu as respostas ou o modelo histórico.';
+  end if;
+  value:=pg_temp.workshop_restore_read(office,'form_record_detail',record_args||'{"projects":false,"documents":false,"photos":false}');
+  if value->'project' is distinct from 'null'::jsonb
+   or exists(select 1 from jsonb_array_elements(value->'answers') a where a?'fotos_urls' or a?'assinatura_url') then
+   raise exception 'O formulário apresentou metadados fora do escopo autorizado.';
+  end if;
+  for other in 1..4 loop
+   if office=other then continue;end if;
+   if pg_temp.workshop_restore_read(other,'project_detail',project_args) is not null
+    or pg_temp.workshop_restore_read(other,'form_record_detail',record_args) is not null then
+     raise exception 'Consulta por identificador revelou dossiê ou formulário de outra oficina.';
+   end if;
+  end loop;
+ end loop;
+end
+$isolated_details$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1912,3 +1965,4 @@ select 'PASS: route cell form choices and versioned writes isolated in four work
 select 'PASS: operational photo titles, lifecycle and original evidence isolated in four workshops' result;
 select 'PASS: stage proof stays private and only the current workshop roster contributes to approvals in four workshops' result;
 select 'PASS: reviewer choices, versions and evidence isolated in four workshops' result;
+select 'PASS: scoped project and form detail snapshots, gallery and related roles in four workshops' result;
