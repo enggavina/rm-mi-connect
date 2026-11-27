@@ -1212,7 +1212,9 @@ begin
   reset role;
   project:=(receipt->>'projeto_id')::uuid;
   if not exists(select 1 from rm_private.receiving_workshop_protocols where submission_id=receiving_id
-   and project_id=project and workshop_id=em_fixture.id(office) and opened_at is not null and completed_at is null) then
+   and project_id=project and workshop_id=em_fixture.id(office) and opened_at is not null and completed_at is null)
+   or not exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof where proof.submission_id=receiving_id
+    and proof.workshop_id=em_fixture.id(office) and proof.creation_phase='open' and not proof.completed) then
    raise exception 'A abertura não gravou o protocolo com a origem do projeto.';
   end if;
   if not (receipt->>'attachments_pending')::boolean or not (
@@ -1333,7 +1335,8 @@ begin
    or not exists(select 1 from rm_private.receiving_project_recoveries where submission_id=protocol
     and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office))
    or not exists(select 1 from rm_private.receiving_workshop_protocols where submission_id=protocol
-    and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office) and opened_at is null and completed_at is not null)
+    and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office) and opened_at is null and completed_at is not null
+    and creation_phase is null)
    or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),
     em_fixture.id(office))->>'total')::int is distinct from 1
    or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),
@@ -1341,6 +1344,9 @@ begin
    raise exception 'O reenvio legado divergiu da autoria, do projeto ou da oficina.';
   end if;
  end loop;
+ if rm_private.workshop_receiving_pilot_ready_v1() then
+  raise exception 'Rascunhos abertos e reenvios antigos não comprovam a conclusão do piloto.';
+ end if;
 end
 $legacy_project_origins$;
 create function pg_temp.workshop_restore_decide(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
@@ -2151,6 +2157,7 @@ select 'PASS: Gantt cutover across four offices from intake through calendars, d
 select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invoice in four offices' result;
 select 'PASS: restored pristine receiving protocols retain their original revisions, payloads and office in four workshops' result;
 select 'PASS: exact legacy receiving receipts become visible only in the verified workshop inbox in four offices' result;
+select 'PASS: workshop receiving creation evidence distinguishes new openings from legacy replay in four workshops' result;
 select 'PASS: restored archive copies authorize photos, form answers and invoices only in the original workshop' result;
 select 'PASS: archived Word attachments use the same private read and reject a foreign workshop' result;
 select 'PASS: review cutover preserves legacy actions and rejects foreign decisions in four workshops before the general root cutover' result;

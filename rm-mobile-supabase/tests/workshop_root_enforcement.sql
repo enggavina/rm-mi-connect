@@ -36,8 +36,17 @@ begin
   raise exception 'FAIL: activation accepted with pending roots';
  exception when sqlstate 'PT409' then null;
  end;
- perform rm_private.activate_workshop_root_enforcement_v1();
- perform rm_private.activate_workshop_root_enforcement_v1();
+ begin
+  perform rm_private.activate_workshop_root_enforcement_v1();
+  raise exception 'FAIL: activation accepted without the pilot receiving proof';
+ exception when sqlstate 'PT409' then
+  if sqlerrm not like 'Conclua um recebimento da oficina piloto%' then raise;end if;
+ end;
+ -- Exercise the low-level constraints independently. The mobile workshop
+ -- suite enables these through actual authorized opening and completion.
+ alter table public.rm_projetos enable trigger workshop_new_project_origin;
+ alter table public.rm_celulas enable trigger workshop_new_cell_origin;
+ update rm_private.workshop_root_enforcement set activated_at=clock_timestamp(),activated_by=session_user where singleton;
 
  begin
   insert into public.rm_projetos(id,nome) values(pg_temp.enforcement_id(10),'A direct path without ownership');

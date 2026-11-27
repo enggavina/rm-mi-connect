@@ -79,6 +79,9 @@ declare
 begin
  opened:=pg_temp.rx_call(sid,'open',pg_temp.rx_payload(sid,'open'));
  pid:=(opened->>'projeto_id')::uuid;
+ perform pg_temp.rx_check(exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof
+  where proof.submission_id=sid and proof.creation_phase='open' and not proof.completed)
+  and not rm_private.workshop_receiving_pilot_ready_v1(),'a fresh scoped opening is tracked and does not qualify before completion');
  perform pg_temp.rx_check((select workshop_id=pg_temp.rx_id(1) from rm_private.workshop_project_ownership where id=pid),'early project records its workshop');
  perform pg_temp.rx_check(exists(select 1 from public.rm_projetos where id=pid and numero is null and tipo_equipamento_id is null),'early project preserves blank OS and type');
  perform pg_temp.rx_check(exists(select 1 from jsonb_array_elements(public.rm_web_receivings_v1('all','Local intake 066',1,100)->'items') p where p->>'id'=pid::text),'portal immediately lists the scoped project');
@@ -86,6 +89,7 @@ begin
  perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''complete'',pg_temp.rx_payload(%L,''complete''),2)',sid,sid),'42501');
  received:=pg_temp.rx_call(sid,'complete',pg_temp.rx_payload(sid,'complete'));
  perform pg_temp.rx_check(received->>'projeto_id'=pid::text,'final receipt uses the original project');
+ perform pg_temp.rx_check(rm_private.workshop_receiving_pilot_ready_v1(),'both scoped phases and the original receipt qualify the pilot');
  perform pg_temp.rx_check((pg_temp.rx_call(sid,'complete',pg_temp.rx_payload(sid,'complete'))->>'idempotent_replay')::boolean,'final retry keeps one receipt');
  perform pg_temp.rx_check((select count(*)=1 from public.rm_fotos where projeto_id=pid)
   and (select count(*)=1 from public.rm_documentos where projeto_id=pid),'photos and invoice appended once');
@@ -98,6 +102,11 @@ declare sid uuid:=pg_temp.rx_id(32);p jsonb;
 begin
  p:=pg_temp.rx_call(sid,'complete',pg_temp.rx_payload(sid,'complete'));
  perform pg_temp.rx_check((select workshop_id=pg_temp.rx_id(1) from rm_private.workshop_project_ownership where id=(p->>'projeto_id')::uuid),'legacy offline completion records origin');
+ perform pg_temp.rx_check(exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof
+  where proof.submission_id=sid and proof.creation_phase='complete' and proof.completed),'a new project created on offline completion is separate evidence');
+ p:=pg_temp.rx_call(sid,'open',pg_temp.rx_payload(sid,'open'));
+ perform pg_temp.rx_check((p->>'idempotent_replay')::boolean and exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof
+  where proof.submission_id=sid and proof.creation_phase='complete' and proof.completed),'replaying open cannot turn offline completion into an early opening');
 end
 $case$;
 
@@ -599,6 +608,11 @@ begin
   and (result->>'idempotent_replay')::boolean
   and exists(select 1 from rm_private.receiving_project_recoveries where submission_id=replay_open_id and basis='receipt_metadata'),
   'the older completion confirms metadata once even when the client still has the original local file paths');
+ perform pg_temp.rx_check((select count(*)=4 and bool_and(creation_phase is null)
+  from rm_private.receiving_workshop_protocols p where p.submission_id in(opening_id,complete_id,final_id,replay_open_id))
+  and not exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof
+   where proof.submission_id in(opening_id,complete_id,final_id,replay_open_id)),
+  'legacy opening and completion recovery cannot pass as new project creation');
 end
 $legacy_recovery$;
 select 'PASS: exact receiving replay classifies legacy openings and receipts without changing authors, attachments or project IDs' result;
@@ -650,6 +664,7 @@ begin
  perform rm_private.activate_root_creation_v1(repeat('8',40),pg_temp.rx_id(997));
  set constraints all immediate;
  perform rm_private.activate_workshop_root_enforcement_v1();
+ perform rm_private.activate_workshop_root_enforcement_v1();
  set constraints all deferred;
  args:=pg_temp.rx_payload(offline,'complete');
  set local role authenticated;
@@ -657,6 +672,10 @@ begin
  perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,
   pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_projeto_id',prior.project_id)),'42501');
  reset role;
+ intake:=pg_temp.rx_call(qr,'open',pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_projeto_id',prior.project_id));
+ perform pg_temp.rx_check((intake->>'projeto_id')::uuid=prior.project_id and exists(select 1 from rm_private.receiving_workshop_protocols
+  where submission_id=qr and creation_phase is null) and not exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1()
+  where submission_id=qr),'authorized QR updates never qualify as new project creation');
  intake:=pg_temp.rx_call(offline,'complete',args);
  set constraints workshop_new_project_origin immediate;
  perform pg_temp.rx_check(exists(select 1 from rm_private.receiving_workshop_protocols p
@@ -666,9 +685,12 @@ begin
    and p.project_id=(intake->>'projeto_id')::uuid and p.workshop_id=pg_temp.rx_id(1)),
   'offline completion alone creates project, origin, exact receipt and evidence in one transaction');
  perform pg_temp.rx_check(not has_table_privilege('authenticated','rm_private.receiving_workshop_protocols','select')
-  and not has_table_privilege('service_role','rm_private.receiving_workshop_protocols','update'),
+  and not has_table_privilege('service_role','rm_private.receiving_workshop_protocols','update')
+  and not has_function_privilege('authenticated','rm_private.workshop_receiving_creation_evidence_v1()','execute')
+  and not has_function_privilege('service_role','rm_private.workshop_receiving_pilot_ready_v1()','execute'),
   'receiving proofs may not be read or changed directly');
 end
 $protocols$;
 select 'PASS: native receiving uses a transaction-bound workshop proof with phase, origin and offline replay' result;
+select 'PASS: only new scoped receiving with an exact completion can qualify the pilot and activate the root guard' result;
 rollback;
