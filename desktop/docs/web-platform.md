@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — apontamentos e qualidade por oficina
+
+A migração **090** e o Railway **`de946034-39f2-434e-9125-427f07a37ab3`** levam a oficina confirmada em Acessos à consulta e à revisão dos apontamentos e às pendências de recebimento e planejamento da tela Qualidade. Projetos, células e sessões são filtrados na origem. Cada revisão revalida a oficina e o protocolo exato antes de ser registrada. No Android **1.2.21/código 24**, a consulta confirma dispositivo, operador e oficina, e o cache separa a etapa por oficina e identidade. A fila mantém a autoria e o protocolo original. O contrato Android anterior permanece disponível durante a adoção do APK piloto. [Apontamentos](https://em-web-production.up.railway.app/planejamento/execucao) · [Qualidade](https://em-web-production.up.railway.app/planejamento/qualidade).
+
+Passaram 687 testes web, 161 Android, dois contratos de QR e as regressões PostgreSQL. O Chromium confirmou oito cenários com duas oficinas locais, incluindo a recusa de links cruzados. Cada execução da matriz de quatro oficinas, antes e depois da restauração, confirmou 156 recusas de leitura cruzada, 24 de gravação cruzada e oito verificações de revogação ou indisponibilidade da Central. A implantação da migração preservou os dados das 134 tabelas anteriores e a identidade e os privilégios das 298 funções existentes. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45942246791) · [Ensaio de restauração](../../rm-mobile-supabase/tests/run-local-tests.ps1).
+
+Em produção, passaram 60 verificações da API, incluindo a consulta de uma alocação real da BMA, e sete passos no Operacional Web com o operador piloto. O roteiro de consultas com Microsoft tem uma matriz local que inclui as páginas novas em `.tmp/oficinas-piloto-bma-apontamentos.json`. As revisões com gravação foram ensaiadas em ambiente isolado. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
+O Moto G84 recebeu o APK 1.2.21 por atualização. O operador piloto abriu as 29 células autorizadas e consultou o apontamento da mesma etapa online e offline. O teste restaurou a rede do aparelho ao terminar. A gravação e o reenvio de apontamentos novos passaram no ensaio isolado. SHA-256 do APK `1ddb28e7c76f6dd9a82e209c930383132233a306547999f3246672df3f5d1d6b`.
+
 ## P0.2 — fila e carga planejada por oficina
 
 A migração **089** e o Railway **`bb7408eb-45af-4f1b-b6e0-60a9d1677585`** publicaram e ativaram as consultas da Fila da célula, seu seletor e a Carga planejada no escopo confirmado em Acessos. A prioridade é salva sem renumerar posições. A confirmação explícita de sequência é a ação que muda a ordem da fila. O backend confere a oficina da célula e de todas as alocações enviadas antes da gravação e preserva o protocolo nas retentativas.
