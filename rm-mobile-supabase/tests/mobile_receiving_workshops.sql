@@ -409,4 +409,88 @@ begin
 end
 $draft_media$;
 select 'PASS: private receiving draft media before opening, cross-office denial, exact replay and atomic promotion' result;
+
+do $pristine_recovery$
+declare
+ draft uuid:=pg_temp.rx_id(90);
+ stamp timestamptz:=clock_timestamp();
+ pristine jsonb;
+ original rm_private.receiving_drafts;
+ read_command jsonb;
+ save_command jsonb;
+ contents jsonb;
+ remote jsonb;
+ completed jsonb;
+ repeated jsonb;
+ receipt jsonb;
+ project uuid;
+begin
+ pristine:=jsonb_build_object('version',2,'id',draft,'step',0,'cliente','',
+  'chegada',to_char(stamp at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'notaFiscal','','arquivoNotaFiscal','','descricaoEquipamento','','placaMotor','','eventualidades','','equipamento','{}'::jsonb,'fotos','[]'::jsonb);
+ insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,last_save_id,payload,created_at,updated_at)
+ values(draft,pg_temp.rx_id(11),pg_temp.rx_id(14),pg_temp.rx_id(91),pristine,stamp,stamp) returning * into original;
+ read_command:=jsonb_build_object('action','read','draftId',draft);
+ save_command:=jsonb_build_object('action','save','draftId',draft,'expectedRevision',1,'saveId',pg_temp.rx_id(92),'payload',pristine);
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L)',save_command),'42501');
+
+ for contents in select * from (values
+  (pristine||'{"fotos":[{"uri":"https://fixture.invalid/existing.png"}]}'),
+  (pristine||'{"arquivoNotaFiscal":"file:///invoice.pdf"}'),
+  (pristine||'{"eventualidades":"old work"}'),
+  (pristine||'{"legacySnapshot":{"owner":"historical"}}'),
+  (pristine||'{"chegada":"2026-11-01T08:29:05.000Z"}'),
+  (pristine||'{"chegada":"9999-99-99T99:99:99.999Z"}')
+ ) variations(payload) loop
+  update rm_private.receiving_drafts set payload=contents where id=draft;
+  perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L)',read_command),'42501');
+ end loop;
+ update rm_private.receiving_drafts set payload=pristine,revision=2 where id=draft;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L)',read_command),'42501');
+ update rm_private.receiving_drafts set revision=1,updated_at=stamp+interval '1 second' where id=draft;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L)',read_command),'42501');
+ update rm_private.receiving_drafts set updated_at=stamp where id=draft;
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.receiving_draft_recoveries where draft_id=draft),
+  'substantive or edited drafts do not obtain the current desk as origin');
+
+ set local role authenticated;
+ perform pg_temp.rx_check(public.rm_receiving_draft_v1(repeat('6',64),'read',draft)->'payload'=pristine,
+  'legacy access to the original unclassified slot remains available during transition');
+ perform pg_temp.rx_reject(format('select rm_private.receiving_draft_store_v1(repeat(''6'',64),''read'',%L,null,null,null,true)',draft),'42501');
+ reset role;
+
+ remote:=pg_temp.rx_draft_workshop(1,read_command);
+ perform pg_temp.rx_check(remote->'payload'=pristine
+  and (select to_jsonb(d)=to_jsonb(original) from rm_private.receiving_drafts d where id=draft)
+  and exists(select 1 from rm_private.receiving_draft_workshops where draft_id=draft and workshop_id=pg_temp.rx_id(1)),
+  'verified recovery preserves the entire original database record');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(2,%L)',read_command),'42501');
+ remote:=pg_temp.rx_draft_workshop(1,read_command);
+ perform pg_temp.rx_check(remote->>'id'=draft::text
+  and (select count(*)=1 from rm_private.receiving_draft_recoveries where draft_id=draft and original_revision=1
+   and auth_user_id=original.auth_user_id and operator_id=original.operator_id
+   and original_payload_sha256=encode(sha256(convert_to(pristine::text,'UTF8')),'hex')),
+  'reopening the recovered draft does not duplicate the origin or audit');
+
+ receipt:=pg_temp.rx_payload(draft,'complete')||'{"p_receiving_draft_revision":2}';
+ contents:=receipt->'p_receiving_draft_snapshot';
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_receiving_draft_v1(repeat(''6'',64),''read'',%L)',draft),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_receiving_draft_v1(repeat(''6'',64),''save'',%L,%L,1,%L)',draft,contents,pg_temp.rx_id(92)),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',draft,receipt),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_mutate_v1(%L,''rm_submit_recebimento_v1'',%L,repeat(''6'',64))',draft,receipt),'42501');
+ reset role;
+
+ perform pg_temp.rx_check((pg_temp.rx_draft_workshop(1,save_command||jsonb_build_object('payload',contents))->>'revision')::int=2,
+  'the current scoped operator can continue editing the same draft');
+ project:=(pg_temp.rx_call(draft,'open',receipt)->>'projeto_id')::uuid;
+ completed:=pg_temp.rx_call(draft,'complete',receipt);
+ repeated:=pg_temp.rx_call(draft,'complete',receipt);
+ perform pg_temp.rx_check(project is not null and (completed->>'projeto_id')::uuid=project and (repeated->>'idempotent_replay')::boolean
+  and exists(select 1 from rm_private.receiving_drafts d where id=draft and state='finalized' and operator_id=original.operator_id)
+  and (select count(*)=1 from rm_private.mobile_mutation_receipts where client_submission_id=draft),
+  'recovered draft proceeds through opening and completion once with the original actor');
+end
+$pristine_recovery$;
+select 'PASS: pristine legacy draft recovery preserves exact provenance, denies raw routes and completes idempotently' result;
 rollback;

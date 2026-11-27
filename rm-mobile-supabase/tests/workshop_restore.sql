@@ -124,6 +124,51 @@ insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,payload,last
   em_fixture.id(1280+n) from generate_series(1,4)n join rm_private.mobile_workshop_uploads u on u.id=em_fixture.id(1260+n);
 insert into rm_private.receiving_draft_workshops(draft_id,workshop_id)
  select submission_id,workshop_id from rm_private.mobile_workshop_uploads where operation='receiving_draft';
+insert into public.rm_users(id,nome,perfil) select em_fixture.id(1340+n),'Operador de recuperação '||n,'mobile' from generate_series(1,4)n;
+insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
+ select extensions.digest(repeat('9'||n::text,32),'sha256'),em_fixture.id(710+n),em_fixture.id(730+n),em_fixture.id(1340+n),
+  clock_timestamp()+interval '1 hour' from generate_series(1,4)n;
+insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,last_save_id,payload,created_at,updated_at)
+ select em_fixture.id(1350+n),em_fixture.id(710+n),em_fixture.id(1340+n),em_fixture.id(1360+n),
+  jsonb_build_object('version',2,'id',em_fixture.id(1350+n),'step',0,'cliente','',
+   'chegada',to_char(stamp at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+   'notaFiscal','','arquivoNotaFiscal','','descricaoEquipamento','','placaMotor','','eventualidades','','equipamento','{}'::jsonb,'fotos','[]'::jsonb),
+  stamp,stamp from generate_series(1,4)n cross join (select clock_timestamp() stamp)s;
+create function em_fixture.read_placeholder(actor_office int, current_office int) returns jsonb language plpgsql as $$
+declare
+ stamp timestamptz:=clock_timestamp();
+ auth_id uuid:=em_fixture.id(710+actor_office);
+ session_id uuid:=em_fixture.id(720+actor_office);
+ request uuid:=gen_random_uuid();
+ token text:=repeat('9'||actor_office::text,32);
+ args jsonb:=jsonb_build_object('action','read','draftId',em_fixture.id(1350+actor_office));
+ result jsonb;
+ central jsonb;
+begin
+ select jsonb_build_object('version',2,'application','em','channel','mobile','authority',authority,
+   'workshop',jsonb_build_object('id',id,'code',code,'name',code,'active',true,'revision',1,'updated_at',stamp),
+   'principals',jsonb_build_array(
+    jsonb_build_object('kind','device','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1','subject',auth_id,'revision',1),
+    jsonb_build_object('kind','operator','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1','subject',em_fixture.id(1340+actor_office),'revision',1)),
+   'issued_at',stamp,'expires_at',stamp+interval '1 minute') into strict central
+ from rm_private.workshop_references where id=em_fixture.id(current_office);
+ perform set_config('request.jwt.claim.sub',auth_id::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',session_id,'aal','aal1')::text,true);
+ perform public.rm_authorize_receiving_draft_workshop_v1(auth_id,session_id,token,central,request,args);
+ set local role authenticated;
+ result:=public.rm_mobile_receiving_draft_workshop_v1(request,args,token);
+ reset role;
+ return result;
+end $$;
+do $seed_recovered_drafts$
+begin
+ for office in 1..4 loop
+  if (em_fixture.read_placeholder(office,office)->>'id')::uuid is distinct from em_fixture.id(1350+office) then
+   raise exception 'O rascunho legado vazio não foi recuperado.';
+  end if;
+ end loop;
+end
+$seed_recovered_drafts$;
 commit;
 \endif
 
@@ -1095,6 +1140,26 @@ begin
  end loop;
 end
 $gantt_cutover$;
+do $recovered_drafts$
+begin
+ for office in 1..4 loop
+  if not exists(select 1 from rm_private.receiving_draft_recoveries r
+   join rm_private.receiving_draft_workshops w using(draft_id)
+   join rm_private.receiving_drafts d on d.id=r.draft_id
+   where r.draft_id=em_fixture.id(1350+office) and w.workshop_id=em_fixture.id(office)
+    and r.original_payload_sha256=encode(sha256(convert_to(d.payload::text,'UTF8')),'hex')
+    and r.original_revision=d.revision and r.auth_user_id=d.auth_user_id and r.operator_id=d.operator_id)
+   or (em_fixture.read_placeholder(office,office)->>'id')::uuid is distinct from em_fixture.id(1350+office) then
+   raise exception 'A restauração divergiu na origem, nos dados ou no autor do rascunho.';
+  end if;
+  begin
+   perform em_fixture.read_placeholder(office,(office%4)+1);
+   raise exception 'O rascunho recuperado foi aberto após trocar a oficina.';
+  exception when insufficient_privilege then null;
+  end;
+ end loop;
+end
+$recovered_drafts$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1103,3 +1168,4 @@ select 'PASS: assignment selectors and writes in four offices; 36 denied cross-o
 select 'PASS: four private draft attachments recover under their original identity; 12 denied cross-office draft media reads' result;
 select 'PASS: Gantt cutover across four offices from intake through calendars, dependencies and baselines; deferred roots and legacy access checked' result;
 select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invoice in four offices' result;
+select 'PASS: restored pristine receiving protocols retain their original revisions, payloads and office in four workshops' result;
