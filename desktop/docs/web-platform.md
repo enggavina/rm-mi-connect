@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — disponibilidade de alocações por oficina
+
+A migração **088** e o Railway **`97e84a37-170d-4714-b0d1-faeda5b33752`** publicaram e ativaram o recorte de disponibilidade no Cronograma, em Projetos e na Fila. O serviço verifica o vínculo em Acessos e a oficina do projeto e da célula antes de consultar ou alterar a alocação. Ocultar preserva a posição na fila. Retirada e restauração preservam o identificador e o histórico. A alteração equivalente pelo roteiro também exige a confirmação da oficina. A conferência de produção preservou as 1.495 alocações existentes e o histórico de disponibilidade.
+
+Passaram 685 testes web, o CI web/mobile, a regressão PostgreSQL e seis cenários de interface em Chromium. Cada execução do ensaio de quatro oficinas, antes e depois da restauração, confirmou 120 recusas de leitura cruzada, 12 gravações cruzadas recusadas e oito recusas após revogação ou indisponibilidade da Central. Em produção, passaram 54 verificações da API e sete passos no Chromium. O operador BMA percorreu as células, abriu o projeto e consultou um formulário vinculado. No Moto G84, o APK **1.2.20/código 23** voltou a abrir as 29 células e a foto autorizada online e offline. A homologação da disponibilidade no portal ainda requer uma sessão Microsoft real. A matriz BMA preparada para essa etapa fica em `.tmp/oficinas-piloto-bma-planejamento.json`. [Portal do EM](https://em-web-production.up.railway.app/cronograma) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45937981011) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — capacidade de pessoas e máquinas por oficina
 
 A migração **087** e o Railway **`e73e8452-ed4b-4284-8aff-452fb04d99f2`** publicaram e ativaram o recorte em **Planejamento → Capacidade de pessoas e máquinas**. A oficina vem da sessão Microsoft e do vínculo vigente em Acessos. Nomes de recursos são únicos dentro da própria oficina. Reservas exigem que o recurso, o projeto e a célula pertençam à mesma unidade. Consultas e totais usam o mesmo recorte.
