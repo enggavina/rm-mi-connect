@@ -937,8 +937,15 @@ declare
  reset_project uuid:=em_fixture.id(1292); project uuid; first_cell uuid; second_cell uuid; plan jsonb; settings jsonb;
  first_row uuid; second_row uuid; snapshot jsonb; part jsonb; source jsonb; request_id uuid;
  customer uuid; receiving_id uuid; delegation text; args jsonb; receipt jsonb; anchor jsonb;
+ output_acl constant text[]:=array['public.rm_web_planning_export_snapshot_v1(uuid[],text[])','public.rm_web_workshop_snapshot_v1()',
+  'rm_private.web_export_shared_equipment_v1(uuid[])','rm_private.web_planning_export_allowed_v1()'];
  view_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":true}';
 begin
+ begin
+  perform rm_private.activate_workshop_output_cutover_v1();
+  raise exception 'O corte das saídas iniciou antes da proteção do planejamento.';
+ exception when sqlstate 'PT409' then null;
+ end;
  update rm_private.sso_settings set require_sso=true where singleton;
  perform rm_private.activate_root_creation_v1(repeat('9',40),em_fixture.id(1299));
  insert into public.rm_projetos(id,nome) values(pending_project,'Recebimento legado local');
@@ -951,6 +958,16 @@ begin
  end;
  perform rm_private.activate_gantt_workshop_cutover_v1();
  perform rm_private.activate_gantt_workshop_cutover_v1();
+ if exists(select 1 from unnest(output_acl) f where not has_function_privilege('authenticated',f,'execute')) then
+  raise exception 'As saídas antigas foram retiradas antes da virada.';
+ end if;
+ perform rm_private.activate_workshop_output_cutover_v1();
+ perform rm_private.activate_workshop_output_cutover_v1();
+ if exists(select 1 from unnest(output_acl) f where has_function_privilege('authenticated',f,'execute'))
+  or has_function_privilege('authenticated','rm_private.activate_workshop_output_cutover_v1()','execute')
+  or has_function_privilege('service_role','rm_private.activate_workshop_output_cutover_v1()','execute') then
+  raise exception 'As saídas antigas mantiveram acesso autenticado.';
+ end if;
  if exists(select 1 from rm_private.workshop_root_enforcement where activated_at is not null)
   or exists(select 1 from unnest(array[
    'public.rm_web_gantt_snapshot_v1(jsonb)','rm_private.web_gantt_snapshot_before_calendar_v1(jsonb)',
@@ -988,6 +1005,18 @@ begin
 
  for office in 1..4 loop
   first_cell:=em_fixture.id(200+office); second_cell:=em_fixture.id(1200+office);
+  project:=em_fixture.id(100+office);
+  update public.rm_projetos set arquivo_nota_fiscal_url='https://docs.fixture.invalid/nota-'||office||'.pdf' where id=project;
+  part:=pg_temp.workshop_restore_read(office,'planning_export',jsonb_build_object('cell_ids',jsonb_build_array(first_cell),
+   'fields',jsonb_build_array('project_number','cell_name')));
+  if not (part->'cells'->0->'rows' @> jsonb_build_array(jsonb_build_object('project_id',project)))
+   or (pg_temp.workshop_restore_read(office,'workshop_twin','{}')->'projects'->0->>'id')::uuid is distinct from project
+   or (pg_temp.workshop_restore_read(office,'project_qr',jsonb_build_object('id',project))->>'id')::uuid is distinct from project
+   or pg_temp.workshop_restore_read(office,'document_link',jsonb_build_object('id',project,'source','invoice'))->>'file'
+    is distinct from ('https://docs.fixture.invalid/nota-'||office||'.pdf')
+   or pg_temp.workshop_restore_read((office%4)+1,'document_link',jsonb_build_object('id',project,'source','invoice')) is not null then
+   raise exception 'A retirada dos leitores antigos alterou a autorização de uma saída por oficina.';
+  end if;
   customer:=em_fixture.id(1300+office); receiving_id:=em_fixture.id(1250+office);
   delegation:=repeat(chr(96+office),64);
   insert into public.rm_clientes(id,nome) values(customer,'Cliente local do recebimento de teste '||office);
@@ -1073,3 +1102,4 @@ select 'PASS: current team in four offices; 12 denied cross-office searches, 4 r
 select 'PASS: assignment selectors and writes in four offices; 36 denied cross-office reads and 20 denied foreign people assignments' result;
 select 'PASS: four private draft attachments recover under their original identity; 12 denied cross-office draft media reads' result;
 select 'PASS: Gantt cutover across four offices from intake through calendars, dependencies and baselines; deferred roots and legacy access checked' result;
+select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invoice in four offices' result;

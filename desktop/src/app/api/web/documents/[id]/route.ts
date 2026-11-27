@@ -5,7 +5,6 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { isNativeWorkshopMediaPath, resolveWorkshopMedia } from '@/server/web/workshop-media';
-import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { signNativeWorkshopDocument } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
@@ -21,7 +20,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const kind = new URL(request.url).searchParams.get('source');
     const source = documentSource(kind);
     if (!uuid.safeParse(id).success || !source) return Response.json({ error: 'Documento inválido.' }, { status: 400, headers });
-    const read = await readWorkshopOperations(current);
+    const read = await readWorkshopOperations(current, 'sso');
     let data: { id: string; file: unknown } | null;
     if (read) {
       data = await read('document_link', { id, source: kind ?? 'documentos' });
@@ -40,12 +39,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (!target) return Response.json({ error: 'Este documento ainda não possui um arquivo disponível para leitura.' }, { status: 404, headers });
     let destination: string;
     if (target.kind === 'private' && isNativeWorkshopMediaPath(target.path)) {
-      if (!read) {
-        if (!current.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
-        const scoped = await ssoWorkshopRead(current.sso, current.client);
-        const confirmed = await scoped('document_link', { id, source: kind ?? 'documentos' });
-        if (!confirmed || confirmed.id !== id.toLowerCase() || confirmed.file !== data.file) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
-      }
+      if (!read) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
       const signed = typeof data.file === 'string' && await resolveWorkshopMedia(data.file, storageOrigin, 'document', (_bucket, path) => signNativeWorkshopDocument(path));
       if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
       destination = signed;

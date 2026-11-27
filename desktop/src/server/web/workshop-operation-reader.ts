@@ -13,8 +13,8 @@ export function workshopFormReviewWritesEnabled() {
   return workshopOperationReadsEnabled() && process.env.EM_WORKSHOP_FORM_REVIEW_WRITES === 'true';
 }
 
-export async function readWorkshopOperations(access: WorkshopSession): Promise<WorkshopRead | undefined> {
-  if (!workshopOperationReadsEnabled()) return undefined;
+export async function readWorkshopOperations(access: WorkshopSession, mode: 'rollout' | 'sso' = 'rollout'): Promise<WorkshopRead | undefined> {
+  if (!workshopOperationReadsEnabled() && !(mode === 'sso' && access.sso)) return undefined;
   if (!access.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
   const { ssoWorkshopRead } = await import('./sso-bridge');
   return ssoWorkshopRead(access.sso, access.client);

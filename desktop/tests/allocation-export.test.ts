@@ -97,13 +97,20 @@ test('export HTTP protects origin, session, role and all read scopes before touc
  for(const current of [access(undefined,['em.planning.read']),access(undefined,allocationExportScopes,'mobile')])assert.equal((await handleAllocationExport(request(),{getWebUser:async()=>current})).status,403);
 });
 test('export HTTP validates bounded JSON and sends a no-store XLSX attachment, never raw SQL errors',async()=>{
- const dependencies={getWebUser:async()=>access()};
+ const dependencies={getWebUser:async()=>({...access(),sso:undefined})};
  assert.equal((await handleAllocationExport(request({...selection,fields:[]}),dependencies)).status,400);
  assert.equal((await handleAllocationExport(request(selection,{'Content-Type':'text/plain'}),dependencies)).status,415);
  assert.equal((await handleAllocationExport(request(selection,{'Content-Length':'20000'}),dependencies)).status,413);
- const denied=await handleAllocationExport(request(),{getWebUser:async()=>({...access(),client:{rpc:async()=>({error:{code:'XX000',message:'private JWT SQL'}})}})});
+ const denied=await handleAllocationExport(request(),{getWebUser:async()=>({...access(),sso:undefined,client:{rpc:async()=>({error:{code:'XX000',message:'private JWT SQL'}})}})});
  assert.equal(denied.status,503);assert.doesNotMatch(await denied.text(),/JWT|SQL/);
  const response=await handleAllocationExport(request(),dependencies);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),allocationExportMime);
  assert.match(response.headers.get('content-disposition')!,/planejamento_alocacoes_2026-11-11\.xlsx/);assert.match(response.headers.get('cache-control')!,/no-store/);assert.equal(response.headers.get('x-content-type-options'),'nosniff');
  assert.equal(Buffer.from(await response.arrayBuffer()).subarray(0,2).toString(),'PK');
+});
+
+test('export HTTP does not query legacy SQL when an SSO session is not verified',async()=>{
+ const current=access();
+ current.client.rpc=async()=>assert.fail('SSO export bypassed workshop authorization');
+ const response=await handleAllocationExport(request(),{getWebUser:async()=>current});
+ assert.equal(response.status,401);
 });

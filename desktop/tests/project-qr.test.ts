@@ -29,16 +29,23 @@ async function decode(svg: string, width = 512, rotation = 0) {
   assert.ok(result, 'An independent decoder must read the actual generated SVG raster');
   return { result, raster };
 }
-function route(options: { data?: unknown; role?: string; capabilities?: CorporateCapability[]; anonymous?: boolean; authError?: Error; queryError?: boolean; renderError?: boolean } = {}) {
+function route(options: { data?: unknown; role?: string; capabilities?: CorporateCapability[]; scoped?: boolean; anonymous?: boolean; authError?: Error; queryError?: boolean; renderError?: boolean } = {}) {
   const db = database(Object.hasOwn(options, 'data') ? options.data : project(), { error: options.queryError });
   const authCalls: unknown[] = [], imageCalls: string[] = [];
   const access = { client: db.client, user: { id: id(10) }, profile: { id: id(11), nome: 'Pessoa', perfil: options.role ?? 'administrador' },
-    sso: { sessionHash: 'session-private', bindingId: id(12), subject: id(13), capabilities: options.capabilities ?? caps } } as NonNullable<Awaited<ReturnType<typeof getWebUser>>>;
+    sso: options.scoped || options.capabilities ? { sessionHash: 'session-private', bindingId: id(12), subject: id(13), capabilities: options.capabilities ?? caps } : undefined } as NonNullable<Awaited<ReturnType<typeof getWebUser>>>;
   return { ...db, authCalls, imageCalls, handle: (pathId = id(1), query = '') => handleProjectQrImage(new Request(`https://em.example/api/web/projects/${pathId}/qr${query}`), pathId, {
     getWebUser: async required => { authCalls.push(required); if (options.authError) throw options.authError; return options.anonymous ? null : access; },
     renderQr: async value => { imageCalls.push(value); if (options.renderError) throw Error('private image details'); return renderProjectQrSvg(value); },
   }) };
 }
+
+test('an unverified SSO QR request never falls back to the project table', async () => {
+  const current = route({ scoped: true });
+  assert.equal((await current.handle()).status, 401);
+  assert.deepEqual(current.calls, []);
+  assert.deepEqual(current.imageCalls, []);
+});
 
 test('QR identity has one canonical raw UUID and never accepts an alias, URL or corrected arbitrary text', async () => {
   assert.equal(projectQrValue(id(1).toUpperCase()), id(1));

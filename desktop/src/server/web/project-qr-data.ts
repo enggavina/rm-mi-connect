@@ -29,5 +29,5 @@ export function createProjectQrData(client: SupabaseClient, capabilities?: reado
 export async function getProjectQr(projectId: string) {
   const { requireWebUser } = await import('./auth'); const access = await requireWebUser(projectQrScopes);
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
-  return createProjectQrData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectQr(projectId);
+  return createProjectQrData(access.client, access.sso?.capabilities, await readWorkshopOperations(access, 'sso')).getProjectQr(projectId);
 }

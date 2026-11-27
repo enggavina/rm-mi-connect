@@ -6,7 +6,6 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { isNativeWorkshopMediaPath, resolveWorkshopMedia, workshopMediaTarget } from '@/server/web/workshop-media';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
-import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { signNativeWorkshopDocument } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
@@ -26,7 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (!uuid.safeParse(id).success || (source !== 'project_photo' && source !== 'answer_signature' && source !== 'answer_photo')
       || (source === 'answer_photo' ? query.size !== 2 || !/^(0|[1-9]\d{0,5})$/.test(index ?? '') : query.size !== 1)) return failure(400);
     if (!hasWebCapability(access, source === 'project_photo' ? 'em.projects.read' : 'em.forms.read')) return failure(403);
-    const read = await readWorkshopOperations(access) ?? (access.sso && await ssoWorkshopRead(access.sso, access.client));
+    const read = await readWorkshopOperations(access, 'sso');
     if (!read) return failure(404);
     const value = await read('media_reference', { id, source, ...(index === null ? {} : { index: Number(index) }) });
     if (value === null) return failure(404);
