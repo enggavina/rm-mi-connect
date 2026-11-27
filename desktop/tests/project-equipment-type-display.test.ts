@@ -65,6 +65,20 @@ test('type lookup uses the reader capabilities, a single exact UUID query and mi
   }
 });
 
+test('a workshop type lookup binds the project, equipment and type and never falls back to a direct read', async () => {
+  const { db, reads } = client();
+  const calls: unknown[][] = [];
+  const data = createProjectEquipmentTypeData(db, ['em.portal.read', 'em.projects.read'], async (resource, args) => {
+    calls.push([resource, args]);
+    return calls.length === 1 ? canonicalType : null;
+  });
+  assert.deepEqual(await data.getProjectEquipmentType(project, snapshot), canonicalType);
+  assert.equal(await data.getProjectEquipmentType(project, snapshot), null);
+  const expected = ['project_equipment_type', { project: id(1), equipment: id(2), type: id(3) }];
+  assert.deepEqual(calls, [expected, expected]);
+  assert.deepEqual(reads, []);
+});
+
 test('missing type rows are empty while mismatched or overbroad responses fail closed', async () => {
   const missing = client(null);
   assert.equal(await createProjectEquipmentTypeData(missing.db).getProjectEquipmentType(project, snapshot), null);

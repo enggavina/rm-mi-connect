@@ -2027,7 +2027,121 @@ begin
  end;
 end
 $legacy_storage$;
+do $portal_read_cutover$
+declare
+ args jsonb; value jsonb; native_count bigint;
+ project uuid; equipment uuid; canonical_type uuid; profile_id uuid;
+ binding_issuer constant text:='https://kxoriwvzmxhatzqcgnht.supabase.co/auth/v1';
+begin
+ project:=em_fixture.id(101);
+ perform set_config('request.jwt.claim.sub',em_fixture.id(11)::text,true);
+ set local role authenticated;
+ if not exists(select 1 from public.rm_projetos where id=project) then
+  raise exception 'Preparing the migration interrupted direct access before activation.';
+ end if;
+ reset role;
+ perform set_config('request.jwt.claim.sub',em_fixture.id(711)::text,true);
+ set local role authenticated;
+ select count(*) into native_count from public.rm_projetos;
+ reset role;
+ if native_count=0 then raise exception 'No native legacy access to verify.';end if;
+
+ insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled)
+  values(em_fixture.id(2410),binding_issuer,em_fixture.id(2411),em_fixture.id(731),em_fixture.id(711),false);
+ begin
+  perform rm_private.activate_workshop_portal_reads_v1();
+  raise exception 'Activation accepted a portal identity with Android history.';
+ exception when sqlstate 'PT409' then null;end;
+ delete from rm_private.sso_identity_bindings where id=em_fixture.id(2410);
+ perform rm_private.activate_workshop_portal_reads_v1();
+ perform rm_private.activate_workshop_portal_reads_v1();
+ if (select count(*) from rm_private.workshop_portal_auth_users)<>4
+  or has_function_privilege('authenticated','public.rm_web_capacity_snapshot_v1(jsonb)','execute')
+  or has_function_privilege('authenticated','public.rm_web_form_source_snapshot_v1(uuid)','execute')
+  or has_function_privilege('authenticated','public.rm_web_form_template_snapshot_v1(uuid)','execute') then
+  raise exception 'The cutover left an old reader open or registered an unexpected identity.';
+ end if;
+
+ for office in 1..4 loop
+  project:=em_fixture.id(100+office);
+  equipment:=em_fixture.id(2420+office);
+  canonical_type:=em_fixture.id(1100+office);
+  profile_id:=em_fixture.id(30+office);
+  insert into public.rm_equipamentos(id,projeto_id,tipo_equipamento_id) values(equipment,project,canonical_type)
+   on conflict(projeto_id) do update set tipo_equipamento_id=excluded.tipo_equipamento_id returning id into equipment;
+  update public.rm_projetos set equipamento_id=equipment where id=project;
+  args:=jsonb_build_object('project',project,'equipment',equipment,'type',canonical_type);
+  value:=pg_temp.workshop_restore_read(office,'project_equipment_type',args);
+  if value is distinct from (select jsonb_build_object('id',id,'nome',nome,'sigla',sigla)
+   from public.rm_tipos_equipamento where id=canonical_type)
+   or pg_temp.workshop_restore_read(office,'project_equipment_type',args||jsonb_build_object('type',em_fixture.id(1100+(office%4)+1))) is not null
+   or pg_temp.workshop_restore_read(office,'project_equipment_type',args||jsonb_build_object('equipment',em_fixture.id(2429))) is not null then
+   raise exception 'The scoped reader lost the linked type or accepted a stale binding.';
+  end if;
+  for other in 1..4 loop
+   if office<>other and pg_temp.workshop_restore_read(other,'project_equipment_type',args) is not null then
+    raise exception 'The scoped type reader returned data from another office.';
+   end if;
+  end loop;
+  begin
+   perform pg_temp.workshop_restore_read(office,'project_equipment_type',args||'{"extra":true}');
+   raise exception 'Unknown type lookup arguments were accepted.';
+  exception when invalid_parameter_value then null;end;
+  value:=pg_temp.workshop_restore_read(office,'form_record_detail',jsonb_build_object('id',em_fixture.id(500+office),
+   'projects',true,'documents',true,'photos',true));
+  if value->'record'->>'id' is distinct from em_fixture.id(500+office)::text then
+   raise exception 'The cutover interrupted scoped form records.';
+  end if;
+  value:=pg_temp.workshop_restore_read(office,'template_form',jsonb_build_object('id',em_fixture.id(400+office)));
+  if value->'form'->>'id' is distinct from em_fixture.id(400+office)::text then
+   raise exception 'The cutover interrupted the scoped published form template.';
+  end if;
+  value:=pg_temp.workshop_restore_read(office,'capacity_snapshot',jsonb_build_object(
+   'start',(clock_timestamp() at time zone 'America/Sao_Paulo')::date,'days',14,'project_id',project,'can_manage',false));
+  if value is null then raise exception 'The cutover interrupted the scoped capacity view.';end if;
+  set local role authenticated;
+  if not rm_private.workshop_portal_gateway_required_v1()
+   or exists(select 1 from public.rm_projetos) or exists(select 1 from public.rm_fotos)
+   or exists(select 1 from public.rm_respostas) or exists(select 1 from public.rm_tipos_equipamento)
+   or exists(select 1 from public.rm_users where id<>profile_id)
+   or not exists(select 1 from public.rm_users where id=profile_id)
+   or not exists(select 1 from public.rm_option_sets) then
+   raise exception 'Raw business rows were available or the portal lost its profile or option labels.';
+  end if;
+  reset role;
+ end loop;
+
+ -- A removed binding must not unlock the legacy read path for an existing Auth ID.
+ update rm_private.sso_identity_bindings set enabled=false where id=em_fixture.id(41);
+ delete from rm_private.sso_identity_bindings where id=em_fixture.id(42);
+ insert into auth.users(id) values(em_fixture.id(2431));
+ insert into public.rm_users(id,auth_user_id,nome,perfil) values(em_fixture.id(2432),em_fixture.id(2431),'Gestor local posterior','administrador');
+ insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled)
+  values(em_fixture.id(2433),binding_issuer,em_fixture.id(2434),em_fixture.id(2432),em_fixture.id(2431),false);
+ begin
+  insert into rm_private.sso_identity_bindings(id,issuer,subject,rm_user_id,auth_user_id,enabled)
+   values(em_fixture.id(2410),binding_issuer,em_fixture.id(2411),em_fixture.id(731),em_fixture.id(711),false);
+  raise exception 'A newly bound portal identity overlapped an Android device.';
+ exception when sqlstate 'PT409' then null;end;
+ perform set_config('request.jwt.claims','{}',true);
+ foreach project in array array[em_fixture.id(11),em_fixture.id(12),em_fixture.id(2431)] loop
+  perform set_config('request.jwt.claim.sub',project::text,true);
+  set local role authenticated;
+  if not rm_private.workshop_portal_gateway_required_v1() or exists(select 1 from public.rm_projetos) then
+   raise exception 'A disabled, removed, or later binding allowed direct access.';
+  end if;
+  reset role;
+ end loop;
+ perform set_config('request.jwt.claim.sub',em_fixture.id(711)::text,true);
+ set local role authenticated;
+ if rm_private.workshop_portal_gateway_required_v1() or (select count(*) from public.rm_projetos)<>native_count then
+  raise exception 'The cutover altered the prior device reading behavior.';
+ end if;
+ reset role;
+end
+$portal_read_cutover$;
 rollback;
+select 'PASS: scoped equipment types and direct portal read cutover in four workshops; native reads preserved' result;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
 select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;
