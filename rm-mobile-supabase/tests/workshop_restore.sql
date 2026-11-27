@@ -2460,12 +2460,17 @@ declare
  token text:=repeat('e1',32);
  client_id uuid:=gen_random_uuid();
  protocol uuid:=gen_random_uuid();
+ offline_protocol uuid:=gen_random_uuid();
  draft_id uuid:=gen_random_uuid();
  submission uuid;
  open_args jsonb;
  write_args jsonb;
  saved jsonb;
  replayed jsonb;
+ legacy_filters constant jsonb:='{"reason":"without_number","q":"Recebimento do ensaio","page":1}';
+ legacy_inbox jsonb;
+ legacy_opened_project uuid;
+ legacy_completed_project uuid;
  action record;
  own_stage uuid:=gen_random_uuid();
  foreign_stage uuid:=gen_random_uuid();
@@ -2484,6 +2489,7 @@ declare
 begin
  if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_mobile_writes_v1()','execute')
   or has_function_privilege('authenticated','rm_private.require_mobile_mutation_workshop_v1(uuid,text,jsonb,jsonb,uuid,text)','execute')
+  or has_function_privilege('authenticated','rm_private.record_legacy_receiving_project_origin_v1(uuid,text,uuid,uuid)','execute')
   or has_table_privilege('authenticated','rm_private.workshop_legacy_mobile_write_settings','select') then
   raise exception 'A ativação ou a validação de gravações ficaram acessíveis ao cliente.';
  end if;
@@ -2511,8 +2517,14 @@ begin
  insert into rm_private.engineering_photo_title_scope(title_id,workshop_id,cell_id) values(bma_title,bma,bma_cell);
  insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,celula_projeto_id)
   values(own_stage,bma_project,bma_cell,bma_slot),(foreign_stage,em_fixture.id(102),em_fixture.id(202),foreign_slot);
+ alter table public.rm_projetos enable trigger workshop_new_project_origin;
  perform set_config('request.jwt.claim.sub',device::text,true);
- perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1','role','authenticated')::text,true);
+ begin
+  insert into public.rm_projetos(id,created_by_user_id) values(gen_random_uuid(),actor);
+  set constraints public.workshop_new_project_origin immediate;
+  raise exception 'Uma criação autenticada sem origem atravessou o guarda.';
+ exception when sqlstate 'PT409' then null;end;
 
  for action in select * from (values
   ('rm_update_cell_status_v1',jsonb_build_object('p_celula_projeto_id',bma_slot,'p_status','em_dia'),
@@ -2569,6 +2581,7 @@ begin
   raise exception 'A abertura legada aceitou tipo de outra oficina.';
  exception when insufficient_privilege then null;end;
  saved:=public.rm_mobile_open_receiving_v1(protocol,open_args,token);
+ legacy_opened_project:=(saved->>'projeto_id')::uuid;
  replayed:=public.rm_mobile_open_receiving_v1(protocol,open_args,token);
  if saved->>'projeto_id' is distinct from replayed->>'projeto_id' or replayed->>'idempotent_replay' is distinct from 'true' then
   raise exception 'O recebimento legado perdeu a abertura original.';
@@ -2577,9 +2590,26 @@ begin
  if saved->>'projeto_id' is distinct from replayed->>'projeto_id' then
   raise exception 'A conclusão legada não reutilizou o recebimento original.';
  end if;
+ write_args:=open_args-'p_receiving_draft_id'-'p_receiving_draft_revision'-'p_receiving_draft_snapshot';
+ saved:=public.rm_mobile_mutate_v1(offline_protocol,'rm_submit_recebimento_v1',write_args,token);
+ legacy_completed_project:=(saved->>'projeto_id')::uuid;
+ replayed:=public.rm_mobile_mutate_v1(offline_protocol,'rm_submit_recebimento_v1',write_args,token);
+ if legacy_completed_project=legacy_opened_project or replayed->>'projeto_id' is distinct from legacy_completed_project::text
+  or replayed->>'idempotent_replay' is distinct from 'true' then
+  raise exception 'A conclusão direta da fila legada perdeu a criação ou o reenvio original.';
+ end if;
  if public.rm_receiving_draft_v1(token,'save',draft_id,jsonb_build_object('id',draft_id,'version',2),0,gen_random_uuid())->>'id'
   is distinct from draft_id::text then raise exception 'O rascunho legítimo não foi gravado.';end if;
  reset role;
+ set constraints public.workshop_new_project_origin immediate;
+ set constraints public.workshop_new_project_origin deferred;
+ if (select count(*) from rm_private.workshop_project_ownership p
+     join rm_private.workshop_object_origins o on o.object_id=p.id and o.object_kind='project' and o.workshop_id=p.workshop_id
+     join public.rm_projetos r on r.id=p.id and r.created_by_user_id=actor
+     where p.id in (legacy_opened_project,legacy_completed_project) and p.workshop_id=bma)<>2
+  or exists(select 1 from rm_private.receiving_workshop_protocols where submission_id in(protocol,offline_protocol)) then
+  raise exception 'O legado não registrou a origem BMA ou foi contado como recebimento do piloto.';
+ end if;
 
  perform set_config('request.jwt.claim.sub',modern_device::text,true);
  perform set_config('request.jwt.claims',jsonb_build_object('session_id',modern_session,'aal','aal1')::text,true);
@@ -2633,8 +2663,22 @@ begin
    and p.project_id=(saved->>'projeto_id')::uuid and p.workshop_id=em_fixture.id(2) and p.creation_phase='complete') then
   raise exception 'A conclusão offline moderna perdeu a origem comprovada da oficina.';
  end if;
+
+ perform set_config('request.jwt.claim.sub','',true);
+ perform set_config('request.jwt.claims','{}',true);
+ legacy_inbox:=pg_temp.workshop_restore_read(1,'receiving_list',legacy_filters);
+ if legacy_inbox->'items' @> jsonb_build_array(jsonb_build_object('id',legacy_opened_project),
+  jsonb_build_object('id',legacy_completed_project)) is distinct from true then
+  raise exception 'Os recebimentos legados sem OS não apareceram na própria oficina.';
+ end if;
+ for other in 2..4 loop
+  if pg_temp.workshop_restore_read(other,'receiving_list',legacy_filters)->>'total' is distinct from '0' then
+   raise exception 'O portal mostrou recebimento legado de outra oficina.';
+  end if;
+ end loop;
 end
 $legacy_mobile_writes$;
+select 'PASS: legacy opening and offline completion require origin without counting as scoped pilot evidence' result;
 select 'PASS: scoped legacy mobile writes preserve BMA offline retries and require the verified gateway for other workshops' result;
 rollback to savepoint legacy_mobile_writes_fixture;
 release savepoint legacy_mobile_writes_fixture;

@@ -1,4 +1,4 @@
--- Run as the database owner on the EM database after migration 130. Results contain counts only.
+-- Run as the database owner on the EM database after migration 132. Results contain counts and flags.
 begin isolation level repeatable read read only;
 set local statement_timeout = '20s';
 set local search_path = '';
@@ -46,14 +46,27 @@ with protocols as materialized (
   where r.result->'resource_deleted' is distinct from 'true'::jsonb
     and rm_private.workshop_project_owned_v1(a.project_id,a.workshop_id)
   group by w.code
+), guard_status as (
+  select count(*)=2 as enabled from pg_catalog.pg_trigger
+  where (tgrelid,tgname) in (('public.rm_projetos'::regclass,'workshop_new_project_origin'),
+    ('public.rm_celulas'::regclass,'workshop_new_cell_origin')) and tgenabled='O'
 )
 select jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only') = 'on',
   'captured_at', clock_timestamp(),
   'root_guard_active', exists(select 1 from rm_private.workshop_root_enforcement where activated_at is not null),
-  'direct_root_guard_active', (select count(*)=2 from pg_catalog.pg_trigger
-    where (tgrelid,tgname) in (('public.rm_projetos'::regclass,'workshop_new_project_origin'),
-      ('public.rm_celulas'::regclass,'workshop_new_cell_origin')) and tgenabled='O'),
+  'direct_root_guard_active', (select enabled from guard_status),
+  'legacy_compatibility_origin_required',
+    (to_regprocedure('rm_private.record_legacy_receiving_project_origin_v1(uuid,text,uuid,uuid)') is not null
+      and exists(select 1 from rm_private.workshop_legacy_mobile_write_settings where singleton)
+      and (select enabled from guard_status)),
+  'roots_without_owned_origin', (
+    (select count(*) from public.rm_projetos project where not exists(
+      select 1 from rm_private.workshop_project_ownership p join rm_private.workshop_object_origins o
+        on o.object_kind='project' and o.object_id=p.id and o.workshop_id=p.workshop_id where p.id=project.id))
+    + (select count(*) from public.rm_celulas cell where not exists(
+      select 1 from rm_private.workshop_cell_ownership c join rm_private.workshop_object_origins o
+        on o.object_kind='cell' and o.object_id=c.cell_id and o.workshop_id=c.workshop_id where c.cell_id=cell.id))),
   'pilot_receiving_evidence_ready', rm_private.workshop_receiving_pilot_ready_v1(),
   'legacy_only_completion_receipts', (select count(*) from rm_private.mobile_mutation_receipts receipt
     where receipt.rpc_name='rm_submit_recebimento_v1' and not exists(select 1 from rm_private.receiving_workshop_protocols scoped
