@@ -107,6 +107,23 @@ insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,foto_url)
  select em_fixture.id(780+n),u.project_id,em_fixture.id(200+n),em_fixture.id(300+n),
   'https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||u.object_path
  from generate_series(1,4)n join rm_private.mobile_workshop_uploads u on u.id=em_fixture.id(750+n);
+insert into rm_private.mobile_workshop_uploads(id,submission_id,workshop_id,project_id,operation,auth_user_id,operator_id,
+ intent_sha256,kind,mime_type,byte_size,content_sha256,object_path,stored_at)
+ select em_fixture.id(1260+n),em_fixture.id(1250+n),em_fixture.id(n),null,'receiving_draft',em_fixture.id(710+n),em_fixture.id(740+n),
+  repeat('9',64),'photo','image/png',octet_length(bytes),
+  encode(sha256(bytes),'hex'),'mobile-oficina/'||em_fixture.id(n)||'/'||em_fixture.id(1250+n)||'/'||em_fixture.id(1260+n)||'.png',clock_timestamp()
+ from generate_series(1,4)n cross join lateral (
+  select decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+pZJcAAAAASUVORK5CYII=','base64')||set_byte('\x00'::bytea,0,n+8) bytes
+ ) b;
+insert into storage.objects(id,bucket_id,name,metadata,user_metadata)
+ select em_fixture.id(1270+n),'rm-documentos',u.object_path,jsonb_build_object('size',u.byte_size,'mimetype',u.mime_type),
+  jsonb_build_object('sha256',u.content_sha256) from generate_series(1,4)n join rm_private.mobile_workshop_uploads u on u.id=em_fixture.id(1260+n);
+insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,payload,last_save_id)
+ select u.submission_id,u.auth_user_id,u.operator_id,jsonb_build_object('id',u.submission_id,'version',2,'cliente','',
+  'fotos',jsonb_build_array(jsonb_build_object('uri','https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||u.object_path))),
+  em_fixture.id(1280+n) from generate_series(1,4)n join rm_private.mobile_workshop_uploads u on u.id=em_fixture.id(1260+n);
+insert into rm_private.receiving_draft_workshops(draft_id,workshop_id)
+ select submission_id,workshop_id from rm_private.mobile_workshop_uploads where operation='receiving_draft';
 commit;
 \endif
 
@@ -890,8 +907,32 @@ begin
  end if;
 end
 $assignments$;
+
+do $draft_media$
+declare reference text; data jsonb; denied integer:=0;
+begin
+ for office in 1..4 loop
+  select 'https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||object_path into strict reference
+  from rm_private.mobile_workshop_uploads where id=em_fixture.id(1260+office) and project_id is null and stored_at is not null;
+  data:=pg_temp.workshop_restore_native(office,array[reference]);
+  if data->'files' is distinct from jsonb_build_array(jsonb_build_object('url',reference,'source','project_photo'))
+   or rm_private.workshop_stored_media_owned_v1(reference,em_fixture.id(office),'project_photo') then
+   raise exception 'A mídia do rascunho perdeu o vínculo ou foi publicada antes da abertura.';
+  end if;
+  for outsider in 1..4 loop
+   if outsider=office then continue;end if;
+   if pg_temp.workshop_restore_native(outsider,array[reference])->'files' is distinct from '[]'::jsonb then
+    raise exception 'A mídia do rascunho apareceu em outra oficina.';
+   end if;
+   denied:=denied+1;
+  end loop;
+ end loop;
+ if denied<>12 then raise exception 'Cobertura incompleta de mídias em rascunho.';end if;
+end
+$draft_media$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
 select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;
 select 'PASS: assignment selectors and writes in four offices; 36 denied cross-office reads and 20 denied foreign people assignments' result;
+select 'PASS: four private draft attachments recover under their original identity; 12 denied cross-office draft media reads' result;

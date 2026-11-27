@@ -259,8 +259,11 @@ try {
       $workshop = '07610000-0000-4000-8000-{0:D12}' -f $office
       $protocol = '07610000-0000-4000-8000-{0:D12}' -f (760 + $office)
       $asset = '07610000-0000-4000-8000-{0:D12}' -f (750 + $office)
+      $draft = '07610000-0000-4000-8000-{0:D12}' -f (1250 + $office)
+      $draftAsset = '07610000-0000-4000-8000-{0:D12}' -f (1260 + $office)
       $specimens = @(@{ path = "$office/equipamento.png"; marker = $office },
-        @{ path = "mobile-oficina/$workshop/$protocol/$asset.png"; marker = 4 + $office })
+        @{ path = "mobile-oficina/$workshop/$protocol/$asset.png"; marker = 4 + $office },
+        @{ path = "mobile-oficina/$workshop/$draft/$draftAsset.png"; marker = 8 + $office })
       foreach ($specimen in $specimens) {
         $file = Join-Path $mediaSource $specimen.path
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
@@ -288,8 +291,8 @@ try {
       -c 'SELECT jsonb_object_agg(object_path,upper(content_sha256)) FROM rm_private.mobile_workshop_uploads WHERE stored_at IS NOT NULL'
     if ($LASTEXITCODE -ne 0) { throw 'Falha ao ler o manifesto recuperado de mídias.' }
     $files = ($manifest | ConvertFrom-Json).PSObject.Properties
-    if (@($files).Count -ne 4 -or @($files | Where-Object { $checksums[$_.Name] -cne $_.Value }).Count) {
-      throw 'O banco recuperado não corresponde às quatro mídias privadas restauradas.'
+    if (@($files).Count -ne 8 -or @($files | Where-Object { $checksums[$_.Name] -cne $_.Value }).Count) {
+      throw 'O banco recuperado não corresponde às oito mídias privadas restauradas.'
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v seed=false -f $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas após a restauração.' }

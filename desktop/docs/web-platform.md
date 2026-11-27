@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 e P0.4 — Anexos privados do rascunho de recebimento
+
+A migração **094** e o consumidor **`474ad72`** foram publicados no Railway **`eb44fdef-95e8-424f-b9a2-ea9821f3c6d2`**. O APK 1.2.22 envia fotos e a nota fiscal por um caminho privado determinado pela oficina, pelo protocolo e pelo arquivo. A consulta do rascunho confere a conta do dispositivo e o operador originais. Ao concluir o recebimento, os mesmos arquivos são vinculados ao projeto na transação do registro. Se o equipamento foi recebido sem OS, o projeto aparece em Recebimentos assim que a abertura é confirmada. [Recebimentos](https://em-web-production.up.railway.app/recebimentos).
+
+A regressão PostgreSQL conferiu a abertura antes da publicação dos arquivos, a recusa de referências de outra oficina, a preservação do rascunho em caso de erro e o reenvio que conserva um só recebimento. O ensaio em quatro oficinas conferiu 12 hashes de mídias antes e depois da restauração, incluindo quatro arquivos privados em rascunhos. Cada rodada recusou 12 consultas cruzadas a esses arquivos. Passaram o CI web/mobile e a conferência da migração em produção, com preservação dos dados das 139 tabelas anteriores. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45951816569) · [Ensaio de restauração](../../rm-mobile-supabase/tests/run-local-tests.ps1).
+
+Passaram 694 testes web, 163 Android, 67 verificações de API em produção e sete passos no Operacional Web com a BMA. O APK 1.2.22, código 25, foi instalado no Moto G84 com o mesmo certificado da versão anterior. O operador piloto voltou a abrir uma foto existente com e sem conexão, e a rede foi restaurada. SHA-256 `0c1610459ce070eaa55f98440ec7280d13446748f6fe43a2b76f7c0d77966e6e`.
+
+O primeiro recebimento real com anexo, a retirada dos clientes anteriores e os links históricos seguem na homologação. O roteiro interativo da BMA inclui Recebimentos e as três visões do Gantt. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-recebimento.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Pessoas elegíveis nas atribuições por oficina
 
 A migração **093** e o consumidor **`8507ab9`** foram publicados no Railway **`dabdb146-1930-4511-beda-874d63939ef8`**. O portal usa o vínculo atual da Central para apresentar gestores de projeto, responsáveis por alocação, revisores de formulários e aprovadores de etapas. Revisores e aprovadores também precisam do vínculo exigido pela célula. O banco verifica a oficina e a lista atual ao salvar ou restaurar uma regra. Uma atribuição histórica permanece consultável depois da saída da pessoa da oficina. [Portal EM](https://em-web-production.up.railway.app) · [Contrato da Central](sso.md).
