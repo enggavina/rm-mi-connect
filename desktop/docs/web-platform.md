@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 e P0.5 — Protocolos pendentes no Android
+
+Depois de recuperar a conexão, **Ver pendências** aparece no aviso de sincronização enquanto houver arquivos ou registros aguardando envio. A lista usa a fila que o aplicativo já restringe ao operador e à oficina confirmada. Ela mostra a operação, o estado e o protocolo original. **Sincronizar agora** usa a fila existente e mantém o código do registro, inclusive para um envio ainda pendente de uma versão anterior. O aviso desaparece quando a fila autorizada fica vazia. [Consulta do protocolo no portal](https://em-web-production.up.railway.app/projetos/protocolo).
+
+Se o app reiniciar durante a interrupção, a lista volta a aparecer depois que o autor se identifica e a fila é lida. O ensaio com SQLite confirmou que o protocolo autorizado reaparece e que as pendências de outra oficina ou operador continuam armazenadas. Passaram 167 testes do mobile, o CI web e mobile e o teste isolado da interface, incluindo queda de rede, retorno com pendências, retentativa e fechamento da lista na troca de operador. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46078179901).
+
+O APK **1.2.25/código 28**, fonte `4c6e758`, foi instalado sobre o aplicativo do piloto no emulador com a mesma assinatura. A comparação dos dados locais confirmou a preservação de um rascunho de recebimento e um de formulário. O APK final autenticou o operador da BMA, abriu o rascunho e um formulário existente com e sem rede e voltou ao Recebimento após reconectar. **Ver pendências** ficou invisível com a fila vazia. O reenvio de uma fila real segue no aceite. Instalador `artifacts/em-mi-electric-brasil-1.2.25-piloto-bma.apk` e SHA-256 `5706d22ebd64ee78ba20db794b83489fb7392aae03d38f0968a3ddbdf63e2623`. [EM em produção](https://em-web-production.up.railway.app).
+
 ## P0.3 — Recuperação dos originais PNG
 
 Na BMA, a OS **2026-07-17181** contém os anexos **Dados técnicos** (`Imagem1.png`) e **Placa de motor do mesmo modelo**. Os downloads de origem retornaram HTTP 403. A busca pelo nome, pela referência e pelas chaves conhecidas de cache nos backups examinados do emulador, no workspace e no material do gerador de relatórios ficou sem correspondência. O acervo privado segue com **6.422 de 6.424 referências verificadas (99,97%)**.
