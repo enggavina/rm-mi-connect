@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Regras de aprovação e versão da equipe por oficina
+
+A migração **107** e o Railway **`c4dc2d4b-134c-4e0a-8348-e9826e4808b2`** publicaram o commit **`683e672`**. As regras no Roteiro e no Cronograma usam os vínculos atuais da oficina para selecionar aprovadores e calcular a versão da configuração. Uma alteração na equipe de outra oficina ficou fora dessa conferência. O histórico preserva a autoria quando o aprovador perde o vínculo. Uma nova edição exige a versão atual, e o reenvio de uma gravação registrada conserva seu resultado. O acesso direto à prova antiga de aprovações foi encerrado. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46018775381).
+
+O inventário encontrou 923 regras dos projetos da BMA. As 40 comparações em 20 alocações preservaram as regras, células, aprovações e nomes do histórico. Os seletores conferiram com os vínculos atuais em Acessos. A publicação preservou os registros das 143 tabelas auditadas. Passaram 706 testes web, a regressão PostgreSQL, 28 verificações de navegador em duas oficinas locais e a restauração em quatro oficinas. Após a publicação, passaram sete verificações da API e oito do Operacional Web. O emulador abriu uma aprovação real da BMA com e sem rede.
+
+A conferência em uma sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-regras-roteiro.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 e P0.3 — Fotos previstas no roteiro da célula por oficina
 
 A migração **106** e o Railway **`7c6372f3-d95a-4cdf-922d-563094ee6d00`** publicaram o commit **`8a3cd30`**. O Roteiro do projeto e o Cronograma consultam as fotos previstas da alocação na oficina confirmada em Acessos. O seletor usa o vínculo oficial do título com a oficina e a célula. Inclusão, substituição, edição de tag, retirada e restauração conferem a mesma versão do catálogo e exigem autorização atual da oficina. O acesso direto à consulta antiga foi encerrado. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46015838776).

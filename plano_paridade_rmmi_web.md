@@ -33,6 +33,8 @@ A Central de Acessos define a oficina efetiva e seus vínculos. O portal de gest
 
 **Fotos previstas da célula.** A 106 aplica a oficina e a célula na consulta de títulos, na previsão e nas alterações do Roteiro e do Cronograma. As cinco operações preservam o histórico e usam a mesma versão conferida na leitura. O teste em quatro oficinas recusou títulos estrangeiros e preservou as fotos capturadas. O portal em produção encerrou a consulta antiga, e a mesma foto da BMA passou pela conferência do arquivo e pela consulta Android com e sem rede. [Publicação e testes](desktop/docs/web-platform.md#p02-e-p03--fotos-previstas-no-roteiro-da-célula-por-oficina).
 
+**Regras de aprovação do roteiro.** A 107 calcula as escolhas e a versão da edição a partir dos vínculos atuais da oficina. Preserva a autoria e as decisões anteriores. A restauração em quatro oficinas confirmou a independência da versão ao alterar outra equipe, a conferência após saída do aprovador e o reenvio idempotente. A prova antiga de aprovações passou a exigir os fluxos autorizados do portal. [Publicação e testes](desktop/docs/web-platform.md#p02--regras-de-aprovação-e-versão-da-equipe-por-oficina).
+
 **Diagnóstico da fila e carga em 27/11/2026.** O inventário encontrou 810 alocações abertas em 25 células, todas com oficina de origem identificada e alinhada. Dessas alocações, 659 estão ocultas no mobile, 68 estão sem posição explícita e 656 compartilham posição com pelo menos outra alocação da mesma célula. A fila por oficina precisa preservar a ordenação histórica na leitura e na alteração de prioridade. A ação explícita de reordenar segue como o caminho para atualizar posições.
 
 **Diagnóstico dos apontamentos em 27/11/2026.** A consulta de produção encontrou zero sessões, eventos e revisões registrados no módulo de Apontamentos. Essa frente precisa aplicar o vínculo ao histórico e às revisões do portal e à consulta e à fila do Android. A tela Qualidade precisa calcular os indicadores e as pendências de recebimento com o mesmo escopo.
@@ -57,6 +59,17 @@ Para conferir o mesmo recebimento em dois momentos, informe `receipt` na oficina
 O relatório de Recebimentos cruza protocolo de abertura, autoria da conclusão, projeto, equipamento, oficina e alocações com datas. Em 27/11/2026, a consulta de produção em modo somente leitura encontrou zero aberturas mobile ativas. Esse é o próximo dado necessário para homologar P0.1 com a BMA. [Consulta de prontidão](rm-mobile-supabase/scripts/workshop_receiving_readiness.sql).
 
 **Aceite do marco em 27/11/2026.** **0 de 6 entregas P0 integralmente aceitas (0% por contagem de aceites)**. A operação atual tem **1 de 3 oficinas cadastradas ativas (33%)**. O aceite final exige a operação simultânea de duas unidades reais e o ensaio de quatro unidades em ambiente isolado.
+
+**Avanço por entrega em 27/11/2026.** Cada marco listado conta uma vez dentro da sua entrega. O percentual indica a proporção de marcos verificados. O aceite integral segue as condições do roadmap.
+
+| Entrega | Avanço | Marcos verificados | Marcos pendentes |
+| --- | --- | --- | --- |
+| P0.1 · Origem na criação | **3 de 5 (60%)** | Criação no portal com origem, fluxo Android ensaiado em quatro oficinas e acervo ativo classificado. | Primeiro recebimento real da BMA até o portal e exigência de origem nas entradas legadas restantes. |
+| P0.2 · Dados e Gantt | **3 de 5 (60%)** | Três visões do Gantt e Planejamento, Projetos e Recebimentos, e catálogos principais com escopo ativo. | Fechamento dos acessos legados restantes e homologação do PCP com sessão Microsoft real. |
+| P0.3 · Arquivos e saídas | **2 de 4 (50%)** | Mídia privada por oficina e saídas do portal com escopo, incluindo QR, exportações e gêmeo digital. | Tratamento final do acervo e dos endereços legados e conferência de arquivos e saídas em duas oficinas reais. |
+| P0.4 · Android e Operacional Web | **3 de 5 (60%)** | Catálogo e cache Android por oficina, fila ensaiada em ambiente isolado e Operacional Web verificado com operador real da BMA. | Envios reais de ponta a ponta e transição dos clientes e filas anteriores. |
+| P0.5 · Testes e recuperação | **3 de 4 (75%)** | Matriz de quatro oficinas, recusa após revogação ou indisponibilidade da Central, e restauração de banco e arquivos. | Recuperação e reenvio de filas reais nos dispositivos do piloto. |
+| P0.6 · Segunda oficina | **1 de 4 (25%)** | BMA, BRJ e BBH cadastradas em Acessos, com a BMA ativa. | Vínculos da segunda oficina, piloto simultâneo e validação do procedimento de ativação e suspensão. |
 
 ## Roadmap após a independência operacional
 
