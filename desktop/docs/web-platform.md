@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — Envio do Operacional Web por oficina
+
+A migração **126** no Supabase `oficina-em-mi-off` e o Railway **`1e0dc602-8b2c-466f-ad6d-f30d1644c986`**, commit **`8e952d0`**, liberam o envio de formulários compatíveis em qualquer oficina ativa em Acessos. A confirmação exige a oficina atual e vincula o dispositivo, o operador, a célula, o projeto e a versão do formulário. A retentativa exata conserva o registro e o código originais. [Operacional Web em produção](https://em-web-production.up.railway.app/operacao) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46065563422).
+
+O ensaio PostgreSQL em quatro oficinas passou antes e depois da restauração. Em cada rodada, quatro envios foram conferidos na própria fila de revisão, com quatro reenvios idempotentes, 12 recusas de gravação cruzada e 12 recusas de leitura na fila estrangeira. O navegador isolado validou BMA e BRJ, incluindo perda da confirmação e retentativa. A publicação preservou as 151 tabelas auditadas. Em produção, passaram dez verificações no navegador, incluindo a abertura de um formulário editável existente da BMA. O emulador Android abriu o formulário existente com e sem conexão. A BMA é a única oficina ativa. Os envios reais e o piloto da segunda unidade seguem no aceite. [Contrato do Operacional Web](online-operation.md#envio-de-inspeção-por-oficina).
+
 ## P0.2 — Homologação do planejamento da BMA
 
 Uma sessão Microsoft real da BMA passou nas seis verificações do roteiro focado em 27/11/2026. O roteiro abriu Recebimentos, Planejamento e Projetos, encontrou a mesma alocação nas três visões do Gantt e, no Gantt do projeto, conferiu a edição e o descarte da prévia de prazo. A automação impede o envio de gravações durante a prévia. A gravação de datas, dependências, calendário e linha de base continua coberta pelo ensaio de quatro oficinas. P0.2 atingiu **5 de 5 marcos (100%)**, com aceite integral. O primeiro recebimento real do Android até o portal integra P0.1. [EM em produção](https://em-web-production.up.railway.app/cronograma?view=gantt) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
