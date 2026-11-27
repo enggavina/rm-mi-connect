@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Equipe com vínculo atual na Central
+
+A Central publicou `cp_my_em_workshop_team_v1()` e o EM recebeu a migração **092**, consumidor **`808b518`** no Railway **`104b270e-9eeb-4fe0-bebb-e75c156c8ec8`**. Cadastros → Equipe consulta os vínculos atuais da oficina e resolve as pessoas pelo ID corporativo ou pelo ID do operador. Busca e paginação são aplicadas após o filtro. Transferência e revogação aparecem na consulta seguinte. A conferência encontrou dois vínculos corporativos e um de operador da BMA com cadastro ativo no EM. A atribuição de responsáveis e aprovadores pelos seletores legados segue no escopo da P0.2. [Equipe](https://em-web-production.up.railway.app/cadastros?kind=users) · [Contrato](sso.md).
+
+Passaram nove cenários da Central, oito cenários no Chromium com duas oficinas locais, 691 testes web, 161 Android, dois contratos de QR e a regressão PostgreSQL. O ensaio de quatro oficinas, antes e depois da restauração, conferiu 12 buscas cruzadas e quatro tentativas de substituir a lista de pessoas depois da autorização. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45946923878) · [Ensaio de restauração](../../rm-mobile-supabase/tests/run-local-tests.ps1).
+
+Após a publicação, passaram 62 verificações da API, incluindo a recusa da consulta da Equipe com um dispositivo autenticado, e sete passos do Operacional Web. O Moto G84 com o APK 1.2.21 abriu uma foto real da BMA com e sem conexão. A homologação da Equipe com login Microsoft está preparada na matriz local `.tmp/oficinas-piloto-bma-equipe.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Engenharia e títulos de fotos por oficina
 
 A migração **091** e o Railway **`c9a62a7b-1b80-464f-a11e-da77d004e1a0`** vinculam a matriz de roteiros, as opções de configuração e o cadastro de títulos à oficina confirmada em Acessos. Os títulos guardam o ID da célula e a oficina. Títulos disponíveis para todas as células ficam associados à própria oficina. O banco confere os vínculos de formulário, célula de destino e título antes de gravar, e o reenvio exige uma nova confirmação para o mesmo protocolo. As opções de aprovadores continuam vinculadas às células. A consulta de Equipe precisa do cadastro de identidades da Central para validar o pertencimento atual à oficina. [Engenharia](https://em-web-production.up.railway.app/engenharia) · [Títulos de fotos](https://em-web-production.up.railway.app/engenharia/titulos).
