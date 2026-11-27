@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Registros operacionais do Android legado por oficina
+
+A migração **120** está ativa no Supabase `oficina-em-mi-off`. As consultas diretas de 12 tabelas operacionais, incluindo projetos, equipamentos, formulários respondidos, aprovações, comentários, fotos e documentos, ficaram restritas à conta de dispositivo confirmada na BMA e aos registros com origem comprovada. A abertura antiga ainda sem classificação fica visível quando o protocolo original comprova o dispositivo, o autor e o equipamento. A consulta preserva esses registros e suas origens. [Migração](../../rm-mobile-supabase/migrations/120_rm_legacy_bma_direct_operations.sql) · [EM em produção](https://em-web-production.up.railway.app).
+
+A comparação pela API, com a própria conta da BMA, retornou os mesmos **81.214 identificadores operacionais** e **8.223 identificadores de catálogos**. Passaram a regressão PostgreSQL e a matriz de quatro oficinas antes e depois da restauração. A matriz exercitou a abertura antiga e a conclusão offline enviada diretamente e confirmou a recusa de consultas às outras oficinas. Passaram também nove verificações no navegador e a abertura de uma alternativa histórica no emulador Android **1.2.24**, com e sem conexão. O cadastro de pessoas legado, o Gantt com sessão Microsoft real e a confirmação no aparelho físico continuam pendentes. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46053030072) · [Roteiro do Gantt](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Catálogos diretos do Android legado por oficina
 
 A migração **119** está ativa no Supabase `oficina-em-mi-off`. Doze catálogos diretos, incluindo clientes, células, tipos de equipamento, formulários, alternativas e títulos de fotos, ficam limitados aos dados com origem confirmada na BMA e à conta de dispositivo já confirmada nessa oficina. Outros dispositivos consultam a própria oficina pelo serviço autorizado. Uma transferência confirmada pelo Android encerra a exceção e a decisão persiste após o fim da sessão. [Migração](../../rm-mobile-supabase/migrations/119_rm_legacy_bma_direct_catalog.sql) · [EM em produção](https://em-web-production.up.railway.app).
