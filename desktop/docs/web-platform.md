@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Expansão do acervo privado da BMA
+
+A migração **100**, commit **`af5c8a5`**, foi publicada no Supabase `oficina-em-mi-off` e no Railway **7eaea904-e62b-47bc-ac2d-98901b2aaf8a**. Os lotes retomáveis gravaram **6.421 de 6.423 referências (99,97%)** com verificação de conteúdo por SHA-256. O acervo inclui os **cinco anexos Word** e as 22 referências históricas do Supabase do EM. A auditoria somente leitura cruzou todas as cópias registradas com o tamanho, o tipo e o hash dos objetos privados. A referência original continua identificando o arquivo no catálogo e no cache. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45998599898).
+
+As duas pendências são PNGs de anexos cujo endereço devolveu HTTP 403 e cujo registro de origem devolveu HTTP 404 na consulta à API do Bubble. A cópia correspondente também ficou indisponível no cache do emulador e no backup local inspecionado. A recuperação depende de uma cópia válida. O fechamento dos endereços antigos segue como condição do aceite, junto da validação com a segunda oficina real.
+
+Passaram 702 testes web, os cenários de navegador isolados e a restauração com quatro oficinas. Em produção, a API entregou foto, resposta de formulário, nota fiscal e anexo Word ao operador autorizado da BMA, com os mesmos bytes e recusa de leitura direta do armazenamento. O Android abriu a galeria com e sem rede. O roteiro Microsoft do acervo inclui a galeria, respostas e os cinco anexos Word. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-acervo.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
+O importador aceita `--all` para percorrer os lotes, `--concurrency` para limitar os arquivos em andamento e `--after` para retomar a partir do cursor registrado. Observe os motivos dos arquivos pendentes no relatório final. O banco pula as cópias confirmadas quando o importador reinicia do começo. [Importador](../../rm-mobile-supabase/scripts/copy_workshop_archive.ts).
+
 ## P0.3 — Arquivos históricos no armazenamento privado
 
 A migração **099** e o consumidor **`009e084`** estão em produção desde a publicação Railway **06026870-cabe-494b-a59f-fbc09493a3e8**. O portal e o Android resolvem a cópia privada após confirmar a oficina em Acessos. O Android mantém a referência antiga como chave do cache. Projetos, formulários, autoria, protocolos e URLs gravadas no acervo foram preservados. Cada cópia usa nome determinado pela oficina e pela referência original. O importador baixa os bytes, confirma o SHA-256 depois de gravar e só então registra a cópia. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45995338375).
