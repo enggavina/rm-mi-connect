@@ -73,7 +73,7 @@ begin
   or array_length(string_to_array(reader,gate),1) is distinct from 2
   or array_length(string_to_array(reader,dispatch),1) is distinct from 2 then raise exception 'Unexpected workshop team contract';end if;
  issuer:=replace(issuer,tail,'''photo_title_entry'',''workshop_team'')');
- execute replace(issuer,argument_limit,'octet_length(p_args::text)>case when p_resource=''workshop_team'' then 65536 else 4096 end');
+ execute replace(issuer,argument_limit,'octet_length(p_args::text)>(case when p_resource=''workshop_team'' then 65536 else 4096 end)');
  execute replace(reader,dispatch,dispatch||chr(10)||
   '  when ''workshop_team'' then rm_private.workshop_team_read_v1(p_args,binding.subject)');
 end;
