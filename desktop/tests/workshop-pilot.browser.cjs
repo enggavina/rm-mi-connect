@@ -47,16 +47,27 @@ async function main() {
           assert.equal(page.url(), expected, 'A navegação foi redirecionada.');
           assert.equal(response?.status(), 200);
           await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
+          if (step.selector) await page.locator(step.selector).first().waitFor();
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
         }
-        for (const [index, path] of office.denied.entries()) {
+        for (const [index, value] of office.denied.entries()) {
           stepDescription = `${office.code} · consulta cruzada ${index + 1}`;
-          const response = await page.goto(location(path), { waitUntil: 'domcontentloaded' });
-          assert.ok([403, 404].includes(response?.status()), 'A consulta de outra unidade deve devolver 403 ou 404.');
+          const step = typeof value === 'string' ? { path: value } : value;
+          const expected = location(step.path);
+          const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
+          assert.equal(page.url(), expected, 'A rota testada deve permanecer no endereço esperado.');
+          if (response?.status() === 200 && step.heading) {
+            // Next can emit the not-found view after sending the portal shell.
+            await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
+          } else {
+            assert.ok([403, 404].includes(response?.status()), 'A consulta de outra unidade deve devolver uma recusa.');
+          }
+          if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+          if (step.absentSelector) assert.equal(await page.locator(step.absentSelector).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta cruzada ${index + 1}\n`);
         }
       } finally {

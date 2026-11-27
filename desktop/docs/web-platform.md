@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — fila e carga planejada por oficina
+
+A migração **089** e o Railway **`bb7408eb-45af-4f1b-b6e0-60a9d1677585`** publicaram e ativaram as consultas da Fila da célula, seu seletor e a Carga planejada no escopo confirmado em Acessos. A prioridade é salva sem renumerar posições. A confirmação explícita de sequência é a ação que muda a ordem da fila. O backend confere a oficina da célula e de todas as alocações enviadas antes da gravação e preserva o protocolo nas retentativas.
+
+A ativação comparou as 29 filas da BMA e a projeção de carga antes e depois. As 810 alocações abertas, entre elas 659 ocultas no mobile, conservaram os totais e as versões. As regressões PostgreSQL e web/mobile passaram. Cada execução da matriz isolada de quatro oficinas, antes e depois da restauração, confirmou 132 recusas de leitura cruzada, 20 recusas de gravação cruzada e oito recusas após revogação ou indisponibilidade da Central. Nove cenários em Chromium validaram a interface com duas oficinas locais, o controle de consulta, a edição de prioridades e sequência e os links cruzados. [Fila da célula](https://em-web-production.up.railway.app/planejamento/fila) · [Carga planejada](https://em-web-production.up.railway.app/planejamento/carga) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45939642411).
+
+A regressão pós-publicação passou nas 54 verificações da API e nos sete passos do navegador com operador real da BMA, da identificação do dispositivo à consulta do formulário. O Moto G84 confirmou as 29 células autorizadas e abriu uma foto existente com e sem conexão. A matriz local para a homologação com login Microsoft inclui Fila, Carga e as três visões do Gantt. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — disponibilidade de alocações por oficina
 
 A migração **088** e o Railway **`97e84a37-170d-4714-b0d1-faeda5b33752`** publicaram e ativaram o recorte de disponibilidade no Cronograma, em Projetos e na Fila. O serviço verifica o vínculo em Acessos e a oficina do projeto e da célula antes de consultar ou alterar a alocação. Ocultar preserva a posição na fila. Retirada e restauração preservam o identificador e o histórico. A alteração equivalente pelo roteiro também exige a confirmação da oficina. A conferência de produção preservou as 1.495 alocações existentes e o histórico de disponibilidade.
