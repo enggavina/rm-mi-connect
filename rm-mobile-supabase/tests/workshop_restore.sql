@@ -2166,6 +2166,7 @@ declare
  customer uuid:=em_fixture.id(3602);
  protocol uuid:=em_fixture.id(3603);
  unknown_project uuid:=em_fixture.id(3604);
+ unrelated_person uuid:=em_fixture.id(3605);
  own_project uuid:=em_fixture.id(101);
  other_project uuid:=em_fixture.id(102);
  own_answer uuid:=em_fixture.id(1461);
@@ -2183,23 +2184,33 @@ declare
 begin
  if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_bma_operations_v1()','execute')
   or has_function_privilege('service_role','rm_private.activate_workshop_legacy_bma_operations_v1()','execute')
-  or has_table_privilege('authenticated','rm_private.workshop_legacy_bma_operation_rows','select') then
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_bma_operation_rows','select')
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_bma_people_rows','select')
+  or has_function_privilege('service_role','rm_private.activate_workshop_legacy_bma_people_v1()','execute')
+  or has_function_privilege('authenticated','rm_private.activate_workshop_legacy_bma_people_v1()','execute') then
   raise exception 'O inventário operacional ou a ativação ficaram acessíveis ao cliente.';
  end if;
  begin
   perform rm_private.activate_workshop_legacy_bma_operations_v1();
   raise exception 'A ativação não exigiu a conta de dispositivo aprovada.';
  exception when sqlstate 'PT409' then null; end;
+ begin
+  perform rm_private.activate_workshop_legacy_bma_people_v1();
+  raise exception 'A ativação de pessoas não exigiu o recorte das operações.';
+ exception when sqlstate 'PT409' then null; end;
  perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
   pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
  perform rm_private.activate_workshop_legacy_bma_catalog_v1(device,device_session);
  perform rm_private.activate_workshop_legacy_bma_operations_v1();
  perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ perform rm_private.activate_workshop_legacy_bma_people_v1();
+ perform rm_private.activate_workshop_legacy_bma_people_v1();
  if (select count(*) from pg_policy where polname='rm_legacy_bma_operations_read' and not polpermissive and polcmd='r')<>12 then
   raise exception 'O recorte direto não cobriu os dados operacionais.';
  end if;
 
- insert into public.rm_users(id,nome,perfil) values(operator_id,'Operador de recebimento legado local','mobile');
+ insert into public.rm_users(id,nome,perfil) values(operator_id,'Operador de recebimento legado local','mobile'),
+  (unrelated_person,'Pessoa sem vínculo comprovado','mobile');
  insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
   values(extensions.digest(delegation,'sha256'),device,em_fixture.id(731),operator_id,clock_timestamp()+interval '1 hour');
  insert into public.rm_clientes(id,nome) values(customer,'Cliente de recebimento legado local');
@@ -2210,6 +2221,11 @@ begin
  perform set_config('request.jwt.claim.sub',device::text,true);
  perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
  set local role authenticated;
+ if exists(select 1 from public.rm_users where id in(operator_id,unrelated_person,em_fixture.id(742)))
+  or not exists(select 1 from public.rm_users where id=em_fixture.id(741))
+  or not exists(select 1 from public.rm_users where auth_user_id=device and status='ativo') then
+  raise exception 'O cadastro de pessoas perdeu o perfil próprio ou a equipe comprovada, ou mostrou pessoas sem origem local.';
+ end if;
  opened:=public.rm_mobile_open_receiving_v1(protocol,base_args||jsonb_build_object('p_receiving_draft_id',protocol,
   'p_receiving_draft_revision',0,'p_receiving_draft_snapshot',jsonb_build_object('id',protocol,'version',2,'submitted',false)),delegation);
  completed:=public.rm_mobile_mutate_v1(gen_random_uuid(),'rm_submit_recebimento_v1',base_args,delegation);
@@ -2221,7 +2237,8 @@ begin
   or not exists(select 1 from public.rm_respostas where id=own_answer)
   or exists(select 1 from public.rm_respostas where id=other_answer)
   or (select count(*) from public.rm_projetos where id in(opened_project,completed_project))<>2
-  or not exists(select 1 from public.rm_equipamentos where id=equipment and projeto_id=opened_project) then
+  or not exists(select 1 from public.rm_equipamentos where id=equipment and projeto_id=opened_project)
+  or not exists(select 1 from public.rm_users where id=operator_id) then
   raise exception 'O legado perdeu o recebimento autorizado ou mostrou dados externos ou sem protocolo.';
  end if;
  reset role;
@@ -2231,6 +2248,11 @@ begin
 
  for office in 2..4 loop
   perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  set local role authenticated;
+  if (select array_agg(id) from public.rm_users) is distinct from array[em_fixture.id(730+office)] then
+   raise exception 'A leitura de autenticação perdeu o perfil próprio ou mostrou outra pessoa.';
+  end if;
+  reset role;
   for resource in select c.relname from pg_policy p join pg_class c on c.oid=p.polrelid where p.polname='rm_legacy_bma_operations_read' loop
    set local role authenticated;
    execute format('select count(*) from public.%I',resource) into visible_count;
@@ -2243,9 +2265,25 @@ begin
    or result->'rows' @> jsonb_build_array(jsonb_build_object('id',own_project)) then
    raise exception 'A consulta autorizada do Android perdeu o projeto local ou incluiu a BMA.';
   end if;
+  result:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   pg_temp.workshop_restore_native_context(office,office),'rm_users',null,null,false);
+  if not result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(740+office)))
+   or result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(741))) then
+   raise exception 'A consulta moderna perdeu o operador local ou incluiu o operador da BMA.';
+  end if;
  end loop;
+
+ perform set_config('request.jwt.claim.sub',device::text,true);
+ perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
+ set local role authenticated;
+ if (select array_agg(id) from public.rm_users) is distinct from array[em_fixture.id(731)] then
+  raise exception 'A transferência do dispositivo não encerrou o acesso legado a pessoas.';
+ end if;
+ reset role;
 end
 $legacy_operations$;
+select 'PASS: only the verified legacy device can read proven BMA people, self profiles remain available, and other workshops use scoped catalogs' result;
 rollback to savepoint legacy_operations_fixture;
 release savepoint legacy_operations_fixture;
 do $portal_read_cutover$
