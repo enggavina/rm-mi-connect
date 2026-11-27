@@ -2205,7 +2205,89 @@ begin
  end loop;
 end
 $draft_photo_archive$;
+do $photo_recovery$
+declare
+ origin_id uuid; device uuid; origin_path text; backup_path text;
+ sha text:=repeat('a',64); version text:='original-1';
+ before_count integer; before_sources bigint; result jsonb;
+begin
+ if not has_function_privilege('service_role','public.rm_confirm_workshop_legacy_photo_recovery_v1(uuid,text,text)','execute')
+  or exists(select 1 from unnest(array['anon','authenticated']) a(role) where
+   has_function_privilege(role,'public.rm_workshop_legacy_photo_recovery_target_v1(uuid)','execute')
+   or has_function_privilege(role,'public.rm_confirm_workshop_legacy_photo_recovery_v1(uuid,text,text)','execute'))
+  or has_table_privilege('service_role','rm_private.workshop_legacy_photo_recovery','select') then
+  raise exception 'A recuperação técnica concedeu acesso direto ou a um cliente comum.';
+ end if;
+ before_sources:=(select count(*) from rm_private.workshop_archive_sources);
+ before_count:=(rm_private.workshop_legacy_media_readiness_v1('rm-fotos')->>'objects_without_verified_preservation')::integer;
+ for office in 1..4 loop
+  origin_id:=em_fixture.id(1500+office);
+  device:=em_fixture.id(710+office);
+  origin_path:=device::text||'/legacy-unassigned.jpg';
+  backup_path:='recuperacao-fotos-legadas/'||origin_id::text||'/'||sha||'.jpg';
+  insert into storage.objects(id,bucket_id,name,owner_id,version,metadata) values(origin_id,'rm-fotos',origin_path,
+   em_fixture.id(710+(office%4)+1)::text,version,'{"size":12,"mimetype":"image/jpeg"}');
+  if public.rm_workshop_legacy_photo_recovery_target_v1(origin_id) is not null then
+   raise exception 'O arquivo de proprietário diferente entrou em recuperação.';
+  end if;
+  update storage.objects set owner_id=device::text where id=origin_id;
+  if public.rm_workshop_legacy_photo_recovery_target_v1(origin_id)->>'path' is distinct from origin_path then
+   raise exception 'O arquivo sem referência e com proprietário comprovado ficou de fora.';
+  end if;
+
+  insert into storage.objects(bucket_id,name,version,metadata,user_metadata) values('rm-documentos',backup_path,'copy-1',
+   '{"size":11,"mimetype":"image/jpeg"}',jsonb_build_object('sha256',sha));
+  begin
+   perform public.rm_confirm_workshop_legacy_photo_recovery_v1(origin_id,version,sha);
+   raise exception 'A cópia de tamanho divergente foi confirmada.';
+  exception when sqlstate 'PT409' then null;
+  end;
+  update storage.objects set metadata=jsonb_set(metadata,'{size}','12') where name=backup_path;
+  if public.rm_confirm_workshop_legacy_photo_recovery_v1(origin_id,version,sha) is distinct from backup_path
+   or public.rm_confirm_workshop_legacy_photo_recovery_v1(origin_id,version,sha) is distinct from backup_path then
+   raise exception 'A retentativa não recuperou o comprovante da mesma versão.';
+  end if;
+  if not exists(select 1 from rm_private.workshop_legacy_photo_recovery r where r.source_id=origin_id
+   and r.owner_auth_user_id=device and r.source_path=origin_path) then
+   raise exception 'A custódia não preservou o proprietário original.';
+  end if;
+  result:=rm_private.workshop_legacy_media_readiness_v1('rm-fotos');
+  if (result->>'preserved_without_workshop')::integer<>office
+   or (result->>'objects_without_verified_preservation')::integer<>before_count
+   or result->>'objects_without_confirmed_reference'<> (before_count+office)::text then
+   raise exception 'A cópia de recuperação entrou na contagem de arquivos com vínculo operacional.';
+  end if;
+
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  set local role authenticated;
+  if exists(select 1 from storage.objects where name=backup_path) then
+   raise exception 'O signatário técnico foi contornado pelo cliente autenticado.';
+  end if;
+  reset role;
+  update storage.objects set version='copy-2' where name=backup_path;
+  if exists(select 1 from rm_private.workshop_legacy_photos_preserved o where o.id=origin_id) then
+   raise exception 'A mudança de versão da cópia não reabriu a pendência.';
+  end if;
+  update storage.objects set version='copy-1' where name=backup_path;
+  update storage.objects set version='original-2' where id=origin_id;
+  if (rm_private.workshop_legacy_media_readiness_v1('rm-fotos')->>'objects_without_verified_preservation')::integer<>before_count+1 then
+   raise exception 'A mudança de versão do original não reabriu a pendência.';
+  end if;
+  update storage.objects set version='original-1' where id=origin_id;
+  update rm_private.receiving_drafts set payload=payload||jsonb_build_object('test_relink',origin_path) where id=em_fixture.id(1350+office);
+  if public.rm_workshop_legacy_photo_recovery_target_v1(origin_id) is not null
+   or (rm_private.workshop_legacy_media_readiness_v1('rm-fotos')->>'objects_without_verified_preservation')::integer<>before_count+1 then
+   raise exception 'A custódia encobriu uma referência operacional nova.';
+  end if;
+  update rm_private.receiving_drafts set payload=payload-'test_relink' where id=em_fixture.id(1350+office);
+ end loop;
+ if (select count(*) from rm_private.workshop_archive_sources)<>before_sources then
+  raise exception 'Um arquivo de recuperação entrou no acervo de oficina.';
+ end if;
+end
+$photo_recovery$;
 rollback;
+select 'PASS: orphan legacy photo custody preserves owner and versions, remains private and excludes operational references in four workshops' result;
 select 'PASS: legacy draft photos reach the verified archive only with original device, owner and office in four workshops' result;
 select 'PASS: scoped equipment types and direct portal read cutover in four workshops; native reads preserved' result;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;

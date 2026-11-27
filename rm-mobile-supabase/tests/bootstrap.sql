@@ -24,6 +24,9 @@ create table storage.objects(id uuid primary key default gen_random_uuid(),bucke
 -- Supabase Storage metadata used to verify the separately uploaded dossier file.
 alter table storage.objects add column metadata jsonb;
 alter table storage.objects add column user_metadata jsonb;
+alter table storage.objects add column version text;
+alter table storage.objects add column archived_at timestamptz;
+alter table storage.objects add column is_delete_marker boolean not null default false;
 alter table storage.objects enable row level security;
 grant usage on schema storage to authenticated;
 grant select,insert,update on storage.objects to authenticated;
