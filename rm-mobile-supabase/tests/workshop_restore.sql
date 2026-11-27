@@ -82,12 +82,17 @@ declare
  bytes bytea;
  sha text;
  saved text;
+ recovery jsonb;
  workshop uuid;
  project uuid;
+ foreign_workshop uuid;
+ foreign_project uuid;
 begin
  for office in 1..4 loop
   workshop:=em_fixture.id(office);
   project:=em_fixture.id(100+office);
+  foreign_workshop:=em_fixture.id((office%4)+1);
+  foreign_project:=em_fixture.id(100+(office%4)+1);
   reference:='https://fixtures.cdn.bubble.io/oficina-'||office||'.png';
   path:='acervo-oficina/'||em_fixture.id(office)||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.png';
   bytes:=decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+pZJcAAAAASUVORK5CYII=','base64')||set_byte('\x00'::bytea,0,12+office);
@@ -95,6 +100,14 @@ begin
   if jsonb_array_length(public.rm_workshop_archive_queue_v1(em_fixture.id(office),'bubble',em_fixture.id(100+office),null,20))<>1 then
    raise exception 'A mesma referência de foto, formulário e nota deve ser copiada uma vez.';
   end if;
+  set local role service_role;
+  recovery:=public.rm_workshop_archive_recovery_target_v1(workshop,project,encode(sha256(convert_to(reference,'UTF8')),'hex'));
+  if recovery->>'reference' is distinct from reference or recovery->'existing' is distinct from 'null'::jsonb
+   or public.rm_workshop_archive_recovery_target_v1(foreign_workshop,project,recovery->>'reference_sha256') is not null
+   or public.rm_workshop_archive_recovery_target_v1(workshop,foreign_project,recovery->>'reference_sha256') is not null then
+   raise exception 'A recuperação ficou sem a origem exata do projeto e da oficina.';
+  end if;
+  reset role;
   insert into storage.objects(id,bucket_id,name,metadata,user_metadata) values(em_fixture.id(1470+office),'rm-documentos',path,
    jsonb_build_object('size',octet_length(bytes),'mimetype','image/png'),jsonb_build_object('sha256',sha));
   begin
@@ -113,10 +126,15 @@ begin
    or public.rm_workshop_archive_queue_v1(workshop,'bubble',project,null,20) is distinct from '[]'::jsonb then
    raise exception 'A confirmação repetida não conservou a cópia original.';
   end if;
+  recovery:=public.rm_workshop_archive_recovery_target_v1(workshop,project,recovery->>'reference_sha256');
+  if recovery->'existing' is distinct from jsonb_build_object('sha256',sha,'size',octet_length(bytes),'mime','image/png','path',path) then
+   raise exception 'A consulta de recuperação perdeu o recibo já confirmado.';
+  end if;
   reset role;
  end loop;
 end
 $archive_seed$;
+select 'PASS: original PNG recovery is limited to its workshop and project and recognizes the immutable archive receipt' result;
 insert into auth.users(id) select em_fixture.id(710+n) from generate_series(1,4)n;
 insert into auth.sessions(id,user_id) select em_fixture.id(720+n),em_fixture.id(710+n) from generate_series(1,4)n;
 insert into public.rm_users(id,auth_user_id,nome,perfil)
