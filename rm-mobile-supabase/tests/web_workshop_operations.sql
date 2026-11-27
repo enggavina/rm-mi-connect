@@ -403,4 +403,31 @@ begin
   and (v->'recentRecords'->0->>'id')::uuid=pg_temp.project_read_id(702),'form-only overview returns only own pending record');
 end$$;
 select 'PASS: workshop overview counts, pending forms, deadlines and restricted capabilities' result;
+
+do $$
+declare
+ bma uuid:=pg_temp.project_read_id(1);
+ brj uuid:=pg_temp.project_read_id(2);
+ allocation uuid:=pg_temp.project_read_id(504);
+ rid uuid:=gen_random_uuid();
+ p jsonb;
+begin
+ select jsonb_build_object('projeto_id',projeto_id,'celula_id',celula_id,'expected_updated_at',updated_at,
+  'changes',jsonb_build_object('observacao','LOCAL workshop allocation')) into p
+ from public.rm_celulas_projeto where id=allocation;
+ perform public.rm_sso_action_permit_v1(repeat('7',64),rid,'plan_cell',p,'em.planning.manage');
+ set local role authenticated;
+ perform pg_temp.project_read_deny(format('select public.rm_web_mutate_v1(%L,''plan_cell'',%L)',rid,p),'42501');
+ reset role;
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''plan_cell'',%L,%L)',rid,p,bma),'42501');
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''plan_cell'',%L,%L)',gen_random_uuid(),
+  jsonb_set(p,'{celula_id}',to_jsonb(pg_temp.project_read_id(301))),brj),'42501');
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''plan_cell'',%L,%L)',gen_random_uuid(),
+  jsonb_set(p,'{changes}',jsonb_build_object('forms_ids',jsonb_build_array(pg_temp.project_read_id(601)))),brj),'42501');
+ perform pg_temp.workshop_gantt_save(rid,'plan_cell',p,brj);
+ perform pg_temp.project_read_check((pg_temp.workshop_gantt_save(rid,'plan_cell',p,brj)->>'idempotent_replay')::boolean
+  and (select observacao='LOCAL workshop allocation' from public.rm_celulas_projeto where id=allocation),
+  'own cell planning keeps the identity and exact replay');
+end$$;
+select 'PASS: scoped cell allocations, foreign project, cell and form refusal, and exact retry' result;
 rollback;

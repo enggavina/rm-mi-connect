@@ -23,8 +23,8 @@ export function rootWriteCapability(operation: string, payload: Record<string, u
   return null;
 }
 
-export function isScopedGanttWrite(operation: string): boolean {
-  return operation === 'save_gantt_plan' || operation === 'save_gantt_settings';
+export function isScopedPlanningWrite(operation: string): boolean {
+  return operation === 'save_gantt_plan' || operation === 'save_gantt_settings' || operation === 'plan_cell';
 }
 
 /** Request objects, not serializable session fields, retain the verified bearer.
@@ -58,7 +58,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
         : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage'
-        : enableGanttWrites && isScopedGanttWrite(operation) ? 'em.planning.manage'
+        : enableGanttWrites && isScopedPlanningWrite(operation) ? 'em.planning.manage'
         : enableFormReviewWrites && operation === 'review_form' ? 'em.forms.review' : rootWriteCapability(operation, payload, enableRootEdits);
       if (!expected) return false;
       if (capability !== expected || !context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');

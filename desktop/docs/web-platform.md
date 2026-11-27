@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — células do operador Android confirmadas pela oficina
+
+O Railway **`ba497463-0e3c-4a50-816d-a0e735cc16ab`** publicou `/api/mobile/catalogo` com o commit `438b2b20a9c0e6d1e2da9ee33209d1cc50a0a8bb`. A consulta confirma o dispositivo e o operador na Central e devolve as células permitidas. O piloto cruza esse retorno com as permissões do operador, conserva a identificação validada para uso offline e suspende a sincronização quando identifica mudança de oficina no mesmo dispositivo.
+
+O APK **1.2.13/código 16** foi atualizado no Moto G84 com a assinatura anterior. SHA-256 `743e79676a685a5320512372e789c51e52381ab33e3d7222ef105c9457675c39`. As 29 células autorizadas abriram online e após nova identificação offline. A rede foi restaurada e nenhum recebimento fictício foi criado. Passaram 148 testes mobile, 18 direcionados aos contratos operacionais e nove verificações de produção com o par real da BMA. A vinculação de cada fila, arquivo e catálogo sincronizado à origem continua no aceite. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45924310704).
+
 ## P0.3 — indicadores e pendências de acompanhamento por oficina
 
 A migração **076** e o Railway **`5a239567-cb19-40df-a43c-154b279f9cde`** foram publicados com o commit `4542f4076f8888f447a93998d2f8450e58731c00`. A consulta de Acompanhamento filtra a origem dos projetos, registros, alocações e documentos antes de calcular totais e compor as listas. Os módulos fora da permissão retornam sem indicadores.
