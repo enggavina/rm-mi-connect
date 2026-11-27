@@ -77,7 +77,11 @@ begin
   raise exception 'Confirmação de oficina ausente, expirada ou divergente.' using errcode='42501';
  end if;
 
- target_id:=(p_payload->>'registro_formulario_id')::uuid;
+ begin
+  target_id:=(p_payload->>'registro_formulario_id')::uuid;
+ exception when invalid_text_representation then
+  raise exception 'Formulário inválido.' using errcode='22023';
+ end;
  select projeto_id into project_id from public.rm_registros_formulario where id=target_id;
  if not found or not rm_private.workshop_project_owned_v1(project_id,permit.workshop_id) then
   raise exception 'Formulário indisponível nesta oficina.' using errcode='42501';
@@ -96,8 +100,6 @@ begin
  end if;
  delete from rm_private.form_review_workshop_permits where submission_id=p_client_submission_id;
  return result;
-exception when invalid_text_representation then
- raise exception 'Formulário inválido.' using errcode='22023';
 end
 $$;
 revoke all on function rm_private.web_mutate_form_review_workshop_v1(uuid,text,jsonb) from public,anon,authenticated,service_role;
