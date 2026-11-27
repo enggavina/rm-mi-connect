@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 e P0.4 — Retomar o rascunho vazio no Android
+
+A migração **097**, commit **`1f59b9a`**, foi aplicada no Supabase `oficina-em-mi-off`. A API atual de Recebimento do EM recupera um rascunho legado vazio quando o dispositivo e o operador originais confirmam a oficina em Acessos. A operação exige a primeira revisão, a data inicial automática e a ausência de dados, anexos, abertura e envio anteriores. O vínculo e a auditoria preservam o protocolo, o conteúdo, a revisão e a autoria. Um rascunho com conteúdo exige evidência anterior de origem. [EM](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45986918729).
+
+Em produção, a consulta do mesmo protocolo da BMA passou de 403 a 200. A repetição conservou uma única auditoria. O conteúdo dos rascunhos, as aberturas e as confirmações de recebimento conferiram com a conferência anterior. O APK 1.2.22 exibiu o rascunho salvo no emulador `EM_Oficinas_API35` com e sem conexão. A rede foi restaurada ao final. Passaram 71 verificações de API e oito passos de regressão no navegador. O ensaio PostgreSQL completou o recebimento, repetiu o envio e recusou as rotas legadas para o protocolo associado à oficina. O ensaio de restauração preservou quatro origens e seus dados de auditoria.
+
+O rascunho substantivo da matrícula DIGITAL foi preservado. A definição do papel dessa matrícula, o primeiro recebimento completo pelo Android com dados reais e o piloto com a segunda oficina integram a homologação. [Roteiro do marco](../../plano_paridade_rmmi_web.md).
+
 ## P0.3 — Exportação, QR e documentos por oficina
 
 A migração **096** e o consumidor **`83f4a29`** foram publicados no Railway **`07d4b324-432e-4bf9-b8bd-cc385462c724`**. O Excel de Planejamento, o QR do projeto e os links de documentos, anexos e nota fiscal verificam a oficina atual em Acessos a cada solicitação. A ativação encerrou as consultas antigas de exportação e do gêmeo digital para contas autenticadas. O gêmeo continua usando a consulta da própria oficina. Os arquivos históricos acessíveis pelo portal conservam o destino autorizado. [Planejamento](https://em-web-production.up.railway.app/planejamento) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45983570156).
