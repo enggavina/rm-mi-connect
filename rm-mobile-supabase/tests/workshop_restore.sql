@@ -2328,7 +2328,52 @@ begin
  end if;
 end
 $android_adoption$;
+do $retired_direct_tables$
+declare
+ office integer;
+ device uuid;
+ draft_count bigint;
+begin
+ if exists(select 1 from unnest(array['anon','authenticated']) r(role)
+  cross join unnest(array['public.rm_respostas_temp','public.rm_devices','public.rm_web_stage_decisions',
+    'public.rm_project_document_locations','public.rm_equipes','public.rm_sync_outbox']) t(name)
+  where has_table_privilege(role,name,'select,insert,update,delete,truncate,references,trigger')
+   or has_any_column_privilege(role,name,'select,insert,update,references')) then
+  raise exception 'Uma tabela retirada continua acessível diretamente por um cliente.';
+ end if;
+ if not has_table_privilege('service_role','public.rm_respostas_temp','select')
+  or not has_table_privilege('service_role','public.rm_sync_outbox','select')
+  or not has_table_privilege('authenticated','public.rm_celulas','select')
+  or not has_table_privilege('authenticated','public.rm_fotos','select') then
+  raise exception 'A retirada alcançou uma interface ainda suportada.';
+ end if;
+ select count(*) into draft_count from public.rm_respostas_temp;
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office);
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+  set local role authenticated;
+  perform id from public.rm_celulas where id=em_fixture.id(200+office);
+  if not found then raise exception 'A consulta de células ainda suportada deixou de retornar dados.'; end if;
+  begin
+   perform id from public.rm_respostas_temp;
+   raise exception 'Um cliente conseguiu listar os rascunhos antigos.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   insert into public.rm_respostas_temp(id) values(em_fixture.id(1520+office));
+   raise exception 'Um cliente conseguiu escrever pela tabela de rascunhos antigos.';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+ end loop;
+ if (select count(*) from public.rm_respostas_temp)<>draft_count then
+  raise exception 'A retirada das permissões alterou os rascunhos existentes.';
+ end if;
+end
+$retired_direct_tables$;
 rollback;
+select 'PASS: retired direct access to legacy tables preserves drafts, supported Android queries and service grants in four workshops' result;
 select 'PASS: Android version observations follow the authorized session and office, deny suspended offices and update without duplicates in four workshops' result;
 select 'PASS: orphan legacy photo custody preserves owner and versions, remains private and excludes operational references in four workshops' result;
 select 'PASS: legacy draft photos reach the verified archive only with original device, owner and office in four workshops' result;
