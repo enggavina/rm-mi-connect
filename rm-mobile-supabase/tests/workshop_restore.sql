@@ -1680,6 +1680,59 @@ begin
  end loop;
 end
 $dossier$;
+do $route_cell$
+declare
+ project uuid; allocation uuid; model uuid; submission uuid;
+ args jsonb; snapshot jsonb; result jsonb; payload jsonb;
+begin
+ perform rm_private.activate_project_route_cell_workshop_v1();
+ if has_function_privilege('authenticated','public.rm_web_project_route_cell_snapshot_v1(uuid,uuid,boolean)','execute') then
+  raise exception 'A configuração antiga da célula continuou exposta.';
+ end if;
+ for office in 1..4 loop
+  project:=em_fixture.id(1850+office);allocation:=em_fixture.id(1860+office);model:=em_fixture.id(400+office);
+  insert into public.rm_projetos(id,nome,status_pcp) values(project,'Configuração local '||office,'executando');
+  insert into rm_private.workshop_project_ownership(id,workshop_id) values(project,em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade)
+   values(allocation,project,em_fixture.id(200+office),'pendente',true);
+  args:=jsonb_build_object('project',project,'allocation',allocation,'include',true);
+  snapshot:=pg_temp.workshop_restore_read(office,'project_route_cell',args);
+  if snapshot->'allocation'->>'id' is distinct from allocation::text
+   or snapshot->'forms'->0->>'id' is distinct from model::text or jsonb_array_length(snapshot->'forms')<>1
+   or pg_temp.workshop_restore_read(office,'project_route_cell',jsonb_set(args,'{include}','false'))->'forms' is distinct from '[]'::jsonb then
+   raise exception 'A configuração de célula perdeu o seletor próprio.';
+  end if;
+  for other in 1..4 loop
+   if office=other then continue;end if;
+   if pg_temp.workshop_restore_read(other,'project_route_cell',args) is not null then
+    raise exception 'A configuração de uma célula apareceu em outra oficina.';
+   end if;
+  end loop;
+  -- A mudança em outro catálogo não deve invalidar a configuração desta célula.
+  update public.rm_forms set titulo=titulo||' revisado' where id=em_fixture.id(400+(office%4)+1);
+  if pg_temp.workshop_restore_read(office,'project_route_cell',args) is distinct from snapshot then
+   raise exception 'O catálogo de outra oficina alterou a versão desta célula.';
+  end if;
+  payload:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'action','forms','confirm_change',true,
+   'expected_project_updated_at',snapshot->'project'->'updated_at','expected_allocation_updated_at',snapshot->'allocation'->'updated_at',
+   'expected_context_version',snapshot->>'context_version','forms_ids',jsonb_build_array(model));
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_project_route_cell',
+    jsonb_set(payload,'{forms_ids}',jsonb_build_array(em_fixture.id(400+(office%4)+1))));
+   raise exception 'A configuração aceitou um formulário de outra oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  result:=pg_temp.workshop_restore_planning_write(office,submission,'manage_project_route_cell',payload);
+  snapshot:=pg_temp.workshop_restore_read(office,'project_route_cell',jsonb_set(args,'{include}','false'));
+  if snapshot->'forms'->0->>'id' is distinct from model::text
+   or snapshot->>'context_version' is distinct from result->'record'->>'context_version'
+   or (pg_temp.workshop_restore_planning_write(office,submission,'manage_project_route_cell',payload))->>'idempotent_replay' is distinct from 'true' then
+   raise exception 'O seletor, a gravação e sua retentativa divergiram.';
+  end if;
+ end loop;
+end
+$route_cell$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1696,3 +1749,4 @@ select 'PASS: review cutover preserves legacy actions and rejects foreign decisi
 select 'PASS: receiving and project reads are isolated with the overview and twin in four workshops after retiring legacy receiving reads' result;
 select 'PASS: project and cell edits, equipment and deletion scopes hold in four workshops without closing mobile intake' result;
 select 'PASS: project dossier reads and writes, versioned private files and exact replay isolated in four workshops' result;
+select 'PASS: route cell form choices and versioned writes isolated in four workshops' result;

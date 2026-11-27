@@ -6,6 +6,7 @@ import {createProjectRouteCellActions} from '../src/server/web/project-route-cel
 import {routeFormsRequest,removeRouteCellRequest} from '../src/components/web/project-route-cell-model';
 import {canMoveProjectRouteItem,projectRouteRequest} from '../src/components/web/project-route-model';
 import type {CorporateCapability} from '../src/server/web/sso-policy';
+import {workshopReadCapabilities} from '../src/server/web/workshop-read-policy';
 
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const version='2026-11-06T12:34:56.123456+00:00';
@@ -47,6 +48,22 @@ test('route reader validates allocation scope and protects choices before queryi
   }
   value={...snapshot(),private_snapshot:'never',forms:snapshot().forms.map(f=>({...f,internal_payload:'never'}))};
   assert.equal(JSON.stringify(await reader.getProjectRouteCell(id(1),id(2),true)).includes('never'),false);
+});
+test('route cell uses the verified workshop in both modes and only planners can request form choices',async()=>{
+  const client={rpc:async()=>assert.fail('a scoped request used the old RPC')} as any;
+  const calls:unknown[]=[];
+  let value:unknown=snapshot();
+  const read=async(resource:string,args:Record<string,unknown>)=>{calls.push({resource,args});return value;};
+  const reader=createProjectRouteCellData(client,caps,read);
+  assert.deepEqual((await reader.getProjectRouteCell(id(1),id(2)))?.forms.map(f=>f.id),[id(4),id(5)]);
+  assert.equal((await reader.getProjectRouteCell(id(1),id(2),true))?.forms.length,3);
+  assert.deepEqual(calls,[false,true].map(include=>({resource:'project_route_cell',args:{project:id(1),allocation:id(2),include}})));
+  value=null;
+  assert.equal(await reader.getProjectRouteCell(id(1),id(2)),null);
+  const limited=createProjectRouteCellData(client,caps.filter(c=>c!=='em.planning.manage'),read);
+  await assert.rejects(limited.getProjectRouteCell(id(1),id(2),true),/Acesso/);
+  assert.equal(calls.length,3);
+  assert.deepEqual(workshopReadCapabilities('project_route_cell',{include:true}),['em.portal.read','em.projects.read','em.planning.read','em.forms.read','em.planning.manage']);
 });
 function actionFixture(options:{role?:string;capabilities?:CorporateCapability[];wrong?:boolean}={}){
   const calls:any[]=[];const value=snapshot();

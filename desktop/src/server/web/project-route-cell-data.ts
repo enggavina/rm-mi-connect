@@ -2,6 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import {z} from 'zod';
 import {uuid} from './policy';
 import type {CorporateCapability} from './sso-policy';
+import type {WorkshopRead} from './workshop-read-policy';
 
 const text=z.string().nullable(),timestamp=z.string().datetime({offset:true});
 export const projectRouteCellSnapshotSchema=z.object({
@@ -14,15 +15,21 @@ export const projectRouteCellSnapshotSchema=z.object({
 export type ProjectRouteCellSnapshot=z.infer<typeof projectRouteCellSnapshotSchema>;
 export const routeCellReadCapabilities:CorporateCapability[]=['em.portal.read','em.projects.read','em.planning.read','em.forms.read'];
 const unavailable=()=>new Error('Não foi possível conferir a configuração desta célula. Recarregue o roteiro.');
-export function createProjectRouteCellData(client:SupabaseClient,capabilities?:readonly CorporateCapability[]){
+export function createProjectRouteCellData(client:SupabaseClient,capabilities?:readonly CorporateCapability[],workshopRead?:WorkshopRead){
   async function getProjectRouteCell(projectId:string,allocationId:string,includeChoices=false):Promise<ProjectRouteCellSnapshot|null>{
     if(capabilities!==undefined&&(!routeCellReadCapabilities.every(c=>capabilities.includes(c))||includeChoices&&!capabilities.includes('em.planning.manage')))
       throw new Error('Acesso não autorizado à configuração da célula.');
     if(!uuid.safeParse(projectId).success||!uuid.safeParse(allocationId).success)return null;
     projectId=projectId.toLowerCase();allocationId=allocationId.toLowerCase();
-    let result;try{result=await client.rpc('rm_web_project_route_cell_snapshot_v1',{p_project_id:projectId,p_allocation_id:allocationId,p_include_choices:includeChoices});}catch{throw unavailable();}
-    if(result.error)throw unavailable();if(result.data===null)return null;
-    const parsed=projectRouteCellSnapshotSchema.safeParse(result.data);if(!parsed.success)throw unavailable();const value=parsed.data;
+    let snapshot:unknown;
+    if(workshopRead) snapshot=await workshopRead('project_route_cell',{project:projectId,allocation:allocationId,include:includeChoices});
+    else {
+      let result;try{result=await client.rpc('rm_web_project_route_cell_snapshot_v1',{p_project_id:projectId,p_allocation_id:allocationId,p_include_choices:includeChoices});}catch{throw unavailable();}
+      if(result.error)throw unavailable();
+      snapshot=result.data;
+    }
+    if(snapshot===null)return null;
+    const parsed=projectRouteCellSnapshotSchema.safeParse(snapshot);if(!parsed.success)throw unavailable();const value=parsed.data;
     const closed=!!value.project.data_real_de_entrega||['cancelado','finalizando_para_faturar'].includes(value.project.status_pcp??'');
     if(value.project.id!==projectId||value.allocation.id!==allocationId||value.allocation.projeto_id!==projectId||value.project.closed!==closed
       ||new Set(value.forms.map(f=>f.id)).size!==value.forms.length||new Set(value.allocation.forms_ids).size!==value.allocation.forms_ids.length
@@ -36,6 +43,7 @@ export function createProjectRouteCellData(client:SupabaseClient,capabilities?:r
 }
 export async function getProjectRouteCell(projectId:string,allocationId:string){
   const {requireWebUser}=await import('./auth');const access=await requireWebUser(routeCellReadCapabilities);
+  const {readWorkshopOperations}=await import('./workshop-operation-reader');
   const choices=['administrador','padr_o'].includes(access.profile.perfil)&&(!access.sso||access.sso.capabilities.includes('em.planning.manage'));
-  return createProjectRouteCellData(access.client,access.sso?.capabilities).getProjectRouteCell(projectId,allocationId,choices);
+  return createProjectRouteCellData(access.client,access.sso?.capabilities,await readWorkshopOperations(access)).getProjectRouteCell(projectId,allocationId,choices);
 }
