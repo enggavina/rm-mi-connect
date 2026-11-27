@@ -1948,6 +1948,7 @@ $isolated_details$;
 do $legacy_storage$
 declare
  device uuid;
+ other_device uuid;
  reference text;
  signature_path text;
  copy_path text;
@@ -1960,6 +1961,7 @@ begin
  end if;
  for office in 1..4 loop
   device:=em_fixture.id(710+office);
+  other_device:=em_fixture.id(710+((office%4)+1));
   signature_path:=device::text||'/legacy.png';
   reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-assinaturas/'||signature_path;
   insert into storage.objects(bucket_id,name) values('rm-documentos',device::text||'/legacy.pdf'),('rm-assinaturas',signature_path);
@@ -1969,7 +1971,7 @@ begin
   if not exists(select 1 from storage.objects where bucket_id='rm-documentos' and name=device::text||'/legacy.pdf')
    or not exists(select 1 from storage.objects where bucket_id='rm-assinaturas' and name=signature_path)
    or exists(select 1 from storage.objects where bucket_id in('rm-documentos','rm-assinaturas')
-    and name like em_fixture.id(710+((office%4)+1))::text||'/legacy.%') then
+    and name like other_device::text||'/legacy.%') then
    raise exception 'O cliente legado perdeu seus arquivos ou ganhou acesso ao arquivo de outro dispositivo.';
   end if;
   update storage.objects set user_metadata='{"legacy_retry":true}' where bucket_id='rm-assinaturas' and name=signature_path;
