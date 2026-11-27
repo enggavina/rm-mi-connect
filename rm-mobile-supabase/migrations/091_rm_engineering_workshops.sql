@@ -277,6 +277,7 @@ begin
  if not found then raise exception 'A confirmação de oficina expirou. Reenvie o mesmo protocolo.' using errcode='42501';end if;
  return result;
 exception when invalid_text_representation then
+ if office is null or p_operation not in('save_engineering','save_photo_title','delete_photo_title') then raise;end if;
  raise exception 'Identificador de engenharia inválido.' using errcode='22023';
 end
 $$;
