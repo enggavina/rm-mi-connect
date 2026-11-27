@@ -1160,6 +1160,48 @@ begin
  end loop;
 end
 $recovered_drafts$;
+do $legacy_project_origins$
+declare
+ operator uuid; protocol uuid; client uuid; token text; context jsonb;
+ args jsonb; raw jsonb; replay jsonb; project uuid;
+begin
+ for office in 1..4 loop
+  operator:=em_fixture.id(1500+office);
+  protocol:=em_fixture.id(1510+office);
+  client:=em_fixture.id(1300+office);
+  token:=repeat('4'||office::text,32);
+  insert into public.rm_users(id,nome,perfil) values(operator,'Operador legado local '||office,'mobile');
+  insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
+   values(extensions.digest(token,'sha256'),em_fixture.id(710+office),em_fixture.id(730+office),operator,clock_timestamp()+interval '1 hour');
+  context:=jsonb_set(pg_temp.workshop_restore_native_context(office,office),'{principals,1,subject}',to_jsonb(operator));
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+  args:=jsonb_build_object('p_operador_id',operator,'p_cliente_id',client,
+   'p_chegada_equipamento','2026-11-24T12:00:00Z','p_descricao_equipamento','Chegada legada local '||office,
+   'p_equipamento','{}'::jsonb,'p_fotos_recebimento','[]'::jsonb);
+  set local role authenticated;
+  raw:=public.rm_mobile_mutate_v1(protocol,'rm_submit_recebimento_v1',args,token);
+  reset role;
+  project:=(raw->>'projeto_id')::uuid;
+  if exists(select 1 from rm_private.workshop_project_ownership where id=project) then
+   raise exception 'O recebimento legado de teste nasceu com uma oficina indevida.';
+  end if;
+  perform public.rm_authorize_mobile_receiving_workshop_v1(em_fixture.id(710+office),em_fixture.id(720+office),token,context,protocol,'complete',args);
+  set local role authenticated;
+  replay:=public.rm_mobile_receiving_workshop_v1(protocol,'complete',args,token);
+  reset role;
+  if (replay->>'projeto_id')::uuid is distinct from project or (replay->>'idempotent_replay')::boolean is distinct from true
+   or not exists(select 1 from rm_private.receiving_project_recoveries where submission_id=protocol
+    and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office))
+   or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),
+    em_fixture.id(office))->>'total')::int is distinct from 1
+   or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),
+    em_fixture.id((office%4)+1))->>'total')::int is distinct from 0 then
+   raise exception 'O reenvio legado divergiu da autoria, do projeto ou da oficina.';
+  end if;
+ end loop;
+end
+$legacy_project_origins$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1169,3 +1211,4 @@ select 'PASS: four private draft attachments recover under their original identi
 select 'PASS: Gantt cutover across four offices from intake through calendars, dependencies and baselines; deferred roots and legacy access checked' result;
 select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invoice in four offices' result;
 select 'PASS: restored pristine receiving protocols retain their original revisions, payloads and office in four workshops' result;
+select 'PASS: exact legacy receiving receipts become visible only in the verified workshop inbox in four offices' result;

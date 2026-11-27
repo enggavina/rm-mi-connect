@@ -493,4 +493,113 @@ begin
 end
 $pristine_recovery$;
 select 'PASS: pristine legacy draft recovery preserves exact provenance, denies raw routes and completes idempotently' result;
+
+do $legacy_recovery$
+declare
+ opening_id uuid:=pg_temp.rx_id(160);
+ complete_id uuid:=pg_temp.rx_id(161);
+ final_id uuid:=pg_temp.rx_id(162);
+ replay_open_id uuid:=pg_temp.rx_id(163);
+ other_operator uuid:=pg_temp.rx_id(165);
+ args jsonb;
+ finalized_arguments jsonb;
+ result jsonb;
+ original_project public.rm_projetos;
+ original_receipt rm_private.mobile_mutation_receipts;
+ project uuid;
+ crossed_command jsonb;
+begin
+ args:=pg_temp.rx_payload(opening_id,'open');
+ set local role authenticated;
+ result:=public.rm_mobile_open_receiving_v1(opening_id,args,repeat('6',64));
+ reset role;
+ project:=(result->>'projeto_id')::uuid;
+ select * into strict original_project from public.rm_projetos where id=project;
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.workshop_project_ownership where id=project),
+  'an earlier legacy opening has no artificial owner');
+ crossed_command:=args||jsonb_build_object('p_projeto_id',project);
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''open'',%L)',pg_temp.rx_id(164),crossed_command),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''open'',%L)',opening_id,args||'{"p_nota_fiscal":"changed"}'),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''open'',%L,2)',opening_id,args),'42501');
+
+ insert into public.rm_users(id,nome,perfil) values(other_operator,'Other local operator','mobile');
+ insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
+ values(extensions.digest(repeat('b',64),'sha256'),pg_temp.rx_id(11),pg_temp.rx_id(13),other_operator,clock_timestamp()+interval '1 hour');
+ crossed_command:=args||jsonb_build_object('p_operador_id',other_operator);
+ perform public.rm_authorize_mobile_receiving_workshop_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('b',64),
+  jsonb_set(pg_temp.rx_context(1),'{principals,1,subject}',to_jsonb(other_operator)),opening_id,'open',crossed_command);
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_receiving_workshop_v1(%L,''open'',%L,repeat(''b'',64))',opening_id,crossed_command),'42501');
+ reset role;
+ delete from rm_private.mobile_receiving_workshop_permits where submission_id=opening_id and phase='open' and operator_id=other_operator;
+
+ update public.rm_projetos set cliente_id=pg_temp.rx_id(957) where id=project;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''open'',%L)',opening_id,args),'42501');
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.receiving_project_recoveries where submission_id=opening_id),
+  'an inconsistent project or changed request cannot grant origin');
+ update public.rm_projetos set cliente_id=original_project.cliente_id where id=project;
+ select * into strict original_project from public.rm_projetos where id=project;
+ result:=pg_temp.rx_call(opening_id,'open',args);
+ perform pg_temp.rx_check((result->>'projeto_id')::uuid=project and (result->>'idempotent_replay')::boolean
+  and (select to_jsonb(p)=to_jsonb(original_project) from public.rm_projetos p where id=project)
+  and exists(select 1 from rm_private.receiving_project_recoveries a where a.submission_id=opening_id and a.project_id=project
+   and a.operator_id=pg_temp.rx_id(14) and a.auth_user_id=pg_temp.rx_id(11) and a.workshop_id=pg_temp.rx_id(1) and a.basis='opening_original'),
+  'the exact old opening adds an audited origin to its existing project and preserves the project data');
+ perform pg_temp.rx_check(
+  rm_private.workshop_receiving_read_v1('{"page":1,"q":"Local intake 066","reason":"all"}',pg_temp.rx_id(1))->'items'
+    @> jsonb_build_array(jsonb_build_object('id',project))
+  and not (rm_private.workshop_receiving_read_v1('{"page":1,"q":"Local intake 066","reason":"all"}',pg_temp.rx_id(2))->'items'
+    @> jsonb_build_array(jsonb_build_object('id',project))), 'the recovered project appears only in its workshop inbox');
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',opening_id,args),'42501');
+ reset role;
+ finalized_arguments:=pg_temp.rx_payload(opening_id,'complete');
+ result:=pg_temp.rx_call(opening_id,'complete',finalized_arguments);
+ perform pg_temp.rx_check((result->>'projeto_id')::uuid=project and (select count(*)=1 from public.rm_fotos where projeto_id=project)
+  and (select count(*)=1 from public.rm_documentos where projeto_id=project), 'the recovered opening uploads and finalizes once');
+
+ args:=pg_temp.rx_payload(complete_id,'complete');
+ set local role authenticated;
+ result:=public.rm_mobile_mutate_v1(complete_id,'rm_submit_recebimento_v1',args,repeat('6',64));
+ reset role;
+ project:=(result->>'projeto_id')::uuid;
+ select * into strict original_receipt from rm_private.mobile_mutation_receipts where client_submission_id=complete_id;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''complete'',%L)',complete_id,args||'{"p_eventualidades":"changed"}'),'42501');
+ result:=pg_temp.rx_call(complete_id,'complete',args);
+ perform pg_temp.rx_check((result->>'projeto_id')::uuid=project and (result->>'idempotent_replay')::boolean
+  and (select to_jsonb(r)=to_jsonb(original_receipt) from rm_private.mobile_mutation_receipts r where client_submission_id=complete_id)
+  and exists(select 1 from rm_private.receiving_project_recoveries a where a.submission_id=complete_id and a.basis='receipt_exact')
+  and (select count(*)=1 from public.rm_fotos where projeto_id=project), 'a completed legacy submission gains origin without replacing the receipt or adding photos');
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_mutate_v1(%L,''rm_submit_recebimento_v1'',%L,repeat(''6'',64))',complete_id,args),'42501');
+ perform pg_temp.rx_reject(format('select rm_private.recover_legacy_receiving_project_v1(%L,%L,''complete'',%L,%L,%L)',
+  complete_id,project,args,pg_temp.rx_id(14),pg_temp.rx_id(1)),'42501');
+ reset role;
+ result:=pg_temp.rx_call(complete_id,'complete',args);
+ perform pg_temp.rx_check((result->>'idempotent_replay')::boolean and
+  (select count(*)=1 from rm_private.receiving_project_recoveries where submission_id=complete_id),'scoped replay preserves one origin confirmation');
+
+ args:=pg_temp.rx_payload(final_id,'open');
+ set local role authenticated;
+ result:=public.rm_mobile_open_receiving_v1(final_id,args,repeat('6',64));
+ reset role;
+ project:=(result->>'projeto_id')::uuid;
+ result:=pg_temp.rx_call(final_id,'complete',pg_temp.rx_payload(final_id,'complete'));
+ perform pg_temp.rx_check((result->>'projeto_id')::uuid=project
+  and exists(select 1 from rm_private.receiving_project_recoveries where submission_id=final_id and basis='opening_metadata'),
+  'valid final media can resume the original unclassified opening without another open step');
+
+ args:=pg_temp.rx_payload(replay_open_id,'complete');
+ set local role authenticated;
+ result:=public.rm_mobile_mutate_v1(replay_open_id,'rm_submit_recebimento_v1',args,repeat('6',64));
+ reset role;
+ project:=(result->>'projeto_id')::uuid;
+ result:=pg_temp.rx_call(replay_open_id,'open',pg_temp.rx_payload(replay_open_id,'open'));
+ perform pg_temp.rx_check((result->>'projeto_id')::uuid=project and result->'attachments_pending'='false'::jsonb
+  and (result->>'idempotent_replay')::boolean
+  and exists(select 1 from rm_private.receiving_project_recoveries where submission_id=replay_open_id and basis='receipt_metadata'),
+  'the older completion confirms metadata once even when the client still has the original local file paths');
+end
+$legacy_recovery$;
+select 'PASS: exact receiving replay classifies legacy openings and receipts without changing authors, attachments or project IDs' result;
 rollback;
