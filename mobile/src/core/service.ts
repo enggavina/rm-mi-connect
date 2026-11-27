@@ -16,6 +16,7 @@ import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
 import { readWorkshopMedia, workshopMediaCacheKey } from './media-workshop';
+import { mediaUploadMime, queuedMediaIntents, sendWorkshopMediaUpload, type MediaIntent } from './media-upload-workshop';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
@@ -32,6 +33,7 @@ const scopedOperatorCells = process.env.EXPO_PUBLIC_EM_SCOPED_OPERATOR_CELLS ===
 const scopedCatalog = scopedOperatorCells && process.env.EXPO_PUBLIC_EM_SCOPED_CATALOG === 'true';
 const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTATIONS === 'true';
 const scopedMedia = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MEDIA === 'true';
+const scopedUploads = scopedMedia && scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_UPLOADS === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -810,17 +812,48 @@ class MobileService {
     ));
     if (this.operatorToken === token && this.snapshot.operator?.operador_id === operator.operador_id) this.update({ operator: refreshed });
   }
+  private async mediaReadyToSend() {
+    const intents = queuedMediaIntents(await this.listQueue());
+    const actor = this.snapshot.operator?.operador_id;
+    const entry = actor ? await this.readReceivingEntry(this.database.connection(), actor) : null;
+    const cloudDraft = new Set(entry && !entry.data.submitted ? [entry.data.arquivoNotaFiscal, ...entry.data.fotos.map(photo => photo.uri)] : []);
+    return { intents, included: (uri: string) => intents.has(uri) || cloudDraft.has(uri) };
+  }
+  private async uploadScopedMedia(row: MediaRow, intent: MediaIntent, file: Uint8Array): Promise<string> {
+    const owner = this.snapshot.sessionUserId;
+    const workshopOrigin = intent.row.workshop_id;
+    const operatorToken = await secureStorage.getItem(intent.row.token_key);
+    const { data, error } = await this.supabase().auth.getSession();
+    if (error || !data.session || !owner || data.session.user.id !== owner || this.snapshot.sessionUserId !== owner || !operatorToken || !workshopOrigin) {
+      throw new Error('Identifique novamente o operador do protocolo original para enviar o arquivo.');
+    }
+    const mime = mediaUploadMime(row.bucket, row.mime_type);
+    const digest = new Uint8Array(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, new Uint8Array(file)));
+    const sha256 = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+    const name = row.remote_path.split('/').at(-1) || row.id;
+    const attachment = { uri: row.local_uri, name, type: mime } as unknown as Blob;
+    return sendWorkshopMediaUpload({ deviceToken: data.session.access_token, operatorToken, workshopOrigin,
+      submission: intent.row.id, operation: intent.operation, payload: intent.payload, asset: row.id, kind: intent.kind,
+      reference: row.local_uri, mime, size: file.byteLength, sha256 }, attachment, url);
+  }
+  private async uploadLegacyMedia(row: MediaRow, file: Uint8Array) {
+    const bucket = this.supabase().storage.from(row.bucket);
+    const { error } = await bucket.upload(row.remote_path, file, { contentType: row.mime_type || (row.bucket === 'rm-assinaturas' ? 'image/png' : 'image/jpeg'), upsert: true });
+    if (error) throw error;
+    return row.bucket === 'rm-documentos' ? `${url}/storage/v1/object/authenticated/rm-documentos/${row.remote_path}` : bucket.getPublicUrl(row.remote_path).data.publicUrl;
+  }
   private async pushMedia(force: boolean) {
     const rows = await this.database.connection().getAllAsync<MediaRow>(`SELECT q.*,m.next_retry_at FROM local_media_upload_queue q JOIN local_queue_meta m USING(id) WHERE q.status<>'uploaded' ORDER BY q.created_at,q.rowid`);
+    const selection = scopedUploads ? await this.mediaReadyToSend() : null;
     for (const row of rows) {
+      if (selection && !selection.included(row.local_uri)) continue;
+      const intent = selection?.intents.get(row.local_uri);
       if (!force && row.next_retry_at > Date.now()) throw new Error('Envio de mídia aguardando nova tentativa automática.');
       await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploading' WHERE id=?", row.id));
       try {
         const base64 = await FileSystem.readAsStringAsync(row.local_uri, { encoding: FileSystem.EncodingType.Base64 });
-        const { error } = await this.supabase().storage.from(row.bucket).upload(row.remote_path, decodeBase64(base64), { contentType: row.mime_type || (row.bucket === 'rm-assinaturas' ? 'image/png' : 'image/jpeg'), upsert: true });
-        if (error) throw error;
-        const { data } = this.supabase().storage.from(row.bucket).getPublicUrl(row.remote_path);
-        const remoteUrl = row.bucket === 'rm-documentos' ? `${url}/storage/v1/object/authenticated/rm-documentos/${row.remote_path}` : data.publicUrl;
+        const bytes = decodeBase64(base64);
+        const remoteUrl = intent?.row.workshop_id ? await this.uploadScopedMedia(row, intent, bytes) : await this.uploadLegacyMedia(row, bytes);
         await this.database.write(db => db.runAsync("UPDATE local_media_upload_queue SET status='uploaded',public_url=?,last_error=NULL WHERE id=?", remoteUrl, row.id));
         await this.database.saveLocal(`media:${remoteUrl}`, row.local_uri);
       } catch (error) {
@@ -1058,7 +1091,13 @@ class MobileService {
     const counts = await db.getFirstAsync<{pendingMedia: number; pendingMutations: number}>(`SELECT
       (SELECT count(*) FROM local_media_upload_queue WHERE status<>'uploaded') AS pendingMedia,
       (SELECT count(*) FROM local_rpc_outbox WHERE status<>'completed') AS pendingMutations`);
-    const pendingMedia = counts?.pendingMedia ?? 0, pendingMutations = counts?.pendingMutations ?? 0;
+    let pendingMedia = counts?.pendingMedia ?? 0;
+    const pendingMutations = counts?.pendingMutations ?? 0;
+    if (scopedUploads && pendingMedia) {
+      const selection = await this.mediaReadyToSend();
+      const candidates = await db.getAllAsync<{ local_uri: string }>("SELECT local_uri FROM local_media_upload_queue WHERE status<>'uploaded'");
+      pendingMedia = candidates.filter(row => selection.included(row.local_uri)).length;
+    }
     this.update({ pendingMedia, pendingMutations, syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, {
       type: 'queue', online: this.snapshot.online, pendingMedia, pendingMutations, restoring: !this.snapshot.ready,
     }) });
