@@ -2865,6 +2865,117 @@ begin
  end if;
 end
 $photo_recovery$;
+savepoint photo_cutover_fixture;
+do $photo_cutover$
+declare
+ bma_device uuid:=em_fixture.id(711);
+ bma_session uuid:=em_fixture.id(721);
+ device uuid;
+ path text;
+ reference text;
+ copy_path text;
+ archive_sha text:=repeat('b',64);
+ previous_object_count bigint;
+ output jsonb;
+begin
+ if has_function_privilege('authenticated','rm_private.prepare_workshop_legacy_photo_cutover_v1()','execute')
+  or has_function_privilege('service_role','rm_private.prepare_workshop_legacy_photo_cutover_v1()','execute')
+  or has_function_privilege('anon','rm_private.workshop_legacy_photo_storage_allowed_v1()','execute') then
+  raise exception 'A alteração de visibilidade ficou acessível pelo cliente.';
+ end if;
+ begin
+  perform rm_private.prepare_workshop_legacy_photo_cutover_v1();
+  raise exception 'A preparação não exigiu o recorte dos protocolos de gravação.';
+ exception when sqlstate 'PT409' then null;end;
+ perform public.rm_observe_mobile_workshop_android_v1(bma_device,bma_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(bma_device,bma_session);
+ perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ perform rm_private.activate_workshop_legacy_bma_people_v1();
+ perform rm_private.activate_workshop_legacy_operator_reads_v1();
+ perform rm_private.activate_workshop_legacy_mobile_writes_v1();
+ begin
+  perform rm_private.prepare_workshop_legacy_photo_cutover_v1();
+  raise exception 'O corte foi preparado sem cópia verificada de todos os objetos.';
+ exception when sqlstate 'PT409' then null;end;
+ for office in 1..4 loop
+  reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||office||'/equipamento.png';
+  update public.rm_fotos set foto_url=reference where id=em_fixture.id(600+office);
+  copy_path:='acervo-oficina/'||em_fixture.id(office)::text||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.png';
+  insert into storage.objects(bucket_id,name,metadata,user_metadata)
+   values('rm-documentos',copy_path,'{"size":12,"mimetype":"image/png"}',jsonb_build_object('sha256',archive_sha));
+  if public.rm_confirm_workshop_archive_v1(em_fixture.id(office),reference,archive_sha,'image/png',12) is distinct from copy_path then
+   raise exception 'A cópia de projeto permaneceu pendente.';
+  end if;
+ end loop;
+ select count(*) into previous_object_count from storage.objects where bucket_id='rm-fotos';
+ perform rm_private.prepare_workshop_legacy_photo_cutover_v1();
+ perform rm_private.prepare_workshop_legacy_photo_cutover_v1();
+ perform set_config('request.jwt.claim.sub',bma_device::text,true);
+ path:=bma_device::text||'/queued-photo.jpg';
+ set local role authenticated;
+ begin
+  insert into storage.objects(bucket_id,name) values('rm-fotos',path);
+  raise exception 'Uma foto nova entrou no bucket entre a auditoria e a troca de visibilidade.';
+ exception when insufficient_privilege then null;end;
+ reset role;
+
+ -- Emulate only the isolated Storage API change. The original objects and
+ -- the workshop archive remain at their own paths.
+ update storage.buckets set public=false where id='rm-fotos';
+ if (select count(*) from storage.objects where bucket_id='rm-fotos')<>previous_object_count then
+  raise exception 'A mudança de visibilidade alterou o acervo original.';
+ end if;
+ set local role authenticated;
+ insert into storage.objects(bucket_id,name) values('rm-fotos',path);
+ update storage.objects set user_metadata='{"legacy_retry":true}' where bucket_id='rm-fotos' and name=path;
+ if not found then raise exception 'O dispositivo aprovado perdeu a retentativa do próprio arquivo privado.';end if;
+ reset role;
+
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office);
+  path:=device::text||'/legacy-draft.jpg';
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  set local role authenticated;
+  if exists(select 1 from storage.objects where bucket_id='rm-fotos' and name=path) is distinct from (office=1) then
+   raise exception 'A leitura direta de fotos manteve acesso para outro dispositivo.';
+  end if;
+  if office<>1 then
+   begin
+    insert into storage.objects(bucket_id,name) values('rm-fotos',device::text||'/denied-photo.jpg');
+    raise exception 'Uma oficina externa gravou no bucket privado legado.';
+   exception when insufficient_privilege then null;end;
+  end if;
+  reset role;
+  reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||office||'/equipamento.png';
+  output:=pg_temp.workshop_restore_native(office,array[reference]);
+  if output->'files'->0->>'url' is distinct from reference
+   or coalesce(output->'files'->0->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
+   or pg_temp.workshop_restore_native((office%4)+1,array[reference])->'files' is distinct from '[]'::jsonb then
+   raise exception 'O Android perdeu a referência antiga ou a mostrou a outra oficina.';
+  end if;
+  -- The portal cutover fixture revoked the first two Microsoft identities.
+  if office in(3,4) then
+   output:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo'));
+   if output->>'url' is distinct from reference or coalesce(output->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
+    or pg_temp.workshop_restore_read(7-office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo')) is not null then
+    raise exception 'O portal perdeu a referência antiga ou a mostrou a outra oficina.';
+   end if;
+  end if;
+ end loop;
+ perform set_config('request.jwt.claim.sub',bma_device::text,true);
+ perform public.rm_observe_mobile_workshop_android_v1(bma_device,bma_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
+ set local role authenticated;
+ if exists(select 1 from storage.objects where bucket_id='rm-fotos') then
+  raise exception 'O dispositivo transferido reteve acesso direto ao bucket antigo.';
+ end if;
+ reset role;
+end
+$photo_cutover$;
+select 'PASS: legacy photo cutover preserves archived references, denies cross-workshop storage and supports approved private retries' result;
+rollback to savepoint photo_cutover_fixture;
+release savepoint photo_cutover_fixture;
 do $android_adoption$
 declare
  device uuid; session_id uuid; delegation text; context jsonb; first_seen timestamptz;
