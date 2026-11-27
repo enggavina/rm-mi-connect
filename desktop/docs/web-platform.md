@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 e P0.5 — Confirmação dos envios da fila Android
+
+A migração **129** faz o serviço de registros conferir o recibo gravado antes de confirmar o envio ao Android. A confirmação inclui o protocolo, a operação, a oficina, o projeto, o dispositivo e o operador. Se o servidor detectar ausência ou divergência, o item continua disponível para retentativa. Um reenvio válido devolve o mesmo recibo. [Migração](../../rm-mobile-supabase/migrations/129_rm_offline_mutation_confirmation.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46071139855).
+
+Antes e depois da restauração em quatro oficinas, passaram os testes de envio e replay de formulários e correções, fotos, comentários, status, apontamentos e aprovações. A matriz recusou as 84 tentativas cruzadas por rodada. O teste isolado da API confirmou a recusa de sete respostas ausentes ou divergentes e o retorno do mesmo recibo na retentativa. O ensaio revertido no banco de produção preservou as 151 tabelas auditadas e os quatro recibos de mutações existentes.
+
+A migração está ativa no Supabase `oficina-em-mi-off`, e o Railway publicou o commit **`bee8662`** na implantação **`9f249564-ccc0-43e1-aeaf-e4969cad93bd`**. Em produção, passaram dez verificações no navegador. O emulador Android **1.2.24** abriu o formulário existente da BMA com e sem rede e restabeleceu a conexão. A homologação do reenvio de uma fila real ainda está pendente. [EM em produção](https://em-web-production.up.railway.app) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 e P0.4 — Fotos e assinaturas privadas dos APKs anteriores
 
 A migração **128** no Supabase `oficina-em-mi-off` verifica a oficina do projeto ou da resposta, o proprietário do objeto e o arquivo original em armazenamento privado. O portal usa o resultado do banco para assinar por 60 segundos as fotos e assinaturas enviadas pelo tablet legado da BMA. O Android aplica a mesma regra. As cópias verificadas do acervo continuam tendo prioridade, e os arquivos confirmados antes da transferência do dispositivo permanecem na oficina original. [Migração](../../rm-mobile-supabase/migrations/128_rm_private_legacy_image_reads.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46069077427).
