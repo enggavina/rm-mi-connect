@@ -1,10 +1,18 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Recuperação privada da foto legada sem projeto
+
+A migração **115**, publicada no Supabase `oficina-em-mi-off`, registrou a cópia privada da última foto legada sem referência operacional. A busca em 133 tabelas confirmou a ausência de referência. O cadastro preserva o proprietário e a versão do objeto original. A cópia JPEG de 80.998 bytes foi baixada e conferida por SHA-256. A retentativa confirmou o mesmo comprovante. O arquivo ficou disponível para recuperação técnica fora do acervo das oficinas. [EM em produção](https://em-web-production.up.railway.app) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46043249169).
+
+A checagem passou com **8 de 8 objetos originais preservados**, dos quais sete têm referência operacional. A regressão PostgreSQL, a matriz em quatro oficinas e o ensaio revertido em produção confirmaram as restrições e a preservação das 146 tabelas auditadas. A cópia privada recusou acesso anônimo, download pela conta operacional da BMA e consulta pelo catálogo Android. Os endereços públicos do bucket `rm-fotos` continuam disponíveis durante a transição dos clientes antigos. O cadastro de dispositivos ainda não comprova a versão dos clientes ativos em campo. Os dois anexos PNG indisponíveis na origem e a homologação com duas oficinas reais seguem no aceite da P0.3. [Script de conferência da foto](../../rm-mobile-supabase/scripts/preserve_legacy_photo.ts).
+
+Nove verificações passaram no navegador em produção. O Android **1.2.23/código 26** abriu uma foto autorizada da BMA com e sem conexão no emulador. A homologação com login Microsoft do PCP segue no roteiro de navegador. [Roteiro](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 — Fotos legadas de rascunhos no acervo privado
 
 A migração **114**, publicada no Supabase `oficina-em-mi-off`, permite arquivar fotos legadas do Recebimento quando a oficina do rascunho tem evidência e o proprietário do objeto coincide com o dispositivo original. O Android consulta o acervo após validar a oficina, o dispositivo e o operador. A referência do rascunho continua sendo usada na consulta e no cache. Um vínculo anterior da mesma foto a outra oficina impede a adoção. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46040887378).
 
-A migração preservou os dados das 146 tabelas auditadas. A foto do rascunho da BMA foi copiada com conferência do SHA-256 do original e da cópia. O bucket legado tem sete de oito objetos com cópia verificada e zero rascunhos ativos sem cópia. A busca em 132 tabelas do EM ficou sem referência para o oitavo objeto. A retirada do acesso público continua dependendo do tratamento desse objeto e da transição dos clientes legados.
+A migração preservou os dados das 146 tabelas auditadas. A foto do rascunho da BMA foi copiada com conferência do SHA-256 do original e da cópia. Nesse momento, sete dos oito objetos tinham cópia verificada, com zero rascunhos ativos sem cópia. O oitavo objeto foi tratado na migração 115.
 
 A regressão PostgreSQL e a restauração em quatro oficinas confirmaram o acesso do autor pela cópia com o bucket original privado, incluindo a recusa para outro operador e outra oficina. Em produção, um outro operador no mesmo dispositivo foi recusado ao consultar a cópia. Passaram nove verificações no navegador, e uma foto autorizada existente da BMA abriu no emulador Android 1.2.23 com e sem conexão.
 
