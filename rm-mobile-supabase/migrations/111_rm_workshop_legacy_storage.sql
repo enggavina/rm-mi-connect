@@ -4,10 +4,18 @@ set local statement_timeout='60s';
 
 -- Keep legacy uploads and retries under the device that created the file.
 -- Project and team reads go through the scoped web and mobile signers.
+create function rm_private.workshop_document_storage_scoped_v1()
+returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from rm_private.workshop_dossier_settings where singleton and enforced)
+$$;
+revoke all on function rm_private.workshop_document_storage_scoped_v1() from public,anon,authenticated,service_role;
+grant execute on function rm_private.workshop_document_storage_scoped_v1() to authenticated;
+
 alter policy rm_mobile_documents_read on storage.objects using (
  bucket_id='rm-documentos' and rm_private.is_rm_authenticated()
  -- The separately activated dossier policy still governs its own namespace.
- and ((storage.foldername(name))[1]=auth.uid()::text or starts_with(name,'web-dossier/'))
+ and (not (select rm_private.workshop_document_storage_scoped_v1())
+  or (storage.foldername(name))[1]=auth.uid()::text or starts_with(name,'web-dossier/'))
 );
 alter policy rm_mobile_media_select on storage.objects using (
  bucket_id in('rm-fotos','rm-assinaturas') and rm_private.is_rm_authenticated()
