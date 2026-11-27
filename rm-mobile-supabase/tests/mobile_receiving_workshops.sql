@@ -236,6 +236,7 @@ declare refs text[]; found jsonb; draft_url text; draft_photo text;
 begin
  draft_url:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||pg_temp.rx_id(11)||'/draft.pdf';
  draft_photo:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||pg_temp.rx_id(11)||'/draft.jpg';
+ insert into storage.objects(bucket_id,name,owner_id) values('rm-fotos',pg_temp.rx_id(11)||'/draft.jpg',pg_temp.rx_id(11)::text);
  insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,last_save_id,payload) values
   (pg_temp.rx_id(895),pg_temp.rx_id(11),pg_temp.rx_id(14),gen_random_uuid(),jsonb_build_object('id',pg_temp.rx_id(895),
    'cliente',pg_temp.rx_id(20),'arquivoNotaFiscal',draft_url,'fotos',jsonb_build_array(jsonb_build_object('uri',draft_photo))));

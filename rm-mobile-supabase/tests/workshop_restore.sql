@@ -2146,7 +2146,67 @@ begin
  reset role;
 end
 $portal_read_cutover$;
+do $draft_photo_archive$
+declare
+ device uuid; actor uuid; draft uuid; office_id uuid; ref text; original_path text; copy_path text; verified_copy text;
+ context jsonb; delegation text; output jsonb; route_mode text;
+begin
+ if has_table_privilege('authenticated','rm_private.workshop_legacy_draft_photos','select')
+ or has_table_privilege('service_role','rm_private.workshop_legacy_draft_photos','select') then
+  raise exception 'A origem privada do rascunho ficou acessível diretamente.';
+ end if;
+ for office in 1..4 loop
+  office_id:=em_fixture.id(office);
+  device:=em_fixture.id(710+office); actor:=em_fixture.id(1340+office); draft:=em_fixture.id(1350+office);
+  delegation:=repeat('9'||office::text,32);
+  context:=jsonb_set(pg_temp.workshop_restore_native_context(office,office),'{principals,1,subject}',to_jsonb(actor));
+  route_mode:=case when office%2=0 then 'authenticated' else 'public' end;
+  original_path:=device::text||'/legacy-draft.jpg';
+  ref:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/'||route_mode||'/rm-fotos/'||original_path;
+  insert into storage.objects(bucket_id,name,owner_id) values('rm-fotos',original_path,em_fixture.id(710+(office%4)+1)::text);
+  update rm_private.receiving_drafts set payload=jsonb_set(payload,'{fotos}',
+   case when office%2=0 then jsonb_build_array(ref) else jsonb_build_array(jsonb_build_object('uri',ref)) end) where id=draft;
+  if exists(select 1 from rm_private.workshop_archive_sources s where s.reference=ref)
+   or public.rm_mobile_workshop_media_v1(device,em_fixture.id(720+office),delegation,context,array[ref])->'files'<>'[]' then
+   raise exception 'O rascunho permitiu um objeto com proprietário diferente do dispositivo original.';
+  end if;
+  update storage.objects set owner_id=device::text where bucket_id='rm-fotos' and name=original_path;
+  insert into rm_private.workshop_archive_files(workshop_id,reference_sha256,content_sha256,mime_type,byte_size,object_id,object_path)
+   select em_fixture.id((office%4)+1),hashed,repeat('d',64),'image/jpeg',12,gen_random_uuid(),
+    'acervo-oficina/'||em_fixture.id((office%4)+1)::text||'/'||hashed||'.jpg'
+   from (select encode(sha256(convert_to(ref,'UTF8')),'hex') hashed) candidate;
+  if exists(select 1 from rm_private.workshop_legacy_draft_photos s where s.reference=ref) then
+   raise exception 'Uma foto com registro anterior em outra oficina foi aceita.';
+  end if;
+  delete from rm_private.workshop_archive_files where workshop_id=em_fixture.id((office%4)+1)
+   and reference_sha256=encode(sha256(convert_to(ref,'UTF8')),'hex');
+  if (select count(*) from rm_private.workshop_archive_sources s where s.reference=ref and s.workshop_id=office_id and s.project_id is null)<>1
+   or exists(select 1 from rm_private.workshop_archive_sources s where s.reference=ref and s.workshop_id<>office_id)
+   or rm_private.workshop_legacy_media_readiness_v1('rm-fotos')->>'pending_drafts' is distinct from '1' then
+   raise exception 'A foto identificada entrou na oficina errada ou perdeu a pendência antes da cópia.';
+  end if;
+  copy_path:='acervo-oficina/'||office_id::text||'/'||encode(sha256(convert_to(ref,'UTF8')),'hex')||'.jpg';
+  insert into storage.objects(bucket_id,name,metadata,user_metadata) values('rm-documentos',copy_path,
+   '{"size":12,"mimetype":"image/jpeg"}',jsonb_build_object('sha256',repeat('d',64)));
+  verified_copy:=public.rm_confirm_workshop_archive_v1(office_id,ref,repeat('d',64),'image/jpeg',12);
+  if verified_copy is distinct from copy_path or rm_private.workshop_legacy_media_readiness_v1('rm-fotos')->>'pending_drafts' is distinct from '0' then
+   raise exception 'O acervo privado do rascunho não foi reconhecido.';
+  end if;
+  -- Move only the disposable fixture bucket across both visibility states.
+  update storage.buckets set public=false where id='rm-fotos';
+  output:=public.rm_mobile_workshop_media_v1(device,em_fixture.id(720+office),delegation,context,array[ref]);
+  if output->'files'<>jsonb_build_array(jsonb_build_object('url',ref,'source','project_photo','archive_path',copy_path))
+   or pg_temp.workshop_restore_native(office,array[ref])->'files' is distinct from '[]'::jsonb
+   or public.rm_mobile_workshop_media_v1(device,em_fixture.id(720+office),delegation,jsonb_set(
+    pg_temp.workshop_restore_native_context((office%4)+1,office),'{principals,1,subject}',to_jsonb(actor)),array[ref])->'files'<>'[]' then
+   raise exception 'A restauração perdeu a foto do operador original ou concedeu acesso cruzado.';
+  end if;
+  update storage.buckets set public=true where id='rm-fotos';
+ end loop;
+end
+$draft_photo_archive$;
 rollback;
+select 'PASS: legacy draft photos reach the verified archive only with original device, owner and office in four workshops' result;
 select 'PASS: scoped equipment types and direct portal read cutover in four workshops; native reads preserved' result;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;

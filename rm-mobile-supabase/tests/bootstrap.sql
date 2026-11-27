@@ -20,7 +20,7 @@ create extension pgcrypto with schema extensions;
 create schema storage;
 create publication supabase_realtime;
 create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
-create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text);
+create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text,owner_id text);
 -- Supabase Storage metadata used to verify the separately uploaded dossier file.
 alter table storage.objects add column metadata jsonb;
 alter table storage.objects add column user_metadata jsonb;
