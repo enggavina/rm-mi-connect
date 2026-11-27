@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — Evidência de criação no recebimento
+
+A migração **113**, publicada no Supabase `oficina-em-mi-off`, registra em qual fase o aplicativo criou de fato o projeto pela oficina validada. A abertura online e a criação direta pela fila offline ficam identificadas pela mesma referência de protocolo usada no recebimento. Reenvios, recuperação de registros anteriores e entradas por QR preservam a autoria e o projeto. A ativação geral exige evidência de abertura e conclusão do mesmo novo recebimento na oficina piloto. [Portal em produção](https://em-web-production.up.railway.app/recebimentos) · [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46035447051).
+
+A regressão PostgreSQL e o ensaio com restauração em quatro oficinas confirmaram a distinção entre criação, reenvio e entrada por QR. A publicação preservou os dados das 146 tabelas auditadas. A consulta em produção encontrou dois recibos legados e zero aberturas do fluxo novo. O banco recusou a ativação geral sem a evidência do piloto. Após a publicação, passaram nove verificações no navegador e o Recebimento abriu no emulador Android 1.2.22 com e sem conexão.
+
+A homologação do primeiro recebimento real inclui a conferência da fila de Recebimentos no portal após a abertura e a conclusão no Android com o protocolo original. O roteiro de navegador aceita a busca e o identificador do projeto da BMA para verificar a entrada, inclusive sem OS. [Roteiro de homologação no navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Consultas das contas Microsoft por oficina
 
 A migração **112** e a publicação Railway **`fd3b4b2b-022f-4455-85da-30a5a817ec31`** ativaram o commit **`9a773d1`**. O tipo do equipamento na aba Informações é consultado após validar a oficina e o vínculo entre projeto, equipamento e tipo. As contas vinculadas ao portal Microsoft passam pelas consultas do EM por oficina. A ativação restringiu a leitura direta em 56 tabelas e encerrou três consultas antigas de Capacidade e Modelos de formulário. O perfil próprio e as opções comuns continuam disponíveis para a sessão. A restrição fica ligada à identidade local mesmo após desativar ou remover o vínculo Microsoft. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46033310119).
