@@ -2171,6 +2171,10 @@ declare
  other_project uuid:=em_fixture.id(102);
  own_answer uuid:=em_fixture.id(1461);
  other_answer uuid:=em_fixture.id(1462);
+ device_profile uuid:=em_fixture.id(731);
+ own_operator uuid:=em_fixture.id(741);
+ other_operator uuid:=em_fixture.id(742);
+ other_profile uuid;
  delegation text:=repeat('c1',32);
  opened jsonb;
  completed jsonb;
@@ -2221,8 +2225,8 @@ begin
  perform set_config('request.jwt.claim.sub',device::text,true);
  perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
  set local role authenticated;
- if exists(select 1 from public.rm_users where id in(operator_id,unrelated_person,em_fixture.id(742)))
-  or not exists(select 1 from public.rm_users where id=em_fixture.id(741))
+ if exists(select 1 from public.rm_users where id in(operator_id,unrelated_person,other_operator))
+  or not exists(select 1 from public.rm_users where id=own_operator)
   or not exists(select 1 from public.rm_users where auth_user_id=device and status='ativo') then
   raise exception 'O cadastro de pessoas perdeu o perfil próprio ou a equipe comprovada, ou mostrou pessoas sem origem local.';
  end if;
@@ -2248,8 +2252,9 @@ begin
 
  for office in 2..4 loop
   perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  other_profile:=em_fixture.id(730+office);
   set local role authenticated;
-  if (select array_agg(id) from public.rm_users) is distinct from array[em_fixture.id(730+office)] then
+  if (select array_agg(id) from public.rm_users) is distinct from array[other_profile] then
    raise exception 'A leitura de autenticação perdeu o perfil próprio ou mostrou outra pessoa.';
   end if;
   reset role;
@@ -2277,7 +2282,7 @@ begin
  perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
   pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
  set local role authenticated;
- if (select array_agg(id) from public.rm_users) is distinct from array[em_fixture.id(731)] then
+ if (select array_agg(id) from public.rm_users) is distinct from array[device_profile] then
   raise exception 'A transferência do dispositivo não encerrou o acesso legado a pessoas.';
  end if;
  reset role;
