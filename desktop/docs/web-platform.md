@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — Origem em criações diretas de projetos e células
+
+A migração **125**, publicada no Supabase `oficina-em-mi-off`, exige que importações e outras gravações privilegiadas registrem a oficina de origem na mesma transação que cria um projeto ou uma célula. Atualizações dos registros existentes continuam disponíveis. O portal mantém a autorização por oficina e os recebimentos legados autenticados seguem a transição já publicada. [Migração](../../rm-mobile-supabase/migrations/125_rm_workshop_direct_root_enforcement.sql) · [EM em produção](https://em-web-production.up.railway.app).
+
+Os testes isolados confirmaram a recusa de criações diretas sem origem, a criação autorizada no portal, o recebimento Android com o mesmo protocolo e a recuperação em quatro oficinas. O ensaio revertido e a publicação preservaram o conteúdo das 151 tabelas auditadas e os dois recibos históricos. A consulta em modo somente leitura confirmou as duas travas ativas e o acervo de 182 projetos e 29 células. A ativação geral ainda depende do primeiro recebimento real da BMA pelo protocolo novo e da conferência dos clientes legados. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46062284390) · [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql).
+
+Depois da publicação, passaram nove verificações no navegador, incluindo o acesso do operador às 29 células da BMA. O emulador com Android **1.2.24** abriu a tela de Recebimento com e sem conexão. A conferência autenticada do recebimento real e dos Gantts usa a matriz do piloto. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 — Encerramento dos links públicos das fotos legadas
 
 A migração **124** ativou a proteção dos originais, e a API do Supabase Storage tornou privado o bucket `rm-fotos` no projeto `oficina-em-mi-off`. A mudança preservou os oito originais e suas cópias. A sincronização legada continua aceitando o reenvio autenticado na própria pasta do dispositivo confirmado da BMA. O aplicativo atualizado abre a galeria pelo acervo privado, após confirmar a oficina. [Migração](../../rm-mobile-supabase/migrations/124_rm_legacy_photo_storage_cutover.sql) · [EM em produção](https://em-web-production.up.railway.app).

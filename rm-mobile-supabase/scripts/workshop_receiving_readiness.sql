@@ -42,6 +42,9 @@ select jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only') = 'on',
   'captured_at', clock_timestamp(),
   'root_guard_active', exists(select 1 from rm_private.workshop_root_enforcement where activated_at is not null),
+  'direct_root_guard_active', (select count(*)=2 from pg_catalog.pg_trigger
+    where (tgrelid,tgname) in (('public.rm_projetos'::regclass,'workshop_new_project_origin'),
+      ('public.rm_celulas'::regclass,'workshop_new_cell_origin')) and tgenabled='O'),
   'pilot_receiving_evidence_ready', rm_private.workshop_receiving_pilot_ready_v1(),
   'legacy_only_completion_receipts', (select count(*) from rm_private.mobile_mutation_receipts receipt
     where receipt.rpc_name='rm_submit_recebimento_v1' and not exists(select 1 from rm_private.receiving_workshop_protocols scoped
