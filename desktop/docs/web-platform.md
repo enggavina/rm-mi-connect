@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — Recuperar origem de recebimentos legados no reenvio
+
+A migração **098**, commit **`965890f`**, foi aplicada no Supabase `oficina-em-mi-off`. Se o Android legado já abriu ou concluiu um recebimento antes da atribuição de oficina, o dispositivo e o operador originais podem reprocessar o mesmo protocolo pela API atual. O banco confere os dados imutáveis da abertura ou do recibo, o cliente da oficina, o autor e o equipamento do projeto antes de registrar a origem. A auditoria é privada e registra uma confirmação por protocolo. Um QR de um projeto que já existia exige origem comprovada por outro registro. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45990531173).
+
+O ensaio de recebimentos verificou abertura anterior, conclusão anterior, reenvio de anexos, conteúdo alterado e troca de operador. Em quatro oficinas, antes e depois da restauração, o projeto recuperado apareceu somente na fila de Recebimentos da unidade confirmada. Em produção, os 182 projetos e os dois recibos históricos continuaram com os mesmos dados e a origem já registrada. Passaram 71 verificações da API e oito passos de regressão no navegador. O emulador Android do EM abriu o rascunho da BMA, um projeto permitido e uma foto com e sem rede.
+
+O corte geral de Projetos e Recebimentos depende da homologação do primeiro recebimento real pelo Android, da definição do papel da matrícula DIGITAL e da revisão das entradas antigas. [Roteiro do marco](../../plano_paridade_rmmi_web.md).
+
 ## P0.1 e P0.4 — Retomar o rascunho vazio no Android
 
 A migração **097**, commit **`1f59b9a`**, foi aplicada no Supabase `oficina-em-mi-off`. A API atual de Recebimento do EM recupera um rascunho legado vazio quando o dispositivo e o operador originais confirmam a oficina em Acessos. A operação exige a primeira revisão, a data inicial automática e a ausência de dados, anexos, abertura e envio anteriores. O vínculo e a auditoria preservam o protocolo, o conteúdo, a revisão e a autoria. Um rascunho com conteúdo exige evidência anterior de origem. [EM](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45986918729).
