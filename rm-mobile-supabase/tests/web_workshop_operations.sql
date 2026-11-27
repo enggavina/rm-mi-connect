@@ -386,4 +386,21 @@ begin
   and pg_temp.project_read_call('media_reference',p,brj) is null,'signature is scoped by the registration');
 end$$;
 select 'PASS: scoped project photos, answer media, signature and direct foreign reference refusal' result;
+
+update public.rm_celulas_projeto set visibilidade=true,data_limite=statement_timestamp()-interval '1 day',status='em_dia'
+ where id in(pg_temp.project_read_id(501),pg_temp.project_read_id(503),pg_temp.project_read_id(504));
+do $$
+declare v jsonb;
+begin
+ v:=pg_temp.project_read_call('overview','{"projects":true,"forms":true,"planning":true,"documents":false}',pg_temp.project_read_id(1));
+ perform pg_temp.project_read_check((v->'counts'->>'projects')::int=26 and (v->'counts'->>'awaitingReview')::int=1
+  and (v->'counts'->>'overdueCells')::int=1 and v->'counts'->'documents'='null'::jsonb
+  and jsonb_array_length(v->'recentProjects')=8 and (v->'overdue'->0->>'id')::uuid=pg_temp.project_read_id(501),
+  'overview filters each count and task before its limit');
+ v:=pg_temp.project_read_call('overview','{"projects":false,"forms":true,"planning":false,"documents":false}',pg_temp.project_read_id(2));
+ perform pg_temp.project_read_check(v->'counts'->'projects'='null'::jsonb and v->'recentProjects'='[]'::jsonb
+  and v->'overdue'='[]'::jsonb and (v->'counts'->>'awaitingReview')::int=1
+  and (v->'recentRecords'->0->>'id')::uuid=pg_temp.project_read_id(702),'form-only overview returns only own pending record');
+end$$;
+select 'PASS: workshop overview counts, pending forms, deadlines and restricted capabilities' result;
 rollback;

@@ -75,6 +75,21 @@ test('form record denies direct foreign IDs and propagates context failures befo
   await assert.rejects(invalid.getRecord(project), /Não foi possível/);
 });
 
+test('overview uses only the requested workshop indicators and refuses injected rows for an unavailable module', async () => {
+  const formsOnly = ['em.portal.read', 'em.forms.read'] as const;
+  const counts = { projects: null, activeProjects: null, awaitingReview: 1, overdueCells: null, documents: null };
+  const result = { counts, recentProjects: [], recentRecords: [{ id: project, codigo: 4 }], overdue: [] };
+  const data = createWebData(client, formsOnly, undefined, async (resource, args) => {
+    assert.equal(resource, 'overview');
+    assert.deepEqual(args, { projects: false, forms: true, planning: false, documents: false });
+    return result;
+  });
+  assert.equal((await data.getOverview()).tasks[0].title, 'Consultar formulário 4');
+  assert.deepEqual(workshopReadCapabilities('overview', { forms: true }), ['em.portal.read', 'em.forms.read']);
+  const invalid = createWebData(client, formsOnly, undefined, async () => ({ ...result, recentProjects: [{ id: cell }] }));
+  await assert.rejects(invalid.getOverview(), /Não foi possível/);
+});
+
 test('production rollout is opt-in and the enabled reader requires an SSO context', async () => {
   const session = { client };
   const previous = process.env.EM_WORKSHOP_OPERATION_READS;

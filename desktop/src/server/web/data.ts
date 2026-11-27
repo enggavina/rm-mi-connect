@@ -113,6 +113,25 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getOverview() {
     requireCapability('em.portal.read');
     const access = { projects: allowed('em.projects.read'), forms: allowed('em.forms.read'), planning: allowed('em.planning.read'), documents: allowed('em.documents.read') };
+    const makeTasks = (records: WebRow[], overdue: WebRow[]): WebRow[] => [
+      ...records.map(row => ({ ...row, kind: 'review', title: `${allowed('em.forms.review') ? 'Avaliar' : 'Consultar'} formulário ${row.codigo_text || row.codigo || ''}`, href: `/formularios/${row.id}` })),
+      ...overdue.map(row => ({ ...row, kind: 'overdue', title: `Prazo vencido · ${row.numero_projeto || 'Projeto'}`, href: access.projects ? `/projetos/${row.projeto_id}?tab=planejamento` : '/planejamento' })),
+    ];
+    if (operationRead) {
+      const value = await operationRead('overview', access);
+      const count = (key: string, permitted: boolean): number | null => {
+        const result = value?.counts?.[key];
+        if (permitted ? !Number.isSafeInteger(result) || result < 0 : result !== null) throw queryUnavailable();
+        return result;
+      };
+      const counts = { projects: count('projects', access.projects), activeProjects: count('activeProjects', access.projects),
+        awaitingReview: count('awaitingReview', access.forms), overdueCells: count('overdueCells', access.planning), documents: count('documents', access.documents) };
+      const { recentProjects, recentRecords, overdue } = value;
+      if (!rowArray(recentProjects) || !rowArray(recentRecords) || !rowArray(overdue)
+        || recentProjects.length > Math.min(8, counts.projects ?? 0) || recentRecords.length > Math.min(8, counts.awaitingReview ?? 0)
+        || overdue.length > Math.min(8, counts.overdueCells ?? 0)) throw queryUnavailable();
+      return { access, counts, recentProjects, recentRecords, tasks: makeTasks(recentRecords, overdue) };
+    }
     const none = { error: null, data: [] };
     const [projects, activeProjects, awaitingReview, overdueCells, reportCount, attachmentCount, recent, records, overdue] = await Promise.all([
       access.projects ? count('rm_projetos') : null, access.projects ? count('rm_projetos', q => q.is('data_real_de_entrega', null).or(ACTIVE)) : null,
@@ -127,10 +146,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const recentClients = await byIds('rm_clientes', CLIENT, recentRows.map(row => row.cliente_id));
     const recentProjects: WebRow[] = recentRows.map(row => ({ ...row, cliente_nome: recentClients.find(customer => customer.id === row.cliente_id)?.nome || row.cliente_nome_exportacao || null }));
     const recentRecords = (checked(records) as any).data as WebRow[];
-    const tasks: WebRow[] = [
-      ...recentRecords.map(row => ({ ...row, kind: 'review', title: `${allowed('em.forms.review') ? 'Avaliar' : 'Consultar'} formulário ${row.codigo_text || row.codigo || ''}`, href: `/formularios/${row.id}` })),
-      ...((checked(overdue) as any).data as WebRow[]).map(row => ({ ...row, kind: 'overdue', title: `Prazo vencido · ${row.numero_projeto || 'Projeto'}`, href: access.projects ? `/projetos/${row.projeto_id}?tab=planejamento` : '/planejamento' })),
-    ];
+    const tasks = makeTasks(recentRecords, (checked(overdue) as any).data as WebRow[]);
     return { access, counts: { projects, activeProjects, awaitingReview, overdueCells, documents: access.documents ? (reportCount ?? 0) + (attachmentCount ?? 0) : null }, recentProjects, recentRecords, tasks };
   }
   async function listProjects(filters: ProjectFilters = {}) {
@@ -333,7 +349,7 @@ async function data(capability: CorporateCapability) {
   const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability);
   const { ssoWorkshopRead } = await import('./sso-bridge');
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
-  const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read'].includes(capability) ? await readWorkshopOperations(session) : undefined;
+  const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read', 'em.portal.read'].includes(capability) ? await readWorkshopOperations(session) : undefined;
   return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined, operationRead);
 }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
