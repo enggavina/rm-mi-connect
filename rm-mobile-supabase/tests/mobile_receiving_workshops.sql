@@ -113,4 +113,41 @@ reset role;
 select pg_temp.rx_check(not exists(select 1 from rm_private.receiving_openings where client_submission_id=pg_temp.rx_id(33)),'tampered session and payload have no effect');
 
 select 'PASS: scoped mobile receiving before uploads, legacy queue completion, cross-office rejection, visible portal and exact retries' result;
+
+create function pg_temp.rx_catalog(office int,table_name text,after_at timestamptz default null,after_id uuid default null,
+ ids_only boolean default false) returns jsonb language sql as $$
+ select public.rm_mobile_workshop_catalog_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),
+  table_name,after_at,after_id,ids_only)
+$$;
+insert into public.rm_clientes(id,nome) select pg_temp.rx_id(n),'LOCAL catalog client' from generate_series(500,750)n;
+insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id)
+ select 'client',pg_temp.rx_id(n),pg_temp.rx_id(case when n=750 then 2 else 1 end) from generate_series(500,750)n;
+
+do $$
+declare page jsonb; next_page jsonb; last jsonb;
+begin
+ page:=pg_temp.rx_catalog(1,'rm_clientes');
+ perform pg_temp.rx_check(page->>'workshop_id'=pg_temp.rx_id(1)::text and jsonb_array_length(page->'rows')=250
+  and not (page->>'complete')::boolean and not exists(select 1 from jsonb_array_elements(page->'rows') item
+   where item->>'id'=pg_temp.rx_id(750)::text),'mobile catalog scopes before keyset limit');
+ last:=page->'rows'->249;
+ next_page:=pg_temp.rx_catalog(1,'rm_clientes',(last->>'updated_at')::timestamptz,(last->>'id')::uuid);
+ perform pg_temp.rx_check(jsonb_array_length(next_page->'rows')=1 and (next_page->>'complete')::boolean,
+  'incremental mobile catalogue returns the remaining own row');
+ page:=pg_temp.rx_catalog(1,'rm_clientes',null,null,true);
+ last:=page->'rows'->249;
+ update public.rm_clientes set nome='LOCAL earlier ID updated during reconciliation' where id=pg_temp.rx_id(500);
+ next_page:=pg_temp.rx_catalog(1,'rm_clientes',(last->>'updated_at')::timestamptz,(last->>'id')::uuid,true);
+ perform pg_temp.rx_check(jsonb_array_length(next_page->'rows')=1 and next_page->'rows'->0->>'id'=pg_temp.rx_id(749)::text
+  and not (next_page->'rows'->0?'nome'),'reconciliation is ordered by immutable IDs despite concurrent timestamp changes');
+ page:=pg_temp.rx_catalog(2,'rm_clientes');
+ perform pg_temp.rx_check(jsonb_array_length(page->'rows')=1 and page->'rows'->0->>'id'=pg_temp.rx_id(750)::text,
+  'rebound operator only receives the other office catalogue');
+ perform pg_temp.rx_reject('select pg_temp.rx_catalog(1,''rm_users'')','22023');
+ perform pg_temp.rx_reject('select public.rm_mobile_workshop_catalog_v1(pg_temp.rx_id(11),pg_temp.rx_id(17),repeat(''6'',64),pg_temp.rx_context(),''rm_celulas'',null,null,false)','28000');
+ set local role authenticated;
+ perform pg_temp.rx_reject('select pg_temp.rx_catalog(1,''rm_clientes'')','42501');
+ reset role;
+end$$;
+select 'PASS: native workshop catalog pagination, immutable ID reconciliation and office boundaries' result;
 rollback;

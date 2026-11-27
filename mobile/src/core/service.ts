@@ -9,6 +9,7 @@ import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
 import { operatorWorkshopDenied, readWorkshopOperatorCells } from './operator-workshop';
+import { readWorkshopCatalogPage, scopedCatalogTable, type CatalogCursor, type CatalogSession } from './catalog-workshop';
 import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
@@ -26,6 +27,7 @@ const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const scopedReceiving = process.env.EXPO_PUBLIC_EM_SCOPED_RECEIVING === 'true';
 const scopedOperatorCells = process.env.EXPO_PUBLIC_EM_SCOPED_OPERATOR_CELLS === 'true';
+const scopedCatalog = scopedOperatorCells && process.env.EXPO_PUBLIC_EM_SCOPED_CATALOG === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -628,7 +630,14 @@ class MobileService {
       // Sending and downloading catalogs are independent: hide recovery once sends are confirmed.
       await this.refreshCounts();
       // Pull remains useful while one invalid mutation waits for operator intervention.
-      await this.pull();
+      let catalogSession: CatalogSession | undefined;
+      if (scopedCatalog) {
+        const operatorToken = this.operatorToken;
+        const workshopId = await secureStorage.getItem(`rm.workshop.device.${data.session.user.id}`);
+        if (!operatorToken || !workshopId || this.operatorToken !== operatorToken) throw new Error('Identifique o operador antes de sincronizar o catálogo.');
+        catalogSession = { deviceToken: data.session.access_token, operatorToken, workshopId };
+      }
+      await this.pull(catalogSession);
       const at = timestamp();
       await this.database.saveLocal('last_sync', at);
       this.update({ lastSync: at });
@@ -790,9 +799,13 @@ class MobileService {
       await db.runAsync('UPDATE local_queue_meta SET next_retry_at=? WHERE id=?', Date.now() + retryDelay(attempts + 1), id);
     });
   }
-  private async pull() {
+  private async pull(scope?: CatalogSession) {
     try {
     for (const table of TABLES) {
+      if (scope && scopedCatalogTable(table)) {
+        await this.pullWorkshopCatalog(table, scope);
+        continue;
+      }
       const cursor = await this.database.local<string>(`cursor:${table}`);
       let after: {at: string; id: string} | null = cursor ? { at: new Date(Date.parse(cursor) - 1000).toISOString(), id: '00000000-0000-0000-0000-000000000000' } : null;
       let latest = cursor;
@@ -824,6 +837,49 @@ class MobileService {
       this.catalogRevision++;
       this.update({});
     }
+  }
+  private async pullWorkshopCatalog(table: CatalogTable, scope: CatalogSession) {
+    const cursorKey = `workshop-cursor:${scope.workshopId}:${table}`;
+    const reconcileKey = `workshop-reconciled:${scope.workshopId}:${table}`;
+    const cursor = await this.database.local<CatalogCursor>(cursorKey);
+    let after = cursor ? { at: new Date(Date.parse(cursor.at) - 1000).toISOString(), id: '00000000-0000-0000-0000-000000000000' } : null;
+    let latest = cursor;
+    const verifyOperator = () => {
+      if (this.operatorToken !== scope.operatorToken) throw new Error('O operador mudou durante a sincronização do catálogo.');
+    };
+    for (;;) {
+      const { rows, complete } = await readWorkshopCatalogPage(scope, table, after, false);
+      verifyOperator();
+      if (rows.length) {
+        await this.database.cache(table, rows);
+        for (const row of rows) await this.cacheRecordMedia(table, row);
+        const last = rows[rows.length - 1];
+        if (last.id === after?.id && last.updated_at === after.at) throw new Error('O catálogo devolveu a mesma posição de sincronização.');
+        after = { at: last.updated_at, id: last.id };
+        latest = after;
+      }
+      if (complete) break;
+    }
+    verifyOperator();
+    if (latest) await this.database.saveLocal(cursorKey, latest);
+    const lastReconciled = await this.database.local<number>(reconcileKey) ?? 0;
+    if (table !== 'rm_projetos' && Date.now() - lastReconciled <= 15 * 60_000) return;
+
+    const ids = new Set<string>();
+    after = null;
+    for (;;) {
+      const { rows, complete } = await readWorkshopCatalogPage(scope, table, after, true);
+      verifyOperator();
+      for (const row of rows) {
+        if (ids.has(row.id)) throw new Error('O catálogo devolveu um identificador repetido.');
+        ids.add(row.id);
+      }
+      if (complete) break;
+      const last = rows[rows.length - 1];
+      after = { at: last.updated_at, id: last.id };
+    }
+    await this.database.removeMissing(table, ids);
+    await this.database.saveLocal(reconcileKey, Date.now());
   }
   private async reconcile(table: CatalogTable) {
     // Lightweight ID manifests remove hard-deleted records without deleting any drafts/outbox.

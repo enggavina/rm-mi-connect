@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — roteiro do projeto e avaliadores por oficina
+
+A migração **078** e o Railway **`2fc6703a-1c9d-42dd-b758-95b1dd8bf575`** foram publicados com o commit `468929e45112744a6cb1328c6229f86497627edc`. A gravação do roteiro confere as etapas da oficina. A configuração de formulários da alocação e a atribuição de avaliadores passam pela mesma autorização de projeto, célula e modelo. Os testes recusaram etapas e modelos de outra unidade.
+
+Passaram a regressão SQL, o CI, o ensaio revertido, a aplicação e 17 verificações operacionais após o deploy. O roteiro de navegador informa a etapa que falhou para facilitar a homologação com as contas reais. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45926008533).
+
 ## P0.2 — alocação de células por oficina
 
 A migração **077** e o Railway **`525ccbd7-8060-44e0-ad67-b21458d81985`** foram publicados com o commit `c360931e08239a886daee7cbf90ae2a272d4b229`. O planejamento passa a conferir a origem do projeto, da célula e dos modelos selecionados antes de gravar a alocação. Os testes confirmaram gravação própria, recusa cruzada e reenvio sem duplicação. A ativação usa o mesmo corte das gravações do Gantt.

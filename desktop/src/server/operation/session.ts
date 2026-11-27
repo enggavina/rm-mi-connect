@@ -63,9 +63,19 @@ export async function loadOperation(selection: OperationSelection = {}) {
 
 export async function sendNativeReceiving(token: string, operatorToken: string, submission: string,
   phase: 'open' | 'complete', payload: Record<string, unknown>) {
-  const scope = await operationService.authorizeNativeReceiving(token, operatorToken);
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken);
   const input = { p_client_submission_id: submission, p_phase: phase, p_params: payload, p_operator_token: operatorToken };
   const permit = await operationClient(true).rpc('rm_authorize_mobile_receiving_workshop_v1', { ...scope, ...input });
   if (permit.error) return permit;
   return await operationClient(false, token).rpc('rm_mobile_receiving_workshop_v1', input);
+}
+
+export async function loadNativeCatalogPage(token: string, operatorToken: string, table: string,
+  after: { at: string; id: string } | null, idsOnly: boolean) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken);
+  const { data, error } = await operationClient(true).rpc('rm_mobile_workshop_catalog_v1', {
+    ...scope, p_table: table, p_after_at: after?.at ?? null, p_after_id: after?.id ?? null, p_ids_only: idsOnly,
+  });
+  if (error || !data || data.workshop_id !== scope.p_workshop_context.workshop.id || data.table !== table) return { data: null, error };
+  return { data, error: null };
 }

@@ -118,7 +118,7 @@ export function createOperationService(deps: OperationDeps) {
       return { workshop: { id, code, revision }, deviceId: claims.authUserId, operatorId: access.operator,
         expiresAt: new Date(expiresAt).toISOString(), data };
     },
-    async authorizeNativeReceiving(token: string, delegation: string) {
+    async authorizeNativeOperation(token: string, delegation: string) {
       const claims = await verifiedClaims(token);
       const { args, workshop } = await authority(claims, delegation, claims.expiresAt);
       return { ...args, p_workshop_context: workshop };
