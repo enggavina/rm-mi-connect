@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 e P0.4 — Fotos e assinaturas privadas dos APKs anteriores
+
+A migração **128** no Supabase `oficina-em-mi-off` verifica a oficina do projeto ou da resposta, o proprietário do objeto e o arquivo original em armazenamento privado. O portal usa o resultado do banco para assinar por 60 segundos as fotos e assinaturas enviadas pelo tablet legado da BMA. O Android aplica a mesma regra. As cópias verificadas do acervo continuam tendo prioridade, e os arquivos confirmados antes da transferência do dispositivo permanecem na oficina original. [Migração](../../rm-mobile-supabase/migrations/128_rm_private_legacy_image_reads.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46069077427).
+
+O reenvio legado da foto manteve o protocolo e o projeto no ensaio PostgreSQL antes e depois da restauração em quatro oficinas. Os leitores recusaram o endereço copiado para outra oficina e os originais com proprietário, formato ou versão divergentes. O navegador isolado passou 17 verificações, incluindo foto e assinatura autorizadas com expiração e recusas sem acesso ao Storage. A auditoria da migração confirmou **151 tabelas preservadas**, **23 referências com cópia privada local** e zero originais elegíveis pela nova rota sem cópia em produção.
+
+O Railway **`6b17d609-2a59-4df2-813a-88e7ed6a8ca2`**, commit **`5211edc`**, foi publicado. Passaram nove verificações do navegador em produção. O serviço Android baixou um anexo Word, uma foto, uma nota fiscal e uma foto de resposta e conferiu os hashes do acervo. No emulador **1.2.24**, a mesma foto existente da BMA abriu com e sem conexão. As duas referências externas sem cópia continuaram indisponíveis. [EM em produção](https://em-web-production.up.railway.app) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.1 e P0.5 — Confirmação do protocolo de recebimento
 
 A migração **127** no Supabase `oficina-em-mi-off` e o Railway **`016cc23f-0575-40ea-b663-cd33e9addf9f`**, commit **`04bbed3`**, fazem o serviço Android conferir a confirmação gravada pelo banco. O protocolo, a oficina, a fase, o projeto e o equipamento precisam corresponder ao recebimento. Se a confirmação estiver ausente ou divergente, o aplicativo mantém o envio pendente para retentativa. O reenvio válido recupera o projeto e o equipamento do recibo original. [EM em produção](https://em-web-production.up.railway.app) · [Migração](../../rm-mobile-supabase/migrations/127_rm_receiving_confirmation.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46066729554).
