@@ -30,7 +30,7 @@ test('every protected action reads current authority and mints for the exact req
   await assert.rejects(authorizer.authorize({ ...context }, 'protocol', 'save_catalog', payload, 'em.catalogs.manage'), CorporateAuthError);
 });
 
-test('capacity, availability and queue writes get workshop authorization while general Gantt is staged', async () => {
+test('capacity, availability, queue and execution reviews get workshop authorization while general Gantt is staged', async () => {
   const context: SsoContext = { ...sso(), capabilities: ['em.planning.manage'] };
   const scope = workshop(), minted: string[] = [];
   const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { return scope; } },
@@ -41,9 +41,10 @@ test('capacity, availability and queue writes get workshop authorization while g
   assert.equal(await authorizer.authorize(context, 'change-visibility', 'manage_cell_availability', {}, 'em.planning.manage'), true);
   assert.equal(await authorizer.authorize(context, 'remove-step', 'manage_project_route_cell', {}, 'em.planning.manage'), true);
   assert.equal(await authorizer.authorize(context, 'save-queue', 'save_cell_queue', {}, 'em.planning.manage'), true);
+  assert.equal(await authorizer.authorize(context, 'check-execution', 'review_execution_session', {}, 'em.planning.manage'), true);
   assert.equal(await authorizer.authorize(context, 'save-dates', 'save_gantt_plan', {}, 'em.planning.manage'), false);
   await assert.rejects(authorizer.authorize(context, 'bad-claim', 'save_capacity_bookings', {}, 'em.projects.manage'), CorporateAuthError);
-  assert.deepEqual(minted, ['save_capacity_resource', 'save_capacity_bookings', 'manage_cell_availability', 'manage_project_route_cell', 'save_cell_queue']);
+  assert.deepEqual(minted, ['save_capacity_resource', 'save_capacity_bookings', 'manage_cell_availability', 'manage_project_route_cell', 'save_cell_queue', 'review_execution_session']);
 });
 
 test('missing verification, wrong subject and wrong capability cannot contact workshop authority', async () => {

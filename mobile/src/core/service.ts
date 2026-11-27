@@ -19,8 +19,9 @@ import { readWorkshopMedia, workshopMediaCacheKey } from './media-workshop';
 import { mediaUploadMime, queuedMediaIntents, sendWorkshopMediaUpload, type MediaIntent } from './media-upload-workshop';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
-import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
+import { EXECUTION_CONTEXT_SQL, EXECUTION_OPERATIONS_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
+import { readWorkshopExecution } from './execution-workshop';
 import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningState, receivingOpeningKey, storeReceivingOpening, type ReceivingOpeningState } from './receiving-opening';
 import { sendScopedReceiving, sendWorkshopReceivingDraft, type ReceivingDraftCommand } from './receiving-workshop';
 import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
@@ -35,6 +36,7 @@ const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTAT
 const scopedMedia = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MEDIA === 'true';
 const scopedUploads = scopedMedia && scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_UPLOADS === 'true';
 const scopedDrafts = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_DRAFTS === 'true';
+const scopedExecution = scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_EXECUTION === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -500,40 +502,57 @@ class MobileService {
     return this.enqueue(EXECUTION_RPC, parseExecutionParams(params), submissionId);
   }
   private async executionState(db: ReturnType<LocalDatabase['connection']>, scope: ExecutionScope) {
-    const cacheKey = executionCacheKey(scope.owner, scope.operatorId, scope.allocationId), epochKey = executionEpochKey(scope.owner, scope.operatorId);
+    const cacheKey = executionCacheKey(scope.owner, scope.operatorId, scope.allocationId, scope.workshopId);
+    const epochKey = executionEpochKey(scope.owner, scope.operatorId);
     const values = await db.getAllAsync<{ key: string; value: string }>('SELECT key,value FROM local_meta WHERE key IN (?,?)', cacheKey, epochKey);
     const epoch = executionEpoch(values.some(r => r.key === epochKey) ? JSON.parse(values.find(r => r.key === epochKey)!.value) : null);
     const cache = parseExecutionCache(values.some(r => r.key === cacheKey) ? JSON.parse(values.find(r => r.key === cacheKey)!.value) : null, scope);
-    const operations = await db.getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json
-      FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.rpc_name=? AND m.actor_id=? AND
-      (o.status<>'completed' OR o.rowid IN(SELECT p.rowid FROM local_rpc_outbox p JOIN local_queue_meta a USING(id)
-       WHERE p.rpc_name=? AND a.actor_id=? AND p.status='completed' ORDER BY p.created_at DESC,p.rowid DESC LIMIT 200)) ORDER BY o.created_at,o.rowid`, EXECUTION_RPC, scope.operatorId, EXECUTION_RPC, scope.operatorId);
+    const office = scope.workshopId ?? null;
+    const operations = await db.getAllAsync<OutboxRow>(EXECUTION_OPERATIONS_SQL,
+      EXECUTION_RPC, scope.operatorId, office, office, EXECUTION_RPC, scope.operatorId, office, office);
     const rows = await db.getAllAsync<{ key: string; value: string }>(EXECUTION_CONTEXT_SQL, JSON.stringify(executionContextKeys(scope, cache, operations)));
     return { cache, epoch, view: executionLocalView(cache, epoch, operations, executionContexts(rows, scope, epoch)) };
   }
   async executionSnapshot(allocationId: string, refresh = true): Promise<ExecutionLocalView> {
     const operator = this.snapshot.operator, owner = this.snapshot.sessionUserId, token = this.operatorToken;
     if (!operator || !owner || !token) throw new Error('Identifique o operador para consultar seus apontamentos.');
-    const actorId = operator.operador_id, scope = { owner, operatorId: actorId, allocationId };
+    const office = scopedExecution ? await this.operatorWorkshop() : null;
+    const actorId = operator.operador_id, scope = { owner, operatorId: actorId, allocationId, workshopId: office?.workshop };
     const current = () => this.snapshot.sessionUserId === owner && this.snapshot.operator?.operador_id === actorId && this.operatorToken === token;
-    const guard = () => { if (!current()) throw new Error('O operador mudou durante a consulta. Seus registros foram preservados.'); };
+    const guard = () => {
+      if (!current()) throw new Error('O operador mudou durante a consulta. Seus registros foram preservados.');
+      office?.assertCurrent();
+    };
     const read = () => this.database.write(async db => { guard(); const state = await this.executionState(db, scope); guard(); return state.view; });
     if (!refresh || !this.snapshot.online) return read();
     return refreshExecutionRead(read, async () => {
       guard();
-      const { data, error } = await this.supabase().rpc('rm_mobile_execution_snapshot_v1', { p_operator_token: token, p_allocation_id: allocationId });
-      guard(); if (error) {
+      try {
+        if (office) {
+          const { data, error } = await this.supabase().auth.getSession();
+          guard();
+          if (error || !data.session || data.session.user.id !== owner) throw Object.assign(new Error('Renove a sessão original do dispositivo.'), { code: '28000' });
+          const result = await readWorkshopExecution({ deviceToken: data.session.access_token, operatorToken: token,
+            workshopOrigin: office.workshop, operatorId: actorId, allocation: allocationId });
+          guard();
+          return result;
+        }
+        const { data, error } = await this.supabase().rpc('rm_mobile_execution_snapshot_v1', { p_operator_token: token, p_allocation_id: allocationId });
+        guard();
+        if (error) throw error;
+        return parseExecutionSnapshot(data, actorId, allocationId);
+      } catch (error) {
         if (executionReadRefused(error)) {
           await this.database.write(async db => { guard(); await invalidateExecutionRead(db, owner, actorId); guard(); });
           this.update({}); // SQLite-only consumers see the persistent read fence.
         }
         throw error;
       }
-      return parseExecutionSnapshot(data, actorId, allocationId);
     }, (ticket: ExecutionEpoch, parsed: ExecutionSnapshot) => this.database.write(async db => {
       guard(); const state = await this.executionState(db, scope); guard();
       const accepted = acceptExecutionRead(state.cache, state.epoch, ticket, parsed, scope);
-      if (accepted && accepted !== state.cache) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', executionCacheKey(owner, actorId, allocationId), JSON.stringify(accepted));
+      if (accepted && accepted !== state.cache) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+        executionCacheKey(owner, actorId, allocationId, scope.workshopId), JSON.stringify(accepted));
       guard();
       const committed = await this.executionState(db, scope); guard();
       return committed.view;

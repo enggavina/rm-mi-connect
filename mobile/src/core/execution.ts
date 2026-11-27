@@ -85,7 +85,9 @@ export function parseExecutionParams(value: unknown): ExecutionParams {
     || parsed.p_kind === 'pause' && parsed.p_pause_reason === 'outro' && (parsed.p_note?.trim().length ?? 0) < 3) throw invalid();
   return parsed;
 }
-export function executionCacheKey(owner: string, operatorId: string, allocationId: string) { return `execution:${owner}:${operatorId}:${allocationId}`; }
+export function executionCacheKey(owner: string, operatorId: string, allocationId: string, workshopId?: string) {
+  return workshopId ? `execution:${owner}:${operatorId}:${workshopId}:${allocationId}` : `execution:${owner}:${operatorId}:${allocationId}`;
+}
 export function executionMinutes(input: string): number | null { const value = input.trim(); if (!/^\d{1,7}$/.test(value)) return null; const minutes = Number(value); return minutes <= 1000000 ? minutes : null; }
 export function executionReviewReasonLabel(reason: string | null): string {
   switch (reason) {

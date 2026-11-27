@@ -93,6 +93,16 @@ export async function loadNativeCatalogPage(token: string, operatorToken: string
   return { data, error: null };
 }
 
+export async function loadNativeWorkshopExecution(token: string, operatorToken: string, workshopOrigin: string, allocation: string) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken, workshopOrigin);
+  const { data, error } = await operationClient(true).rpc('rm_mobile_workshop_execution_v1', { ...scope, p_allocation_id: allocation });
+  if (error) return { data: null, error };
+  if (!data || data.workshop_id !== scope.p_workshop_context.workshop.id || data.snapshot?.allocation?.id !== allocation.toLowerCase()) {
+    return { data: null, error: null };
+  }
+  return { data, error: null };
+}
+
 const mediaBatch = z.object({ workshop_id: z.uuid(), files: z.array(workshopMediaMatch).max(100) }).strict();
 
 export async function loadNativeWorkshopMedia(token: string, operatorToken: string, urls: string[]) {

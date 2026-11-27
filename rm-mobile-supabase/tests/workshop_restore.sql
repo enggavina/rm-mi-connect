@@ -59,6 +59,23 @@ insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_
   clock_timestamp()+interval '1 hour' from generate_series(1,4)n;
 insert into public.rm_tablet_celula_users(celula_id,identidade_id)
  select em_fixture.id(200+n),em_fixture.id(740+n) from generate_series(1,4)n;
+do $seed_execution$
+declare event jsonb;
+begin
+ for office in 1..4 loop
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+  event:=public.rm_mobile_mutate_v1(em_fixture.id(980+office),'rm_record_execution_event_v1',jsonb_build_object(
+   'p_session_id',em_fixture.id(970+office),'p_allocation_id',em_fixture.id(300+office),'p_operador_id',em_fixture.id(740+office),
+   'p_kind','start','p_previous_event_id',null,'p_occurred_at',clock_timestamp(),'p_pause_reason',null,'p_note',null,'p_effort_minutes',null),
+   repeat(chr(96+office),64));
+  if event->>'disposition' is distinct from 'accepted' or not exists(select 1 from rm_private.execution_sessions
+   where id=em_fixture.id(970+office) and state='running') then
+   raise exception 'O contexto inicial de apontamento não foi criado.';
+  end if;
+ end loop;
+end
+$seed_execution$;
 insert into rm_private.mobile_workshop_uploads(id,submission_id,workshop_id,project_id,operation,auth_user_id,operator_id,
  intent_sha256,kind,mime_type,byte_size,content_sha256,object_path,stored_at)
  select em_fixture.id(750+n),em_fixture.id(760+n),em_fixture.id(n),em_fixture.id(100+n),'rm_record_cell_photo_v1',
@@ -139,18 +156,37 @@ language sql as $$
    from jsonb_array_elements(snapshot->'items') with ordinality q(item,n)));
 $$;
 
-create function pg_temp.workshop_restore_native(office integer,urls text[],reachable boolean default true) returns jsonb language plpgsql as $$
+create function pg_temp.workshop_restore_native_context(office integer,actor_office integer) returns jsonb language plpgsql as $$
 declare context jsonb; stamp timestamptz:=clock_timestamp();
 begin
- if reachable then
-  select jsonb_build_object('version',2,'application','em','channel','mobile','authority',authority,
+ select jsonb_build_object('version',2,'application','em','channel','mobile','authority',authority,
    'workshop',jsonb_build_object('id',id,'code',code,'name',code,'active',true,'revision',1,'updated_at',stamp),
    'principals',jsonb_build_array(jsonb_build_object('kind','device','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
-    'subject',em_fixture.id(710+office),'revision',1),jsonb_build_object('kind','operator','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
-    'subject',em_fixture.id(740+office),'revision',1)), 'issued_at',stamp,'expires_at',stamp+interval '5 minutes') into strict context
+    'subject',em_fixture.id(710+actor_office),'revision',1),jsonb_build_object('kind','operator','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
+    'subject',em_fixture.id(740+actor_office),'revision',1)), 'issued_at',stamp,'expires_at',stamp+interval '5 minutes') into strict context
   from rm_private.workshop_references where id=em_fixture.id(office);
- end if;
- return public.rm_mobile_workshop_media_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),context,urls);
+ return context;
+end$$;
+
+create function pg_temp.workshop_restore_native(office integer,urls text[],reachable boolean default true) returns jsonb language sql as $$
+ select public.rm_mobile_workshop_media_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+  case when reachable then pg_temp.workshop_restore_native_context(office,office) end,urls);
+$$;
+
+create function pg_temp.workshop_restore_execution_event(office integer,submission uuid,params jsonb,scoped boolean) returns jsonb
+language plpgsql as $$
+declare value jsonb; delegation text:=repeat(chr(96+office),64);
+begin
+ perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+ if scoped then perform public.rm_authorize_mobile_workshop_mutation_v1(em_fixture.id(710+office),em_fixture.id(720+office),delegation,
+  pg_temp.workshop_restore_native_context(office,office),submission,'rm_record_execution_event_v1',params);end if;
+ set local role authenticated;
+ if scoped then value:=public.rm_mobile_workshop_mutate_v1(submission,'rm_record_execution_event_v1',params,delegation);
+ else value:=public.rm_mobile_mutate_v1(submission,'rm_record_execution_event_v1',params,delegation);end if;
+ reset role;
+ return value;
+exception when others then reset role;raise;
 end$$;
 
 do $$
@@ -427,5 +463,92 @@ begin
   end;
  end loop;
 end$$;
+
+do $workshop_execution$
+declare filters jsonb; native jsonb; portal jsonb; params jsonb; changed jsonb; retry jsonb; submission uuid; cell uuid;
+begin
+ perform rm_private.activate_execution_workshops_v1('web');
+ perform rm_private.activate_execution_workshops_v1('mobile');
+ if has_function_privilege('authenticated','public.rm_web_execution_snapshot_v1(jsonb)','execute')
+  or has_function_privilege('authenticated','public.rm_mobile_execution_snapshot_v1(text,uuid)','execute')
+  or has_function_privilege('authenticated','rm_private.execution_session_detail_v1(uuid)','execute')
+  or has_table_privilege('authenticated','rm_private.execution_sessions','select')
+  or has_table_privilege('authenticated','rm_private.execution_reviews','select')
+  or has_table_privilege('authenticated','rm_private.execution_events','select') then
+  raise exception 'Um contrato direto ainda expõe apontamentos sem o vínculo de oficina.';
+ end if;
+ for office in 1..4 loop
+  filters:=jsonb_build_object('project_id',em_fixture.id(100+office),'cell_id',em_fixture.id(200+office),
+   'session_id',em_fixture.id(970+office),'include_closed',false);
+  portal:=pg_temp.workshop_restore_read(office,'execution_snapshot',filters);
+  native:=public.rm_mobile_workshop_execution_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   pg_temp.workshop_restore_native_context(office,office),em_fixture.id(300+office));
+  if portal->>'total' is distinct from '1' or portal->'detail'->'events'->0->>'id' is distinct from em_fixture.id(980+office)::text
+   or native->>'workshop_id' is distinct from em_fixture.id(office)::text
+   or native->'snapshot'->'running_session'->>'id' is distinct from em_fixture.id(970+office)::text then
+   raise exception 'A restauração perdeu o apontamento ativo da própria oficina.';
+  end if;
+  for outsider in 1..4 loop
+   if outsider=office then continue;end if;
+   if pg_temp.workshop_restore_read(outsider,'execution_snapshot','{"project_id":null,"cell_id":null,"include_closed":true}'
+    || jsonb_build_object('session_id',em_fixture.id(970+office))) is not null then
+    raise exception 'Um apontamento estrangeiro apareceu na sessão de gestão.';
+   end if;
+   begin
+    perform public.rm_mobile_workshop_execution_v1(em_fixture.id(710+outsider),em_fixture.id(720+outsider),repeat(chr(96+outsider),64),
+     pg_temp.workshop_restore_native_context(outsider,outsider),em_fixture.id(300+office));
+    raise exception 'Um apontamento estrangeiro apareceu no dispositivo.';
+   exception when sqlstate 'P0002' then null;
+   end;
+  end loop;
+  cell:=em_fixture.id(200+(office % 4)+1);
+  insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(cell,em_fixture.id(740+office));
+  native:=public.rm_mobile_workshop_execution_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   pg_temp.workshop_restore_native_context((office % 4)+1,office),em_fixture.id(300+(office % 4)+1));
+  if native->'snapshot'->'running_session' is distinct from 'null'::jsonb then
+   raise exception 'Uma transferência mostrou a sessão ativa da oficina anterior.';
+  end if;
+  delete from public.rm_tablet_celula_users where celula_id=cell and identidade_id=em_fixture.id(740+office);
+  params:=jsonb_build_object('p_session_id',em_fixture.id(970+office),'p_allocation_id',em_fixture.id(300+office),
+   'p_operador_id',em_fixture.id(740+office),'p_kind','pause','p_previous_event_id',em_fixture.id(980+office),
+   'p_occurred_at',clock_timestamp(),'p_pause_reason','intervalo','p_note',null,'p_effort_minutes',null);
+  begin
+   perform pg_temp.workshop_restore_execution_event(office,gen_random_uuid(),params,false);
+   raise exception 'O cliente legado gravou apontamento diretamente após o corte.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  changed:=pg_temp.workshop_restore_execution_event(office,submission,params,true);
+  retry:=pg_temp.workshop_restore_execution_event(office,submission,params,true);
+  if changed->>'disposition' is distinct from 'accepted' or retry->>'idempotent_replay' is distinct from 'true'
+   or not exists(select 1 from rm_private.execution_sessions where id=em_fixture.id(970+office) and state='paused')
+   or (select count(*) from rm_private.execution_events where session_id=em_fixture.id(970+office))<>2 then
+   raise exception 'O protocolo de pausa reenviado não manteve a autoria e a gravação única.';
+  end if;
+  portal:=pg_temp.workshop_restore_read(office,'execution_snapshot',filters);
+  params:=jsonb_build_object('session_id',em_fixture.id(970+office),'expected_version',portal->'detail'->'session'->'version',
+   'action','confirm_finished','reported_finished_at',clock_timestamp(),'effort_minutes',30,'note','',
+   'reason','Revisão transacional do ensaio local');
+  begin
+   perform pg_temp.workshop_restore_planning_write((office % 4)+1,gen_random_uuid(),'review_execution_session',params);
+   raise exception 'Uma oficina estrangeira revisou um apontamento.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'review_execution_session',params,false);
+   raise exception 'Um gravador sem contexto revisou um apontamento.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  perform pg_temp.workshop_restore_planning_write(office,submission,'review_execution_session',params);
+  retry:=pg_temp.workshop_restore_planning_write(office,submission,'review_execution_session',params);
+  portal:=pg_temp.workshop_restore_read(office,'execution_snapshot',filters);
+  if retry->>'idempotent_replay' is distinct from 'true' or portal->'detail'->>'reviews_total' is distinct from '1'
+   or portal->'detail'->'session'->>'confirmed_minutes' is distinct from '30' then
+   raise exception 'O portal perdeu a revisão autorizada ou gravou o reenvio novamente.';
+  end if;
+ end loop;
+end
+$workshop_execution$;
 rollback;
-select 'PASS: four offices, three Gantt views, capacity, availability, queue, load, own media; 132 denied cross-office reads, 20 crossed writes, 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;

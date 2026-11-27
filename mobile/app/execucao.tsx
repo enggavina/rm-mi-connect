@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { service } from '../src/core';
 import { EXECUTION_RPC, PAUSE_REASONS, executionMinutes, executionReviewReasonLabel, projectExecution, type ExecutionKind, type ExecutionParams, type PauseReason } from '../src/core/execution';
-import { newestExecutionView, type ExecutionLocalView } from '../src/core/execution-cache';
+import { executionReadRefused, newestExecutionView, type ExecutionLocalView } from '../src/core/execution-cache';
 import { canAccessCell } from '../src/domain/journey';
 import { useApp, useRouteFocused, useRows } from '../src/ui/state';
 import { Badge, Button, Card, Field, Notice, Screen, Select, s } from '../src/ui/components';
@@ -22,11 +22,12 @@ export default function Execucao() {
   const owner = app.sessionUserId, actorId = app.operator?.operador_id, key = `${owner}:${actorId}:${allocationId}`;
   const [view, setView] = useState<ExecutionLocalView | null>(null), [loadedKey, setLoadedKey] = useState('');
   const [queueReady, setQueueReady] = useState(false), [loading, setLoading] = useState(false);
+  const [readRefused, setReadRefused] = useState(false);
   const [error, setError] = useState(''), [queueError, setQueueError] = useState(''), [refresh, setRefresh] = useState(0);
   const [note, setNote] = useState(''), [pauseReason, setPauseReason] = useState<PauseReason | ''>(''), [minutes, setMinutes] = useState('');
   const [draft, setDraft] = useState<ReviewDraft | null>(null), [busy, setBusy] = useState(false), [receiptId, setReceiptId] = useState('');
   const sending = useRef(false), currentKey = useRef(key); currentKey.current = key;
-  useEffect(() => { setView(null); setLoadedKey(''); setQueueReady(false); setDraft(null); setNote(''); setPauseReason(''); setMinutes(''); setReceiptId(''); setError(''); }, [key]);
+  useEffect(() => { setView(null); setLoadedKey(''); setQueueReady(false); setReadRefused(false); setDraft(null); setNote(''); setPauseReason(''); setMinutes(''); setReceiptId(''); setError(''); }, [key]);
   useEffect(() => {
     let live = true;
     if (!focused || !owner || !actorId || !allocationId || !app.ready) return;
@@ -36,9 +37,14 @@ export default function Execucao() {
       if (live && currentKey.current === key) { setView(previous => newestExecutionView(previous, cached)); setLoadedKey(key); }
       if (app.online) {
         const fresh = await service.executionSnapshot(allocationId, true);
-        if (live && currentKey.current === key) { setView(previous => newestExecutionView(previous, fresh)); setLoadedKey(key); }
+        if (live && currentKey.current === key) { setView(previous => newestExecutionView(previous, fresh)); setLoadedKey(key); setReadRefused(false); }
       }
-    })().catch(e => { if (live && currentKey.current === key) setError(e instanceof Error ? e.message : 'Não foi possível consultar os apontamentos.'); }).finally(() => { if (live && currentKey.current === key) setLoading(false); });
+    })().catch(e => {
+      if (live && currentKey.current === key) {
+        if (executionReadRefused(e)) setReadRefused(true);
+        setError(e instanceof Error ? e.message : 'Não foi possível consultar os apontamentos.');
+      }
+    }).finally(() => { if (live && currentKey.current === key) setLoading(false); });
     return () => { live = false; };
   }, [focused, owner, actorId, allocationId, app.ready, app.online, app.lastSync, key, refresh]);
   useEffect(() => {
@@ -50,7 +56,7 @@ export default function Execucao() {
     return () => { live = false; };
   }, [focused, owner, actorId, allocationId, app.ready, app.revision, key]);
   const candidate = view?.snapshot;
-  const current = loadedKey === key && candidate && candidate.operator_id === actorId ? candidate : null;
+  const current = !readRefused && loadedKey === key && candidate && candidate.operator_id === actorId ? candidate : null;
   const projection = useMemo(() => current ? projectExecution(current, view?.operations ?? [], !!view?.safeToAppend, view?.contexts) : null, [current, view?.operations, view?.safeToAppend, view?.contexts]);
   const allowed = !!current && canAccessCell(app.operator, current.allocation.cell_id);
   const back = params.projeto && params.celula ? { pathname: '/projeto' as const, params: { projeto: params.projeto, celula: params.celula } } : '/celula' as const;

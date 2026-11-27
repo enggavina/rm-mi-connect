@@ -1,8 +1,10 @@
+import { notFound } from 'next/navigation';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { EXECUTION_READ_SCOPES } from '@/server/web/execution-policy';
-import { createExecutionData } from '@/server/web/execution-data';
-import { listGanttCells, listGanttProjects } from '@/server/web/gantt-data';
+import { createExecutionData, ExecutionSelectionUnavailable } from '@/server/web/execution-data';
+import { createGanttData } from '@/server/web/gantt-data';
+import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { ExecutionBoard } from '@/components/web/execution-board';
 import { PcpNavigation } from '@/components/web/pcp-navigation';
@@ -13,9 +15,12 @@ export default async function Execucao({ searchParams }: { searchParams: Promise
   const value = (key: string) => typeof params[key] === 'string' ? params[key] as string : undefined;
   const projectId = scheduleId(params.project) ?? null, cellId = scheduleId(params.cell) ?? null, selectedSession = scheduleId(params.session) ?? null;
   const filters = { project_id: projectId, cell_id: cellId, session_id: selectedSession, include_closed: !!projectId || value('closed') === 'yes' };
+  const workshopRead = session.sso && ssoWorkshopRead(session.sso, session.client);
+  const choices = createGanttData(session.client, session.sso?.capabilities, workshopRead);
   const [snapshot, cells, projects] = await Promise.all([
-    createExecutionData(session.client, session.sso?.capabilities).getExecutionSnapshot(filters), listGanttCells(),
-    listGanttProjects(value('q'), value('page')),
+    createExecutionData(session.client, session.sso?.capabilities, workshopRead).getExecutionSnapshot(filters)
+      .catch(error => { if (error instanceof ExecutionSelectionUnavailable) notFound(); throw error; }),
+    choices.listGanttCells(), choices.listGanttProjects(value('q'), value('page')),
   ]);
   const query = new URLSearchParams();
   if (projectId) query.set('project', projectId); if (cellId) query.set('cell', cellId); if (selectedSession) query.set('session', selectedSession); if (filters.include_closed) query.set('closed', 'yes');

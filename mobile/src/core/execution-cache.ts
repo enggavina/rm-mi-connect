@@ -1,7 +1,7 @@
 import { executionCacheKey, parseExecutionParams, parseExecutionSnapshot, type ExecutionContexts, type ExecutionSnapshot } from './execution';
 import type { OutboxRow } from './types';
 
-export type ExecutionScope = { owner: string; operatorId: string; allocationId: string };
+export type ExecutionScope = { owner: string; operatorId: string; allocationId: string; workshopId?: string };
 // ack is the server-evidence fence: an ACK or an authoritative refusal requires
 // a subsequent successful read before another action can use an old cache.
 export type ExecutionEpoch = { intent: number; ack: number };
@@ -17,20 +17,26 @@ export const EXECUTION_CONTEXT_SQL = `SELECT key,json_object('schema',json_extra
     'events',json('[]'),'events_total',0,'events_complete',json('true'),'reviews',json('[]'),'reviews_total',0,'reviews_complete',json('true')),
   'known_event_ids',json((SELECT json_group_array(json_extract(e.value,'$.id')) FROM json_each(local_meta.value,'$.snapshot.events') e))) value
   FROM local_meta WHERE key IN (SELECT value FROM json_each(?)) AND json_valid(value)`;
+export const EXECUTION_OPERATIONS_SQL = `SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json,m.workshop_id
+  FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.rpc_name=? AND m.actor_id=? AND
+  (? IS NULL OR m.workshop_id=?) AND
+  (o.status<>'completed' OR o.rowid IN(SELECT p.rowid FROM local_rpc_outbox p JOIN local_queue_meta a USING(id)
+   WHERE p.rpc_name=? AND a.actor_id=? AND (? IS NULL OR a.workshop_id=?) AND p.status='completed'
+   ORDER BY p.created_at DESC,p.rowid DESC LIMIT 200)) ORDER BY o.created_at,o.rowid`;
 export function executionContextKeys(scope: ExecutionScope, cache: ExecutionCache | null, operations: readonly OutboxRow[]): string[] {
   const ids = new Set([scope.allocationId]);
   if (cache?.snapshot.running_session) ids.add(cache.snapshot.running_session.allocation_id);
   for (const row of operations) if (row.status !== 'completed' && row.actor_id === scope.operatorId) {
     try { const raw = JSON.parse(row.params_json); if (raw.p_operador_id === scope.operatorId) ids.add(parseExecutionParams(raw).p_allocation_id); } catch { /* Invalid own commands are fenced by the projector. */ }
   }
-  return [...ids].map(id => executionCacheKey(scope.owner, scope.operatorId, id));
+  return [...ids].map(id => executionCacheKey(scope.owner, scope.operatorId, id, scope.workshopId));
 }
 export function executionContexts(rows: readonly { key: string; value: string }[], scope: ExecutionScope, current: ExecutionEpoch): ExecutionContexts {
   const result: Record<string, ExecutionContexts[string]> = {};
   for (const row of rows) {
     try {
       const raw = JSON.parse(row.value), allocationId = raw?.scope?.allocationId;
-      if (typeof allocationId !== 'string' || row.key !== executionCacheKey(scope.owner, scope.operatorId, allocationId)) continue;
+      if (typeof allocationId !== 'string' || row.key !== executionCacheKey(scope.owner, scope.operatorId, allocationId, scope.workshopId)) continue;
       const cache = parseExecutionCache(raw, { ...scope, allocationId });
       if (!cache || cache.epoch.ack !== current.ack || cache.epoch.intent > current.intent) continue;
       const known: unknown[] = raw.known_event_ids ?? cache.snapshot.events.map(event => event.id);
@@ -50,7 +56,8 @@ export function executionEpoch(value: unknown): ExecutionEpoch {
   return { intent: r.intent, ack: r.ack };
 }
 export const sameExecutionEpoch = (a: ExecutionEpoch, b: ExecutionEpoch) => a.intent === b.intent && a.ack === b.ack;
-export const sameExecutionScope = (a: ExecutionScope, b: ExecutionScope) => a.owner === b.owner && a.operatorId === b.operatorId && a.allocationId === b.allocationId;
+export const sameExecutionScope = (a: ExecutionScope, b: ExecutionScope) => a.owner === b.owner && a.operatorId === b.operatorId
+  && a.allocationId === b.allocationId && a.workshopId === b.workshopId;
 export function executionReadRefused(error: unknown): boolean {
   return !!error && typeof error === 'object' && 'code' in error && ['28000', '42501', 'P0002', 'PT410'].includes(String(error.code));
 }
@@ -71,7 +78,9 @@ export function acceptExecutionRead(prior: ExecutionCache | null, current: Execu
   return { schema: 1, scope: { ...scope }, epoch: { ...current }, snapshot };
 }
 export function executionLocalView(cache: ExecutionCache | null, current: ExecutionEpoch, operations: OutboxRow[], contexts: ExecutionContexts = {}): ExecutionLocalView {
-  return { snapshot: cache?.snapshot ?? null, safeToAppend: !!cache && cache.epoch.ack === current.ack, epoch: { ...current }, operations, contexts };
+  const safeToAppend = !!cache && cache.epoch.ack === current.ack;
+  const snapshot = cache?.scope.workshopId && !safeToAppend ? null : cache?.snapshot ?? null;
+  return { snapshot, safeToAppend, epoch: { ...current }, operations, contexts };
 }
 /** The ticket is captured before issuing the read. Commit must compare it
  * atomically, rather than trusting server/device wall-clock timestamps. */

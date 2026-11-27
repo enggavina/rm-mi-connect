@@ -4,6 +4,7 @@ import { uuid } from './policy';
 import { ganttRevision } from './gantt-policy';
 import { EXECUTION_READ_SCOPES, EXECUTION_MAX_ALLOCATIONS, EXECUTION_MAX_SESSIONS, executionFiltersSchema, executionKindSchema, executionMinutesSchema, executionPauseReasonSchema, executionStateSchema, executionTimestampSchema, type ExecutionFilters } from './execution-policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 const text = z.string().nullable(), timestamp = executionTimestampSchema;
 export const executionAllocationSchema = z.object({
@@ -41,15 +42,25 @@ export type ExecutionDetail = z.infer<typeof executionDetailSchema>;
 const key = (id: string) => id.toLowerCase();
 const unavailable = () => new Error('Não foi possível consultar os apontamentos de execução. Tente novamente.');
 const unique = (rows: { id: string }[]) => new Set(rows.map(row => key(row.id))).size === rows.length;
-export function createExecutionData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export class ExecutionSelectionUnavailable extends Error {
+  constructor() { super('Este contexto de apontamentos está indisponível.'); }
+}
+export function createExecutionData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   return { async getExecutionSnapshot(input: ExecutionFilters): Promise<ExecutionSnapshot> {
     if (capabilities && !EXECUTION_READ_SCOPES.every(scope => capabilities.includes(scope))) throw new Error('Acesso não autorizado a esta área.');
     const filters = executionFiltersSchema.safeParse(input); if (!filters.success) throw unavailable();
-    let result;
-    try { result = await client.rpc('rm_web_execution_snapshot_v1', { p_filters: filters.data }); } catch { throw unavailable(); }
-    if (result.error) throw result.error.code === 'PT413' ? new Error('Os apontamentos excedem o limite de leitura. Selecione um projeto ou uma célula.') : unavailable();
-    try { if (Buffer.byteLength(JSON.stringify(result.data), 'utf8') > 10 * 1024 * 1024) throw unavailable(); } catch { throw unavailable(); }
-    const parsed = executionSnapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
+    let payload: unknown;
+    if (workshopRead) {
+      payload = await workshopRead('execution_snapshot', filters.data);
+      if (payload === null && (filters.data.project_id || filters.data.cell_id || filters.data.session_id)) throw new ExecutionSelectionUnavailable();
+    } else {
+      let result;
+      try { result = await client.rpc('rm_web_execution_snapshot_v1', { p_filters: filters.data }); } catch { throw unavailable(); }
+      if (result.error) throw result.error.code === 'PT413' ? new Error('Os apontamentos excedem o limite de leitura. Selecione um projeto ou uma célula.') : unavailable();
+      payload = result.data;
+    }
+    try { if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > 10 * 1024 * 1024) throw unavailable(); } catch { throw unavailable(); }
+    const parsed = executionSnapshotSchema.safeParse(payload); if (!parsed.success) throw unavailable();
     const data = parsed.data;
     if ((['project_id', 'cell_id', 'session_id', 'include_closed'] as const).some(field => data.filters[field] !== filters.data[field])) throw unavailable();
     if (!data.complete) { if (data.allocations.length || data.sessions.length || data.detail) throw unavailable(); return data; }
@@ -77,6 +88,8 @@ export function createExecutionData(client: SupabaseClient, capabilities?: reado
 }
 export async function getExecutionSnapshot(filters: ExecutionFilters) {
   const { requireWebUser } = await import('./auth');
+  const { ssoWorkshopRead } = await import('./sso-bridge');
   const session = await requireWebUser(EXECUTION_READ_SCOPES);
-  return createExecutionData(session.client, session.sso?.capabilities).getExecutionSnapshot(filters);
+  const workshopRead = session.sso && ssoWorkshopRead(session.sso, session.client);
+  return createExecutionData(session.client, session.sso?.capabilities, workshopRead).getExecutionSnapshot(filters);
 }

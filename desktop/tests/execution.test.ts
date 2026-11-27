@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { actionUser, WebActionResult } from '../src/server/web/mutation';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
-import { createExecutionData } from '../src/server/web/execution-data';
+import { createExecutionData, ExecutionSelectionUnavailable } from '../src/server/web/execution-data';
 import { createExecutionActions } from '../src/server/web/execution-mutations';
 import { reviewExecutionSessionSchema } from '../src/server/web/execution-policy';
 
@@ -36,6 +36,21 @@ test('execution reader requires every domain read capability before accessing th
   for (const missing of caps.slice(0, 3)) { const f = read(snapshot(), caps.filter(cap => cap !== missing)); await assert.rejects(() => f.getExecutionSnapshot(filters), /Acesso/); assert.equal(f.calls.length, 0); }
   const f = read(snapshot()); const result = await f.getExecutionSnapshot(filters); assert.equal(f.calls.length, 1);
   assert.equal(result.detail!.events[0].occurred_at, stamp); assert.equal(result.detail!.events[1].received_at, later); assert.equal(result.sessions[0].confirmed_minutes, 60);
+});
+test('execution uses only the office reader and treats foreign session links as unavailable', async () => {
+  const client = { rpc: async () => assert.fail('The legacy reader must not run with a workshop session.') } as unknown as SupabaseClient;
+  let data: unknown = snapshot();
+  const reader = createExecutionData(client, caps, async (resource, args) => {
+    assert.equal(resource, 'execution_snapshot');
+    assert.deepEqual(args, filters);
+    if (data instanceof Error) throw data;
+    return data;
+  });
+  assert.equal((await reader.getExecutionSnapshot(filters)).detail?.events.length, 2);
+  data = null;
+  await assert.rejects(reader.getExecutionSnapshot(filters), ExecutionSelectionUnavailable);
+  data = new Error('Central indisponível');
+  await assert.rejects(reader.getExecutionSnapshot(filters), error => error === data);
 });
 test('execution preserves unknown effort, raw clock disagreements and quarantined predecessor claims', async () => {
   const data = snapshot(); data.sessions[0].needs_review = true; data.sessions[0].clock_warning = true; data.detail.session = { ...data.sessions[0] };

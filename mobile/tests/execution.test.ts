@@ -9,7 +9,8 @@ import { RM_MOBILE_SQLITE_DDL } from '../src/core/schema';
 import { QUEUE_EXECUTION_MIGRATION } from '../src/core/execution-queue-migration';
 import { QUEUE_WORKSHOP_MIGRATION } from '../src/core/workshop-queue-migration';
 import { EXECUTION_RPC, executionCacheKey, executionMinutes, executionReviewReasonLabel, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, projectExecution, type ExecutionSnapshot, type ExecutionSummary, type ExecutionParams } from '../src/core/execution';
-import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, newestExecutionView, parseExecutionCache, refreshExecutionRead, type ExecutionCache, type ExecutionEpoch, type ExecutionLocalView } from '../src/core/execution-cache';
+import { EXECUTION_CONTEXT_SQL, EXECUTION_OPERATIONS_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, newestExecutionView, parseExecutionCache, refreshExecutionRead, type ExecutionCache, type ExecutionEpoch, type ExecutionLocalView } from '../src/core/execution-cache';
+import { readWorkshopExecution } from '../src/core/execution-workshop';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention, type ExecutionSql } from '../src/core/execution-store';
 import type { OutboxRow } from '../src/core/types';
 
@@ -32,6 +33,49 @@ function setup(file = ':memory:', v2 = false) {
 function sql(db: DatabaseSync): ExecutionSql { return { getFirstAsync: async <T>(query: string, ...values: (string | number | null)[]) => (db.prepare(query).get(...values) ?? null) as T | null, runAsync: async (query, ...values) => db.prepare(query).run(...values) }; }
 async function transaction<T>(db: DatabaseSync, work: (adapter: ExecutionSql) => Promise<T>) { db.exec('BEGIN'); try { const result = await work(sql(db)); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } }
 const intention = (n = 20, p = parameters()) => ({ id: id(n), owner, actor, tokenKey: 'secure-token-reference', params: { ...p, p_operador_id: actor }, createdAt: stamp });
+
+test('workshop execution transport binds the device and operator request and rejects unrelated response data', async () => {
+  const input = { deviceToken: 'local-device', operatorToken: 'local-operator', workshopOrigin: id(85), operatorId: actor, allocation };
+  function transport(data: unknown, status = 200): typeof fetch {
+    return async (url, init) => {
+      assert.equal(url, 'https://em-web-production.up.railway.app/api/mobile/apontamentos');
+      assert.equal(init?.redirect, 'error');
+      assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer local-device');
+      assert.deepEqual(JSON.parse(String(init?.body)), { operatorToken: 'local-operator', workshopOrigin: id(85), allocation });
+      return Response.json(data, { status });
+    };
+  }
+  assert.equal((await readWorkshopExecution(input, transport({ workshop_id: id(85), snapshot: snapshot() }))).allocation.id, allocation);
+  await assert.rejects(readWorkshopExecution(input, transport({ workshop_id: id(86), snapshot: snapshot() })), { code: '42501' });
+  await assert.rejects(readWorkshopExecution(input, transport({ workshop_id: id(85), snapshot: { ...snapshot(), operator_id: id(89) } })));
+  await assert.rejects(readWorkshopExecution(input, transport({ code: '42501', message: 'private' }, 403)),
+    error => executionReadRefused(error) && !String(error).includes('private'));
+});
+
+test('scoped offline execution keeps other workshops and unclassified work out of the view without deleting their queue entries', async () => {
+  const db = setup();
+  const bma = id(85), brj = id(86), scoped = { ...scope, workshopId: bma };
+  const epoch = { intent: 3, ack: 0 };
+  try {
+    db.exec(QUEUE_EXECUTION_MIGRATION);
+    db.exec(QUEUE_WORKSHOP_MIGRATION);
+    await transaction(db, async adapter => {
+      for (const [n, office] of [[20, bma], [21, brj], [22, null]] as const) {
+        await storeExecutionIntention(adapter, intention(n));
+        await adapter.runAsync('UPDATE local_queue_meta SET workshop_id=? WHERE id=?', office, id(n));
+      }
+    });
+    const pending = db.prepare(EXECUTION_OPERATIONS_SQL).all(EXECUTION_RPC, actor, bma, bma, EXECUTION_RPC, actor, bma, bma);
+    assert.deepEqual(pending.map(row => row.id), [id(20)]);
+    assert.equal(db.prepare('SELECT count(*) total FROM local_rpc_outbox').get()?.total, 3);
+    const cache = acceptExecutionRead(null, epoch, epoch, snapshot(), scoped)!;
+    assert.throws(() => parseExecutionCache(cache, { ...scope, workshopId: brj }));
+    assert.throws(() => parseExecutionCache(cache, scope));
+    assert.deepEqual(executionContextKeys(scoped, cache, []), [executionCacheKey(owner, actor, allocation, bma)]);
+    assert.equal(executionLocalView(cache, epoch, []).snapshot?.allocation.id, allocation);
+    assert.equal(executionLocalView(cache, { ...epoch, ack: 1 }, []).snapshot, null);
+  } finally { db.close(); }
+});
 
 test('execution queue v3 preserves authors, payloads, retries, results and equal-time FIFO while adding one RPC', () => {
   const db = setup(':memory:', true);

@@ -1,7 +1,9 @@
+import { notFound } from 'next/navigation';
 import { requireWebUser } from '@/server/web/auth';
-import { createExecutionData } from '@/server/web/execution-data';
+import { createExecutionData, ExecutionSelectionUnavailable } from '@/server/web/execution-data';
 import { EXECUTION_READ_SCOPES } from '@/server/web/execution-policy';
-import { createPcpData, getPcpChoices } from '@/server/web/pcp-data';
+import { createPcpData } from '@/server/web/pcp-data';
+import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { executionQuality, qualityLabels } from '@/server/web/quality-policy';
 import { PcpNavigation } from '@/components/web/pcp-navigation';
@@ -11,9 +13,13 @@ import { pageNumber } from '@/server/web/policy';
 export default async function Qualidade({searchParams}: {searchParams:Promise<Record<string,string|string[]|undefined>>}) {
   const query = await searchParams, access = await requireWebUser(EXECUTION_READ_SCOPES);
   const cell = scheduleId(query.cell) ?? null, page = pageNumber(typeof query.page === 'string' ? query.page : undefined);
+  const workshopRead = access.sso && ssoWorkshopRead(access.sso, access.client);
+  const pcp = createPcpData(access.client, access.sso?.capabilities, workshopRead);
   const [snapshot, receiving, choices] = await Promise.all([
-    createExecutionData(access.client,access.sso?.capabilities).getExecutionSnapshot({project_id:null,cell_id:cell,session_id:null,include_closed:false}),
-    createPcpData(access.client,access.sso?.capabilities).listReceiving(), getPcpChoices(),
+    createExecutionData(access.client, access.sso?.capabilities, workshopRead)
+      .getExecutionSnapshot({ project_id: null, cell_id: cell, session_id: null, include_closed: false })
+      .catch(error => { if (error instanceof ExecutionSelectionUnavailable) notFound(); throw error; }),
+    pcp.listReceiving(), pcp.getPcpChoices(),
   ]);
   const quality = executionQuality(snapshot), size = 50;
   const percent = (value:number|null) => value === null ? 'Sem base' : `${value.toLocaleString('pt-BR')}%`;
