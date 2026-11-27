@@ -90,7 +90,7 @@ test('media download signs only the expected object and keeps legacy attachments
 test('the legacy image relay streams approved image formats without forwarding credentials or redirects', async t => {
   const url = 'https://files.cdn.bubble.io/legacy.heic';
   const bytes = new Uint8Array([1, 2, 3]);
-  const fetchMock = t.mock.method(globalThis, 'fetch', async (input, options) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], options?: RequestInit) => {
     assert.equal(input, url);
     assert.equal(options?.redirect, 'error');
     assert.equal(options?.credentials, 'omit');
@@ -108,11 +108,12 @@ test('the legacy image relay rejects unsafe types, failed responses and over-lim
   const url = 'https://files.cdn.bubble.io/legacy.jpg';
   const signal = new AbortController().signal;
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response('file'));
-  for (const init of [
+  const denied: ResponseInit[] = [
     { headers: { 'Content-Type': 'image/svg+xml' } },
     { status: 404, headers: { 'Content-Type': 'image/jpeg' } },
     { headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(21 * 1024 * 1024) } },
-  ]) {
+  ];
+  for (const init of denied) {
     fetchMock.mock.mockImplementationOnce(async () => new Response('file', init));
     assert.equal(await relayLegacyWorkshopImage(url, signal), null);
   }

@@ -52,6 +52,11 @@ async function main() {
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.image) {
             const image = page.locator(step.image).first();
+            const sections = await page.locator('details.record-section').all();
+            for (const section of sections) {
+              if (await image.count()) break;
+              if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
+            }
             await image.scrollIntoViewIfNeeded();
             const src = await image.getAttribute('src');
             assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
@@ -60,6 +65,7 @@ async function main() {
             assert.equal(preview.status(), 200);
             assert.match(preview.headers()['content-type'] ?? '', /^image\//);
             assert.equal(preview.headers().location, undefined);
+            await preview.dispose();
           }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
