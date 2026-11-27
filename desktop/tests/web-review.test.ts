@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
-import { workshopMediaTarget } from '../src/server/web/workshop-media';
+import { resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 import { workshopMediaUrl } from '../src/shared/workshop-media';
 
 test('record sections preserve submitted text, fractional order, choices and orphan answers without adding unanswered questions', () => {
@@ -66,6 +66,23 @@ test('workshop media accepts exact local references and restricts signing by sto
     { kind: 'storage', origin: base, bucket: 'rm-fotos', path: 'owner/title view.jpg' });
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg`, base, 'answer_signature'), null);
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner%2F..%2Ffile.jpg`, base, 'project_photo'), null);
+  assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/other/%2e%2e/file.jpg`, base, 'project_photo'), null);
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg?token=known`, base, 'project_photo'), null);
   assert.equal(workshopMediaTarget('https://files.cdn.bubble.io.example.org/legacy.jpg', base, 'project_photo'), null);
+});
+
+test('media download signs only the expected object and keeps legacy attachments readable', async () => {
+  const base = 'https://example.supabase.co';
+  const invoice = `${base}/storage/v1/object/authenticated/rm-documentos/device/a%20b.pdf`;
+  const signed = `${base}/storage/v1/object/sign/rm-documentos/device/a%20b.pdf?token=opaque`;
+  assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async (bucket, path) => {
+    assert.equal(bucket, 'rm-documentos');
+    assert.equal(path, 'device/a b.pdf');
+    return signed;
+  }), signed);
+  assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => signed.replace('a%20b.pdf', 'different.pdf')), null);
+  assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => signed.replace(base, 'https://unrelated.example')), null);
+  assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => `${signed}&token=duplicate`), null);
+  const legacy = 'https://files.cdn.bubble.io/legacy.jpg';
+  assert.equal(await resolveWorkshopMedia(legacy, base, 'answer_photo', async () => assert.fail('Legacy URL does not sign storage')), legacy);
 });

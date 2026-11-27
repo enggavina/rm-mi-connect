@@ -15,6 +15,7 @@ import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraf
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
 import { prefetchWithSpaceReserve } from './media-cache-policy';
+import { readWorkshopMedia, workshopMediaCacheKey } from './media-workshop';
 import { knownConnection, nextSyncRecovery } from './sync-recovery';
 import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, type ExecutionSnapshot } from './execution';
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
@@ -30,6 +31,7 @@ const scopedReceiving = process.env.EXPO_PUBLIC_EM_SCOPED_RECEIVING === 'true';
 const scopedOperatorCells = process.env.EXPO_PUBLIC_EM_SCOPED_OPERATOR_CELLS === 'true';
 const scopedCatalog = scopedOperatorCells && process.env.EXPO_PUBLIC_EM_SCOPED_CATALOG === 'true';
 const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTATIONS === 'true';
+const scopedMedia = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MEDIA === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -50,6 +52,7 @@ class MobileService {
   private debounce?: ReturnType<typeof setTimeout>;
   private identityBusy = false;
   private mediaWork = new Set<Promise<string>>();
+  private scopedDownloads = new Map<string, Promise<string>>();
   private catalogRevision = 0;
   private receivingDebounce?: ReturnType<typeof setTimeout>;
   private receivingDrafts = new ReceivingDraftCoordinator({
@@ -572,10 +575,11 @@ class MobileService {
     return data.signedUrl;
   }
   async getDocumentFile(uri: string): Promise<string> {
-    const cached = await this.getMediaUrl(uri);
-    if (isLocalUri(cached)) return cached;
+    const cached = await this.cachedMediaFile(uri);
+    if (cached) return cached;
     if (!this.snapshot.online) throw new Error('Este documento ainda não foi baixado. Conecte uma vez para disponibilizá-lo offline.');
     if (!/^https:\/\//.test(uri)) throw new Error('Endereço de documento inválido.');
+    if (scopedMedia) return this.downloadAuthorizedMedia(uri, true);
     const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, uri);
     const suffix = documentFileName(uri).match(/\.(pdf|png|jpe?g|docx?|xlsx?|txt|xml)$/i)?.[1] ?? 'pdf';
     const target = `${mediaDirectory}document-${hash}.${suffix}`;
@@ -615,11 +619,84 @@ class MobileService {
     this.scheduleSync();
     return destination;
   }
+  private async mediaScope() {
+    const owner = this.snapshot.sessionUserId, actor = this.snapshot.operator?.operador_id, token = this.operatorToken;
+    if (!owner || !actor || !token || this.identityBusy) throw new Error('Identifique o operador para abrir arquivos da oficina.');
+    const workshop = await secureStorage.getItem(`rm.workshop.device.${owner}`);
+    const confirmed = await secureStorage.getItem(`rm.workshop.operator.${owner}.${actor}`);
+    const assertCurrent = () => {
+      if (!workshop || this.identityBusy || this.snapshot.sessionUserId !== owner
+        || this.snapshot.operator?.operador_id !== actor || this.operatorToken !== token) throw new Error('A autorização dos arquivos mudou.');
+    };
+    if (!workshop || workshop !== confirmed || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
+      throw new Error('Confirme a oficina para abrir o arquivo.');
+    }
+    assertCurrent();
+    return { owner, actor, token, workshop, assertCurrent };
+  }
+  private async locateMedia(key: string) {
+    const local = await this.database.local<string>(key);
+    return local && (await FileSystem.getInfoAsync(local)).exists ? local : null;
+  }
+  async cachedMediaFile(uri: string): Promise<string | null> {
+    if (!uri) return null;
+    if (isLocalUri(uri)) return uri;
+    if (!scopedMedia) return this.locateMedia(`media:${uri}`);
+    const scope = await this.mediaScope();
+    const local = await this.locateMedia(workshopMediaCacheKey(scope.workshop, scope.actor, uri));
+    scope.assertCurrent();
+    return local;
+  }
+  private async mediaLinks(scope: Awaited<ReturnType<MobileService['mediaScope']>>, urls: string[]) {
+    const { data, error } = await this.supabase().auth.getSession();
+    scope.assertCurrent();
+    if (error || !data.session || data.session.user.id !== scope.owner) throw new Error('Renove a sessão para abrir o arquivo.');
+    const links = await readWorkshopMedia({ deviceToken: data.session.access_token, operatorToken: scope.token, workshopId: scope.workshop }, urls, url);
+    scope.assertCurrent();
+    return links;
+  }
+  private async saveAuthorizedMedia(scope: Awaited<ReturnType<MobileService['mediaScope']>>, reference: string, source: string, document = false) {
+    const key = workshopMediaCacheKey(scope.workshop, scope.actor, reference);
+    const existing = this.scopedDownloads.get(key);
+    if (existing) return existing;
+    const download = (async () => {
+      const cached = await this.locateMedia(key) ?? await this.locateMedia(`media:${reference}`);
+      scope.assertCurrent();
+      if (cached) {
+        await this.database.saveLocal(key, cached);
+        scope.assertCurrent();
+        return cached;
+      }
+      const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, key);
+      const extension = document ? '.' + (documentFileName(reference).match(/\.(pdf|png|jpe?g|docx?|xlsx?|txt|xml)$/i)?.[1] ?? 'pdf') : '';
+      const target = `${mediaDirectory}workshop-${hash}${extension}`;
+      const result = await FileSystem.downloadAsync(source, target);
+      if (result.status < 200 || result.status >= 300) {
+        await FileSystem.deleteAsync(target, { idempotent: true });
+        throw new Error('Não foi possível baixar o arquivo da oficina.');
+      }
+      scope.assertCurrent();
+      if (document) {
+        const mimeType = result.headers?.['Content-Type'] ?? result.headers?.['content-type'];
+        await this.database.saveLocal(`document:${target}`, { name: documentFileName(reference), mimeType: mimeType?.split(';')[0] });
+      }
+      await this.database.saveLocal(key, target);
+      scope.assertCurrent();
+      return target;
+    })().finally(() => this.scopedDownloads.delete(key));
+    this.scopedDownloads.set(key, download);
+    return download;
+  }
+  private async downloadAuthorizedMedia(reference: string, document = false) {
+    const scope = await this.mediaScope();
+    const link = (await this.mediaLinks(scope, [reference])).get(reference);
+    if (!link) throw new Error('Arquivo indisponível para este operador na oficina.');
+    return this.saveAuthorizedMedia(scope, reference, link, document);
+  }
   async getMediaUrl(uri: string): Promise<string> {
-    if (!uri || isLocalUri(uri)) return uri;
-    const local = await this.database.local<string>(`media:${uri}`);
-    if (local && (await FileSystem.getInfoAsync(local)).exists) return local;
-    return uri;
+    const cached = await this.cachedMediaFile(uri);
+    if (cached || !scopedMedia) return cached ?? uri;
+    return uri && this.snapshot.online ? this.downloadAuthorizedMedia(uri) : '';
   }
   async sync(force = false): Promise<void> {
     const active = busySyncWithPriority(this.syncPromise, force, () => this.prioritizeReceivingOpenings(true));
@@ -883,7 +960,7 @@ class MobileService {
       verifyOperator();
       if (rows.length) {
         await this.database.cache(table, rows);
-        for (const row of rows) await this.cacheRecordMedia(table, row);
+        for (const row of rows) await this.cacheRecordMedia(table, row, scope);
         const last = rows[rows.length - 1];
         if (last.id === after?.id && last.updated_at === after.at) throw new Error('O catálogo devolveu a mesma posição de sincronização.');
         after = { at: last.updated_at, id: last.id };
@@ -929,25 +1006,36 @@ class MobileService {
     await this.database.removeMissing(table, ids);
     await this.database.saveLocal(`reconciled:${table}`, Date.now());
   }
-  private async cacheRecordMedia(table: CatalogTable, record: Row) {
+  private async cacheRecordMedia(table: CatalogTable, record: Row, scope?: CatalogSession) {
     const urls: string[] = table === 'rm_fotos' ? [record.foto_url] : table === 'rm_respostas' ? [...(record.fotos_urls ?? []), record.assinatura_url] : [];
     // Documents are downloaded on demand; their metadata stays available offline.
     for (const uri of urls.filter(u => typeof u === 'string' && /^https:\/\//.test(u))) {
-      if (await this.database.local(`media:${uri}`)) continue;
+      const key = scopedMedia && scope ? workshopMediaCacheKey(scope.workshopId, scope.operatorId, uri) : `media:${uri}`;
+      if (await this.database.local(key)) continue;
       const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, uri);
       const target = `${mediaDirectory}cache-${hash}`;
       await this.database.write(db => db.runAsync('INSERT OR IGNORE INTO local_media_download_queue(url,local_uri) VALUES (?,?)', uri, target));
     }
   }
   private async downloadPendingMedia() {
-    const pending = await this.database.connection().getAllAsync<{url: string; local_uri: string}>('SELECT * FROM local_media_download_queue LIMIT 50');
+    const pending = await this.database.connection().getAllAsync<{url: string; local_uri: string}>(
+      `SELECT * FROM local_media_download_queue LIMIT ${scopedMedia ? 25 : 50}`);
+    const scope = scopedMedia && pending.length ? await this.mediaScope() : null;
+    let links: Promise<Map<string, string>> | undefined;
     const pause = await prefetchWithSpaceReserve(pending, () => FileSystem.getFreeDiskStorageAsync(), async item => {
       try {
-        const result = await FileSystem.downloadAsync(item.url, item.local_uri);
-        if (result.status >= 200 && result.status < 300) {
+        if (scope) {
+          links ??= this.mediaLinks(scope, pending.map(media => media.url));
+          const resolved = await links;
+          scope.assertCurrent();
+          const source = resolved.get(item.url);
+          if (source) await this.saveAuthorizedMedia(scope, item.url, source);
+        } else {
+          const result = await FileSystem.downloadAsync(item.url, item.local_uri);
+          if (result.status < 200 || result.status >= 300) return;
           await this.database.saveLocal(`media:${item.url}`, item.local_uri);
-          await this.database.write(db => db.runAsync('DELETE FROM local_media_download_queue WHERE url=?', item.url));
         }
+        await this.database.write(db => db.runAsync('DELETE FROM local_media_download_queue WHERE url=?', item.url));
       } catch { /* Durable download queue retries on the next synchronization. */ }
     });
     const mediaCacheNotice = pause === 'low_space'

@@ -6,12 +6,18 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import * as Sharing from 'expo-sharing';
 import { service } from '../core';
 import { DOCUMENT_MIME_TYPES } from '../core/document-policy';
-import { isLocalUri } from '../core/sync-policy';
 import { Button, Notice, s } from './components';
+import { useApp } from './state';
 
 export function DocumentLink({ uri, title = 'Abrir documento' }: { uri: string; title?: string }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [available, setAvailable] = useState(false);
-  useEffect(() => { let live = true; service.getMediaUrl(uri).then(value => { if (live) setAvailable(isLocalUri(value)); }).catch(() => {}); return () => { live = false; }; }, [uri]);
+  const { operator } = useApp();
+  useEffect(() => {
+    let live = true;
+    setAvailable(false);
+    service.cachedMediaFile(uri).then(value => { if (live) setAvailable(!!value); }).catch(() => {});
+    return () => { live = false; };
+  }, [uri, operator?.operador_id]);
   async function open() {
     setBusy(true); setError('');
     try {

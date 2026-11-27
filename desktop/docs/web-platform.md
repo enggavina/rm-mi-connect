@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — envio dos registros pendentes do Android
+
+A migração **083** e o Railway **`694d77ca-2520-48a3-9f99-6f008655bd8d`** publicaram `/api/mobile/registros`. O serviço confirma a oficina e o par dispositivo/operador antes de autorizar fotos, formulários, revisões, comentários, estados da célula, aprovações e apontamentos. A autorização corresponde ao conteúdo e ao protocolo originais. Uma recusa mantém o envio salvo no aparelho, e uma nova tentativa autorizada usa o mesmo protocolo.
+
+Passaram 153 testes mobile, a regressão SQL, o CI e 40 verificações da API em produção. O APK **1.2.16/código 19** foi instalado no Moto G84 e abriu as 29 células autorizadas online e offline. O envio com autoria e retentativa foi confirmado em banco isolado. O teste no aparelho usou registros existentes para leitura. SHA-256 `ad986165d94af17f1c38f64c1b113b4058dc08c732e455a8bf4f62d6e2d6388c`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45929559563).
+
 ## P0.4 — sincronização dos catálogos relacionados do Android
 
 A migração **082** e o Railway **`65233573-abbb-42cd-b45d-98f0c41c14ba`** ampliaram o piloto para 22 catálogos. Projetos, formulários, fotos, documentos e atores são consultados pela oficina. Os nomes necessários à identificação dos registros usam uma projeção sem dados de autenticação. O cache mantém a lista de células autorizadas de cada operador e preserva o trabalho offline em aparelhos compartilhados.

@@ -7,10 +7,11 @@ import ViewShot from 'react-native-view-shot';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { service } from '../core';
 import { Button, C, Notice, s } from './components';
-import { useRouteFocused } from './state';
+import { useApp, useRouteFocused } from './state';
 
 export function MediaImage({ uri, height = 180, expand = false, label = 'Evidência da inspeção' }: { uri: string; height?: number; expand?: boolean; label?: string }) {
   const focused = useRouteFocused();
+  const { online, operator } = useApp();
   const [resolved, setResolved] = useState<{ source: string; url: string } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -22,9 +23,9 @@ export function MediaImage({ uri, height = 180, expand = false, label = 'Evidên
       if (url) setResolved({ source: uri, url }); else setFailed(uri);
     }).catch(() => { if (live) setFailed(uri); });
     return () => { live = false; };
-  }, [uri, focused]);
+  }, [uri, focused, online, operator?.operador_id]);
   const url = focused && resolved?.source === uri ? resolved.url : null;
-  if (focused && failed === uri) return <Notice>Prévia indisponível offline. O vínculo da imagem está preservado.</Notice>;
+  if (focused && failed === uri) return <Notice>{online ? 'Não foi possível abrir a prévia desta imagem.' : 'Prévia indisponível offline. O vínculo da imagem está preservado.'}</Notice>;
   if (!url) return <View style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft, alignItems: 'center', justifyContent: 'center' }}>{focused && <Text style={s.muted}>Carregando foto…</Text>}</View>;
   return <>
     <Pressable disabled={!expand} accessibilityRole={expand ? 'button' : 'image'} accessibilityLabel={expand ? `Ampliar ${label}` : label} onPress={() => setOpen(true)}><Image source={{ uri: url }} style={{ width: '100%', height, borderRadius: 10, backgroundColor: C.soft }} resizeMode="contain" resizeMethod="resize" onError={() => setFailed(uri)} /></Pressable>

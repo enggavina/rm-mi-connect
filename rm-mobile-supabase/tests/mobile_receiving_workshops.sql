@@ -211,4 +211,39 @@ begin
    and cadastrado_por_id=pg_temp.rx_id(14)),'offline protocol returns one registered comment with the original author');
 end$$;
 select 'PASS: native queued mutation preserves author, exact payload and retry and refuses another workshop' result;
+
+create function pg_temp.rx_media(office int,urls text[]) returns jsonb language sql as $$
+ select public.rm_mobile_workshop_media_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),urls)
+$$;
+insert into public.rm_fotos(id,projeto_id,celula_id,foto_url) values
+ (pg_temp.rx_id(893),pg_temp.rx_id(779),pg_temp.rx_id(802),'https://files.cdn.bubble.io/foreign.jpg');
+insert into public.rm_projetos(id,nome) values(pg_temp.rx_id(884),'LOCAL BMA photos');
+insert into rm_private.workshop_project_ownership(id,workshop_id) values(pg_temp.rx_id(884),pg_temp.rx_id(1));
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade) values(pg_temp.rx_id(885),pg_temp.rx_id(884),pg_temp.rx_id(801),true);
+insert into public.rm_fotos(id,projeto_id,celula_id,foto_url) values
+ (pg_temp.rx_id(894),pg_temp.rx_id(884),pg_temp.rx_id(801),'https://files.cdn.bubble.io/team.jpg');
+do $$
+declare refs text[]; found jsonb; draft_url text; draft_photo text;
+begin
+ draft_url:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||pg_temp.rx_id(11)||'/draft.pdf';
+ draft_photo:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||pg_temp.rx_id(11)||'/draft.jpg';
+ insert into rm_private.receiving_drafts(id,auth_user_id,operator_id,last_save_id,payload) values
+  (pg_temp.rx_id(895),pg_temp.rx_id(11),pg_temp.rx_id(14),gen_random_uuid(),jsonb_build_object('id',pg_temp.rx_id(895),
+   'cliente',pg_temp.rx_id(20),'arquivoNotaFiscal',draft_url,'fotos',jsonb_build_array(jsonb_build_object('uri',draft_photo))));
+ select array(select f.foto_url from public.rm_fotos f where f.projeto_id=o.project_id and f.foto_url like '%/front.jpg' limit 1)
+  ||array(select d.arquivo_url from public.rm_documentos d where d.projeto_id=o.project_id and d.arquivo_url like '%/invoice.pdf' limit 1)
+  ||array['https://files.cdn.bubble.io/team.jpg',draft_url,draft_photo,'https://files.cdn.bubble.io/foreign.jpg','https://files.cdn.bubble.io/unknown.jpg'] into refs
+  from rm_private.receiving_openings o where o.client_submission_id=pg_temp.rx_id(31);
+ found:=pg_temp.rx_media(1,refs);
+ perform pg_temp.rx_check(cardinality(refs)=7 and jsonb_array_length(found->'files')=5
+  and found->'files' @> jsonb_build_array(jsonb_build_object('url',refs[1],'source','project_photo'),jsonb_build_object('url',refs[2],'source','document'))
+  and pg_temp.rx_media(2,refs)->'files'='[]'::jsonb,'batch returns only media referenced by a project allowed in the workshop and cells');
+ delete from public.rm_tablet_celula_users where celula_id=pg_temp.rx_id(801) and identidade_id=pg_temp.rx_id(14);
+ perform pg_temp.rx_check(jsonb_array_length(pg_temp.rx_media(1,refs)->'files')=4
+  and pg_temp.rx_media(1,array[refs[3]])->'files'='[]'::jsonb,'revoked cell removes team media and preserves the original receiving and draft');
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_media(1,%L)',refs),'42501');
+ reset role;
+end$$;
+select 'PASS: native media references and cell revocation before credentials for files' result;
 rollback;

@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { z } from 'zod';
 import { required } from '../config';
 import { createWorkshopContextReader, EM_IDENTITY_ISSUER } from '../web/workshop-context';
+import { resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
 import { OPERATION_COOKIE, type OperationSelection } from './policy';
 import { createOperationService } from './service';
 
@@ -87,4 +89,30 @@ export async function loadNativeCatalogPage(token: string, operatorToken: string
   });
   if (error || !data || data.workshop_id !== scope.p_workshop_context.workshop.id || data.table !== table) return { data: null, error };
   return { data, error: null };
+}
+
+const mediaBatch = z.object({ workshop_id: z.uuid(), files: z.array(workshopMediaMatch).max(100) }).strict();
+
+export async function loadNativeWorkshopMedia(token: string, operatorToken: string, urls: string[]) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken);
+  const service = operationClient(true);
+  const { data, error } = await service.rpc('rm_mobile_workshop_media_v1', { ...scope, p_urls: urls });
+  if (error) return { data: null, error };
+  const checked = mediaBatch.safeParse(data);
+  if (!checked.success || checked.data.workshop_id !== scope.p_workshop_context.workshop.id) return { data: null, error: null };
+  const files = await Promise.all([...new Set(urls)].map(async reference => {
+    const matches = checked.data.files.filter(match => match.url === reference);
+    for (const { source } of matches) {
+      const url = await resolveWorkshopMedia(reference, required('SUPABASE_URL'), source, async (bucket, path) => {
+        const { data, error } = await service.storage.from(bucket).createSignedUrl(path, 60);
+        if (error && !('statusCode' in error && ['400', '404'].includes(String(error.statusCode)))) {
+          throw new Error('Armazenamento indisponível.');
+        }
+        return data?.signedUrl;
+      });
+      if (url) return { reference, url };
+    }
+    return null;
+  }));
+  return { data: { workshop_id: checked.data.workshop_id, files: files.filter(file => file !== null) }, error: null };
 }
