@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 e P0.3 — Dossiê do projeto e anexos privados por oficina
+
+A migração **104** e o Railway **344e689b-63e9-43f2-b10d-e93097a54dd5** publicaram o commit **`9a70c56`**. A oficina confirmada em Acessos protege comentários e correções, documentos e pastas, versões de anexos, histórico, roteiro e consulta técnica do equipamento. A seleção de fotos e as gravações do dossiê usam autorização para a operação e o projeto. A reserva e a finalização de anexos conferem a oficina em cada etapa. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46008679713).
+
+Os anexos publicados no espaço privado do dossiê exigem a conferência da publicação antes de receber um endereço temporário. A leitura direta desse espaço no Storage e dez entradas legadas de consulta foram fechadas para contas autenticadas. O histórico existente foi preservado. A leitura inicial encontrou 94 comentários, 33 documentos e quatro pastas, com zero reservas de upload em andamento.
+
+Passaram 703 testes web, 16 verificações de navegador em duas oficinas e a matriz PostgreSQL em quatro oficinas antes e depois da restauração. O ensaio verificou correções, pastas, seleção de fotos, publicação e substituição de anexos, reenvio e recusa cruzada, incluindo referências indiretas para arquivos de outra unidade.
+
+Passaram 75 verificações da API e oito do Operacional Web em produção. Um operador real da BMA baixou um PDF histórico com tamanho e SHA-256 conferidos. No emulador Android, o documento apareceu no catálogo com e sem conexão e abriu no visualizador com conexão. O teste não confirmou a reabertura do arquivo offline. A conferência com uma sessão Microsoft real segue pendente. O roteiro usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-dossie.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Edições de projetos, equipamentos e células por oficina
 
 A migração **103** e o Railway **84635d07-7a17-4671-a572-f16af7cde8a2** publicaram o commit **`75633da`**. O portal exige a oficina confirmada em Acessos para editar projetos, equipamentos e células, inclusive ao retomar um envio. A prévia e a confirmação de exclusão de projetos exigem a mesma oficina. As regras de administrador, versão e protocolo de exclusão continuam aplicadas. O leitor antigo da prévia de exclusão deixou de aceitar acesso direto por contas autenticadas. [Projetos](https://em-web-production.up.railway.app/projetos) · [Células](https://em-web-production.up.railway.app/cadastros?kind=cells) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46006001410).
