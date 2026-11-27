@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Projetos, Recebimentos, indicadores e gêmeo digital por oficina
+
+A migração **102** e o Railway **76d8751f-abfa-4ddc-a951-f0f34a8b298e** publicaram o commit **`65a5c84`**. As sessões Microsoft consultam a lista e a entrada de Projetos, Recebimentos, Planejamento, Acompanhamento da operação e o gêmeo digital pela oficina confirmada em Acessos. O gêmeo volta a usar a consulta autorizada após o fechamento do leitor antigo na 096. A BMA recebe a planta 3D. A visão gerencial atende oficinas sem planta própria. O acesso direto autenticado ao RPC antigo de Recebimentos foi revogado depois da publicação. [Projetos](https://em-web-production.up.railway.app/projetos) · [Recebimentos](https://em-web-production.up.railway.app/recebimentos) · [Gêmeo digital](https://em-web-production.up.railway.app/gemeo-digital) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46003658285).
+
+O inventário somente leitura comparou 60 combinações de páginas e filtros. O conteúdo, a ordem, os totais e os indicadores coincidiram, incluindo as **54 pendências** de Recebimentos da BMA. Os **182 projetos** e as **29 células** tinham origem cadastrada. Passaram 702 testes web, 16 cenários de navegador em duas oficinas e a matriz PostgreSQL em quatro oficinas, antes e depois da restauração. O navegador isolado exibiu o canvas da planta BMA e a visão gerencial da outra unidade. Em produção passaram 72 verificações da API, incluindo a recusa da consulta antiga de Recebimentos, e oito do Operacional Web. O emulador com APK 1.2.22 abriu o mesmo rascunho recuperado da BMA com e sem conexão.
+
+O roteiro de homologação com uma sessão Microsoft real é `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-projetos-recebimentos.json`. A exigência geral de origem na criação e nas edições legadas, a confirmação dos canais restantes e o primeiro recebimento real do Android até o portal continuam no aceite. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Aprovações de etapas e revisão de formulários por oficina
 
 A migração **101**, commit **`9cdf3bb`**, está ativa no Supabase `oficina-em-mi-off` e no Railway **df16cdd4-0272-4eca-981c-efa7bfb35575**. A fila, o detalhe e as decisões de aprovação, inclusive pelo Cronograma, usam a oficina confirmada em Acessos. A gravação de aprovações e revisões confere projeto, célula e modelo ou etapa. Os bloqueios no banco protegem vínculos novos ou alterados. O acesso direto autenticado às consultas legadas de aprovação foi encerrado. [Aprovações](https://em-web-production.up.railway.app/aprovacoes) · [Formulários](https://em-web-production.up.railway.app/formularios) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46001425962).
@@ -40,7 +48,7 @@ A migração **098**, commit **`965890f`**, foi aplicada no Supabase `oficina-em
 
 O ensaio de recebimentos verificou abertura anterior, conclusão anterior, reenvio de anexos, conteúdo alterado e troca de operador. Em quatro oficinas, antes e depois da restauração, o projeto recuperado apareceu somente na fila de Recebimentos da unidade confirmada. Em produção, os 182 projetos e os dois recibos históricos continuaram com os mesmos dados e a origem já registrada. Passaram 71 verificações da API e oito passos de regressão no navegador. O emulador Android do EM abriu o rascunho da BMA, um projeto permitido e uma foto com e sem rede.
 
-O corte geral de Projetos e Recebimentos depende da homologação do primeiro recebimento real pelo Android, da definição do papel da matrícula DIGITAL e da revisão das entradas antigas. [Roteiro do marco](../../plano_paridade_rmmi_web.md).
+A exigência geral de origem nas criações e edições depende da homologação do primeiro recebimento real pelo Android, da definição do papel da matrícula DIGITAL e da revisão das entradas antigas. [Roteiro do marco](../../plano_paridade_rmmi_web.md).
 
 ## P0.1 e P0.4 — Retomar o rascunho vazio no Android
 
