@@ -1945,6 +1945,72 @@ begin
  end loop;
 end
 $isolated_details$;
+do $legacy_storage$
+declare
+ device uuid;
+ reference text;
+ signature_path text;
+ copy_path text;
+ evidence jsonb;
+ result jsonb;
+begin
+ if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_media_v1(text)','execute')
+  or has_function_privilege('service_role','rm_private.workshop_legacy_media_readiness_v1(text)','execute') then
+  raise exception 'Controles do armazenamento legado disponíveis à aplicação.';
+ end if;
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office);
+  signature_path:=device::text||'/legacy.png';
+  reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-assinaturas/'||signature_path;
+  insert into storage.objects(bucket_id,name) values('rm-documentos',device::text||'/legacy.pdf'),('rm-assinaturas',signature_path);
+  update public.rm_respostas set assinatura_url=reference where id=em_fixture.id(1460+office);
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  set local role authenticated;
+  if not exists(select 1 from storage.objects where bucket_id='rm-documentos' and name=device::text||'/legacy.pdf')
+   or not exists(select 1 from storage.objects where bucket_id='rm-assinaturas' and name=signature_path)
+   or exists(select 1 from storage.objects where bucket_id in('rm-documentos','rm-assinaturas')
+    and name like em_fixture.id(710+((office%4)+1))::text||'/legacy.%') then
+   raise exception 'O cliente legado perdeu seus arquivos ou ganhou acesso ao arquivo de outro dispositivo.';
+  end if;
+  update storage.objects set user_metadata='{"legacy_retry":true}' where bucket_id='rm-assinaturas' and name=signature_path;
+  if not found then raise exception 'O dispositivo perdeu a possibilidade de repetir o próprio envio.';end if;
+  reset role;
+ end loop;
+ begin
+  perform rm_private.activate_workshop_legacy_media_v1('rm-assinaturas');
+  raise exception 'Armazenamento com assinaturas sem cópia foi fechado.';
+ exception when sqlstate 'PT409' then null;
+ end;
+ for office in 1..4 loop
+  signature_path:=em_fixture.id(710+office)::text||'/legacy.png';
+  reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-assinaturas/'||signature_path;
+  copy_path:='acervo-oficina/'||em_fixture.id(office)::text||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.png';
+  insert into storage.objects(bucket_id,name,metadata,user_metadata)
+   values('rm-documentos',copy_path,'{"size":8,"mimetype":"image/png"}',jsonb_build_object('sha256',repeat('e',64)));
+  if public.rm_confirm_workshop_archive_v1(em_fixture.id(office),reference,repeat('e',64),'image/png',8) is distinct from copy_path then
+   raise exception 'As assinaturas copiadas não foram reconhecidas.';
+  end if;
+ end loop;
+ perform rm_private.activate_workshop_legacy_media_v1('rm-assinaturas');
+ evidence:=rm_private.workshop_legacy_media_readiness_v1('rm-assinaturas');
+ if evidence->>'public' is distinct from 'false' or evidence->>'legacy_objects' is distinct from '4'
+  or evidence->>'references' is distinct from '4' or evidence->>'verified_copies' is distinct from '4' then
+  raise exception 'Mudança de visibilidade ocorreu sem preservar todas as assinaturas.';
+ end if;
+ for office in 1..4 loop
+  result:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(1460+office),'source','answer_signature'));
+  if coalesce(result->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
+   or pg_temp.workshop_restore_read((office%4)+1,'media_reference',jsonb_build_object('id',em_fixture.id(1460+office),'source','answer_signature')) is not null then
+   raise exception 'Assinatura histórica perdeu o acesso autorizado ou foi disponibilizada a outra oficina.';
+  end if;
+ end loop;
+ begin
+  perform rm_private.activate_workshop_legacy_media_v1('rm-fotos');
+  raise exception 'Armazenamento com foto sem garantia de cópia foi fechado.';
+ exception when sqlstate 'PT409' then null;
+ end;
+end
+$legacy_storage$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1966,3 +2032,4 @@ select 'PASS: operational photo titles, lifecycle and original evidence isolated
 select 'PASS: stage proof stays private and only the current workshop roster contributes to approvals in four workshops' result;
 select 'PASS: reviewer choices, versions and evidence isolated in four workshops' result;
 select 'PASS: scoped project and form detail snapshots, gallery and related roles in four workshops' result;
+select 'PASS: legacy owner storage access, verified copies and signature bucket cutover in four workshops' result;
