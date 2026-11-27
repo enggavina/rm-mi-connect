@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Catálogos diretos do Android legado por oficina
+
+A migração **119** está ativa no Supabase `oficina-em-mi-off`. Doze catálogos diretos, incluindo clientes, células, tipos de equipamento, formulários, alternativas e títulos de fotos, ficam limitados aos dados com origem confirmada na BMA e à conta de dispositivo já confirmada nessa oficina. Outros dispositivos consultam a própria oficina pelo serviço autorizado. Uma transferência confirmada pelo Android encerra a exceção e a decisão persiste após o fim da sessão. [Migração](../../rm-mobile-supabase/migrations/119_rm_legacy_bma_direct_catalog.sql) · [EM em produção](https://em-web-production.up.railway.app).
+
+A consulta autenticada retornou os mesmos **8.223 identificadores** nos 12 catálogos antes e depois da ativação. Passaram a regressão PostgreSQL, a matriz de quatro oficinas antes e depois da restauração e nove verificações no navegador. O emulador Android 1.2.24 mostrou uma alternativa histórica da BMA com e sem conexão. As leituras diretas de dados operacionais restantes e a homologação do Gantt com o PCP seguem no aceite da P0.2. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46051798624) · [Roteiro do Gantt](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 — Alternativas históricas no Android e no detalhe web
 
 A migração **118**, publicada no Supabase `oficina-em-mi-off`, recupera as alternativas pela pergunta original quando o item histórico não tem o campo redundante de formulário. Um vínculo explícito divergente é recusado. A leitura usa o formulário autorizado da oficina. O catálogo incremental volta a entregar as alternativas que ficaram fora da sincronização, com os registros, vínculos e datas originais preservados no banco. [Migração](../../rm-mobile-supabase/migrations/118_rm_workshop_question_option_lineage.sql) · [EM em produção](https://em-web-production.up.railway.app).
