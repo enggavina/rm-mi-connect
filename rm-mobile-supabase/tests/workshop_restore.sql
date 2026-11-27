@@ -2033,6 +2033,7 @@ begin
  end;
 end
 $legacy_storage$;
+savepoint form_options_fixture;
 do $form_options$
 declare
  device uuid;
@@ -2083,6 +2084,8 @@ begin
  end if;
 end
 $form_options$;
+rollback to savepoint form_options_fixture;
+release savepoint form_options_fixture;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
