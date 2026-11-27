@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isWordDocument } from '../src/server/bridge/docx-document';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
-import { relayLegacyWorkshopImage, resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
+import { relayLegacyWorkshopImage, resolvePrivateLegacyWorkshopImage, resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 import { workshopMediaUrl } from '../src/shared/workshop-media';
 
 test('record sections preserve submitted text, fractional order, choices and orphan answers without adding unanswered questions', () => {
@@ -103,6 +103,36 @@ test('the legacy image relay streams approved image formats without forwarding c
   assert.equal(fetchMock.mock.callCount(), 1);
   assert.equal(relay?.type, 'image/heic');
   assert.deepEqual(new Uint8Array(await new Response(relay?.body).arrayBuffer()), bytes);
+});
+
+test('private legacy originals sign only the database-proven path, bucket and media type', async () => {
+  const origin = 'https://example.supabase.co';
+  const folder = '00000000-0000-4000-8000-000000000001';
+  const file = '00000000-0000-4000-8000-000000000002';
+  const path = `${folder}/${file}.jpg`;
+  const reference = `${origin}/storage/v1/object/public/rm-fotos/${path}`;
+  const signed = `${origin}/storage/v1/object/sign/rm-fotos/${path}?token=opaque`;
+  for (const scope of ['project_photo', 'answer_photo'] as const) {
+    assert.equal(await resolvePrivateLegacyWorkshopImage(reference, path, origin, scope, async (bucket, name) => {
+      assert.equal(bucket, 'rm-fotos');
+      assert.equal(name, path);
+      return signed;
+    }), signed);
+  }
+  const signaturePath = path.replace('.jpg', '.png');
+  const signature = `${origin}/storage/v1/object/authenticated/rm-assinaturas/${signaturePath}`;
+  const signedSignature = signature.replace('/authenticated/', '/sign/') + '?token=opaque';
+  assert.equal(await resolvePrivateLegacyWorkshopImage(signature, signaturePath, origin, 'answer_signature', async (bucket, name) => {
+    assert.equal(bucket, 'rm-assinaturas');
+    assert.equal(name, signaturePath);
+    return signedSignature;
+  }), signedSignature);
+  const denied = async () => assert.fail('An unproven original must never reach the signer');
+  assert.equal(await resolvePrivateLegacyWorkshopImage(reference, undefined, origin, 'project_photo', denied), null);
+  assert.equal(await resolvePrivateLegacyWorkshopImage(reference, path.replace(folder, file), origin, 'project_photo', denied), null);
+  assert.equal(await resolvePrivateLegacyWorkshopImage(reference, path, origin, 'answer_signature', denied), null);
+  assert.equal(await resolvePrivateLegacyWorkshopImage(signature.replaceAll('.png', '.jpg'), path, origin, 'answer_signature', denied), null);
+  assert.equal(await resolvePrivateLegacyWorkshopImage(reference, path, origin, 'project_photo', async () => signedSignature), null);
 });
 
 test('archive signing accepts only an authorized path and the exact signed private object', async () => {

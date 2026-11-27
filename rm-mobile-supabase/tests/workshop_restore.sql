@@ -2885,6 +2885,13 @@ declare
  archive_sha text:=repeat('b',64);
  previous_object_count bigint;
  output jsonb;
+ original_args jsonb;
+ saved jsonb;
+ replay jsonb;
+ submission uuid:=gen_random_uuid();
+ signature_path text:=bma_device::text||'/'||gen_random_uuid()||'.png';
+ signature_reference text:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-assinaturas/'||signature_path;
+ photo_args jsonb;
 begin
  if has_function_privilege('authenticated','rm_private.prepare_workshop_legacy_photo_cutover_v1()','execute')
   or has_function_privilege('service_role','rm_private.prepare_workshop_legacy_photo_cutover_v1()','execute')
@@ -2972,6 +2979,50 @@ begin
   end if;
  end loop;
  perform set_config('request.jwt.claim.sub',bma_device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',bma_session,'aal','aal1')::text,true);
+ path:=bma_device::text||'/'||gen_random_uuid()||'.jpg';
+ reference:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/public/rm-fotos/'||path;
+ update storage.buckets set public=false where id='rm-assinaturas';
+ original_args:=jsonb_build_object('p_projeto_id',em_fixture.id(101),'p_celula_id',em_fixture.id(201),
+  'p_celula_projeto_id',em_fixture.id(301),'p_foto_url',reference,'p_titulo','Foto complementar','p_categoria_foto','complementar');
+ set local role authenticated;
+ insert into storage.objects(bucket_id,name,owner_id,version,metadata) values
+  ('rm-fotos',path,bma_device::text,'legacy-jpeg','{"size":24,"mimetype":"image/jpeg"}'),
+  ('rm-assinaturas',signature_path,bma_device::text,'legacy-png','{"size":24,"mimetype":"image/png"}');
+ saved:=public.rm_mobile_mutate_v1(submission,'rm_record_cell_photo_v1',original_args,repeat('a',64));
+ replay:=public.rm_mobile_mutate_v1(submission,'rm_record_cell_photo_v1',original_args,repeat('a',64));
+ reset role;
+ photo_args:=jsonb_build_object('id',saved->>'foto_id','source','project_photo');
+ output:=rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(1));
+ if output->>'private_legacy_image_path' is distinct from path or output?'archive_path' or replay-'idempotent_replay' is distinct from saved-'idempotent_replay'
+  or pg_temp.workshop_restore_native(1,array[reference])->'files'->0->>'url' is distinct from reference then
+  raise exception 'O reenvio Android perdeu a foto privada no projeto ou na resposta ao portal.';
+ end if;
+ update public.rm_respostas set assinatura_url=signature_reference where id=em_fixture.id(1461);
+ if rm_private.workshop_media_reference_v1(jsonb_build_object('id',em_fixture.id(1461),'source','answer_signature'),em_fixture.id(1))
+  ->>'private_legacy_image_path' is distinct from signature_path then
+  raise exception 'A assinatura privada da própria oficina não foi resolvida.';
+ end if;
+ for office in 2..4 loop
+  if rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(office)) is not null
+   or pg_temp.workshop_restore_native(office,array[reference])->'files' is distinct from '[]'::jsonb then
+   raise exception 'A foto privada da BMA apareceu em outra oficina.';
+  end if;
+ end loop;
+ update public.rm_fotos set foto_url=reference where id=em_fixture.id(602);
+ if rm_private.workshop_media_reference_v1(jsonb_build_object('id',em_fixture.id(602),'source','project_photo'),em_fixture.id(2))
+  ->'file' is distinct from 'null'::jsonb or pg_temp.workshop_restore_native(2,array[reference])->'files' is distinct from '[]'::jsonb then
+  raise exception 'Uma referência copiada conferiu leitura em outra oficina.';
+ end if;
+ update storage.objects set owner_id=em_fixture.id(712)::text where bucket_id='rm-fotos' and name=path;
+ if rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(1))?'private_legacy_image_path' then
+  raise exception 'O portal aprovou um original com proprietário divergente.';
+ end if;
+ update storage.objects set owner_id=bma_device::text,metadata='{"size":24,"mimetype":"text/html"}' where bucket_id='rm-fotos' and name=path;
+ if rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(1))?'private_legacy_image_path' then
+  raise exception 'O portal aprovou um arquivo com tipo divergente.';
+ end if;
+ update storage.objects set metadata='{"size":24,"mimetype":"image/jpeg"}' where bucket_id='rm-fotos' and name=path;
  perform public.rm_observe_mobile_workshop_android_v1(bma_device,bma_session,repeat('a',64),
   pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
  set local role authenticated;
@@ -2979,9 +3030,17 @@ begin
   raise exception 'O dispositivo transferido reteve acesso direto ao bucket antigo.';
  end if;
  reset role;
+ if rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(1))->>'private_legacy_image_path' is distinct from path then
+  raise exception 'A transferência removeu o acesso da BMA à foto gravada antes da revogação.';
+ end if;
+ update storage.objects set updated_at=clock_timestamp()+interval '1 minute' where bucket_id='rm-fotos' and name=path;
+ if rm_private.workshop_media_reference_v1(photo_args,em_fixture.id(1))?'private_legacy_image_path' then
+  raise exception 'A versão do arquivo posterior à revogação recebeu acesso na BMA.';
+ end if;
 end
 $photo_cutover$;
 select 'PASS: legacy photo cutover preserves archived references, denies cross-workshop storage and supports approved private retries' result;
+select 'PASS: legacy Android photo replay and private original reads preserve the same project and deny three foreign workshops' result;
 rollback to savepoint photo_cutover_fixture;
 release savepoint photo_cutover_fixture;
 do $android_adoption$

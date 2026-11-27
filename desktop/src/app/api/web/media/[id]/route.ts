@@ -6,7 +6,7 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { isNativeWorkshopMediaPath, relayLegacyWorkshopImage, resolveWorkshopMedia, workshopMediaTarget } from '@/server/web/workshop-media';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
-import { signNativeWorkshopDocument, signWorkshopArchive } from '@/server/web/project-dossier-storage';
+import { signNativeWorkshopDocument, signPrivateLegacyWorkshopImage, signWorkshopArchive } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const origin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     if (value.archive_path !== undefined) {
       const signed = await signWorkshopArchive(value.archive_path, origin);
+      return signed ? new Response(null, { status: 303, headers: { ...headers, Location: signed } }) : failure(503);
+    }
+    if (value.private_legacy_image_path !== undefined) {
+      const signed = await signPrivateLegacyWorkshopImage(value.file, value.private_legacy_image_path, origin, source);
       return signed ? new Response(null, { status: 303, headers: { ...headers, Location: signed } }) : failure(503);
     }
     const target = workshopMediaTarget(value.file, origin, source);

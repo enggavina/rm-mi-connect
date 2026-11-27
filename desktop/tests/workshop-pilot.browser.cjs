@@ -23,11 +23,14 @@ function location(path) {
   return url.href;
 }
 
-function signedMedia(response) {
+function signedMedia(response, legacyImage) {
   assert.equal(response.status(), 303);
   const copy = new URL(response.headers().location);
   assert.equal(copy.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
-  assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina|web-dossier)\//);
+  if (legacyImage !== undefined) {
+    assert.match(legacyImage, /^rm-(?:fotos|assinaturas)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(?:jpg|png)$/);
+    assert.equal(copy.pathname, `/storage/v1/object/sign/${legacyImage}`);
+  } else assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina|web-dossier)\//);
   assert.equal(copy.searchParams.size, 1);
   assert.ok(copy.searchParams.get('token'));
   return copy;
@@ -149,8 +152,9 @@ async function main() {
             assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
             await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
             const preview = await context.request.get(location(src), { maxRedirects: 0 });
-            if (preview.status() === 303) signedMedia(preview);
+            if (preview.status() === 303) signedMedia(preview, step.legacyImage);
             else {
+              assert.equal(step.legacyImage, undefined);
               assert.equal(preview.status(), 200);
               assert.match(preview.headers()['content-type'] ?? '', /^image\//);
               assert.equal(preview.headers().location, undefined);

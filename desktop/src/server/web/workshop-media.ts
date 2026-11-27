@@ -8,6 +8,7 @@ const uuidSegment = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
 const nativePath = new RegExp(`^mobile-oficina/${uuidSegment}/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
 const dossierPath = new RegExp(`^web-dossier/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
 const archivePath = new RegExp(`^acervo-oficina/(${uuidSegment})/[a-f0-9]{64}\\.(jpg|png|pdf|webp|heic|heif|docx)$`);
+const legacyImagePath = new RegExp(`^${uuidSegment}/${uuidSegment}\\.(jpg|png)$`);
 const nativePrefix = '/storage/v1/object/authenticated/rm-documentos/';
 export function isNativeWorkshopMediaPath(path: string) {
   return nativePath.test(path);
@@ -79,6 +80,16 @@ export async function resolveWorkshopArchive(path: unknown, origin: string, sign
   const match = archivePath.exec(path);
   if (!match || workshop && match[1] !== workshop) return null;
   return signedStorageUrl({ origin: new URL(origin).origin, bucket: 'rm-documentos', path }, sign);
+}
+
+/** Only the scoped database reader can supply the approved original path. */
+export async function resolvePrivateLegacyWorkshopImage(reference: string, path: unknown, origin: string,
+  source: WorkshopMediaSource, sign: StorageSigner) {
+  if (typeof path !== 'string' || !legacyImagePath.test(path)) return null;
+  const target = workshopMediaTarget(reference, origin, source);
+  if (!target || target.path !== path || target.bucket === 'rm-documentos'
+    || (source === 'answer_signature' && !path.endsWith('.png'))) return null;
+  return signedStorageUrl(target, sign);
 }
 
 const legacyImageTypes = new Set([

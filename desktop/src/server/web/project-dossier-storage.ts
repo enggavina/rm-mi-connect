@@ -2,31 +2,39 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { required } from '../config';
 import { attachmentSignatureMatches, projectAttachmentPath, type ProjectAttachmentInput } from './project-dossier-policy';
-import { isNativeWorkshopMediaPath, isWorkshopDossierPath, resolveWorkshopArchive } from './workshop-media';
+import type { WorkshopMediaSource } from '@/shared/workshop-media';
+import { isNativeWorkshopMediaPath, isWorkshopDossierPath, resolvePrivateLegacyWorkshopImage, resolveWorkshopArchive } from './workshop-media';
 
-function documentStorage() {
+function workshopStorage(bucket = 'rm-documentos') {
   const url = required('SUPABASE_URL');
   if (url !== 'https://ellpxfbsrbhblyizvbbk.supabase.co') throw new Error('Invalid EM storage target');
   return createClient(url, required('EM_SSO_BRIDGE_SERVICE_ROLE_KEY'), { auth: { persistSession: false, autoRefreshToken: false },
-    global: { fetch: (resource, init) => fetch(resource, { ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30_000) }) } }).storage.from('rm-documentos');
+    global: { fetch: (resource, init) => fetch(resource, { ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30_000) }) } }).storage.from(bucket);
 }
 
 // Call after the workshop reader confirms the exact stored attachment.
 export async function signNativeWorkshopDocument(path: string) {
   if (!isNativeWorkshopMediaPath(path)) return undefined;
-  const { data, error } = await documentStorage().createSignedUrl(path, 60);
+  const { data, error } = await workshopStorage().createSignedUrl(path, 60);
   return error ? undefined : data?.signedUrl;
 }
 
 export async function signWorkshopDossierDocument(path: string) {
   if (!isWorkshopDossierPath(path)) return undefined;
-  const { data, error } = await documentStorage().createSignedUrl(path, 60);
+  const { data, error } = await workshopStorage().createSignedUrl(path, 60);
   return error ? undefined : data?.signedUrl;
 }
 
 export async function signWorkshopArchive(path: unknown, origin: string) {
   return resolveWorkshopArchive(path, origin, async (_bucket, safePath) => {
-    const { data } = await documentStorage().createSignedUrl(safePath, 60);
+    const { data } = await workshopStorage().createSignedUrl(safePath, 60);
+    return data?.signedUrl;
+  });
+}
+
+export async function signPrivateLegacyWorkshopImage(reference: string, path: unknown, origin: string, source: WorkshopMediaSource) {
+  return resolvePrivateLegacyWorkshopImage(reference, path, origin, source, async (bucket, safePath) => {
+    const { data } = await workshopStorage(bucket).createSignedUrl(safePath, 60);
     return data?.signedUrl;
   });
 }
@@ -41,7 +49,7 @@ export async function storeImmutableDocument(path: string, bytes: Uint8Array, mi
   if (createHash('sha256').update(bytes).digest('hex') !== sha256 || !attachmentSignatureMatches(bytes, mime)) {
     throw new Error('Attachment does not match its frozen request');
   }
-  const bucket = documentStorage();
+  const bucket = workshopStorage();
   const result = await bucket.upload(path, bytes, { upsert: false, contentType: mime, metadata: { sha256 } });
   if (!result.error) return;
   // A lost response may leave the exact object in place. Never overwrite it.

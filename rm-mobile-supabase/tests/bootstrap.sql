@@ -25,6 +25,7 @@ create table storage.objects(id uuid primary key default gen_random_uuid(),bucke
 alter table storage.objects add column metadata jsonb;
 alter table storage.objects add column user_metadata jsonb;
 alter table storage.objects add column version text;
+alter table storage.objects add column updated_at timestamptz not null default now();
 alter table storage.objects add column archived_at timestamptz;
 alter table storage.objects add column is_delete_marker boolean not null default false;
 alter table storage.objects enable row level security;
