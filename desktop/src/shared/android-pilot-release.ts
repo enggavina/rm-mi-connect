@@ -6,8 +6,8 @@ export const androidPilotRelease = {
   file: 'em-mi-electric-brasil-1.2.26-arm64.apk',
   mime: 'application/vnd.android.package-archive',
   platformOrigin: 'https://ellpxfbsrbhblyizvbbk.supabase.co',
-  bytes: 44684861,
-  sha256: '524a4c804fe8d5f9a6a0dc1e1af31a9c964d76d9de26eb2ebc175c2cf9dbe3c8',
+  bytes: 30047305,
+  sha256: 'ea523e91031e5cb543d413ec7d4327d92cb8dce52ff01d36e416b75157b45281',
 } as const;
 
 export const androidPilotKey = `${androidPilotRelease.version}/${androidPilotRelease.sha256}/${androidPilotRelease.file}`;

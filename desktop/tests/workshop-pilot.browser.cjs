@@ -51,7 +51,8 @@ async function verifyAndroidInstaller(page, expected) {
   assert.equal(await link.getAttribute('href'), path);
   const signed = await page.request.get(location(path), { maxRedirects: 0 });
   assert.equal(signed.status(), 303);
-  assert.equal(signed.headers()['cache-control'], 'private, no-store');
+  const cache = (signed.headers()['cache-control'] ?? '').split(',').map(value => value.trim());
+  assert.ok(cache.includes('private') && cache.includes('no-store'));
   const url = new URL(signed.headers().location);
   assert.equal(url.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
   assert.equal(url.pathname, `/storage/v1/object/sign/rm-aplicativo-android/${version}/${expected.sha256}/${expected.file}`);
