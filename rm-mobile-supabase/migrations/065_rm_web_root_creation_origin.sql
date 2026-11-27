@@ -13,7 +13,7 @@ insert into rm_private.root_creation_settings(singleton) values(true);
 create table rm_private.root_creation_permits (
  submission_id uuid primary key,
  session_hash text not null references rm_private.sso_sessions(hash) on delete cascade,
- operation text not null check(operation in('save_project','save_project_with_equipment','save_catalog','delete_catalog')),
+ operation text not null check(operation in('save_project_with_equipment','save_catalog','delete_catalog')),
  payload_hash bytea not null,
  workshop_id uuid not null references rm_private.workshop_references(id),
  subject uuid not null,
@@ -31,7 +31,7 @@ returns text language sql immutable set search_path='' as $$
  select case when p_operation='delete_catalog' and p_payload->>'kind'='cells' then 'cell'
  when p_payload->'expected_updated_at' = 'null'::jsonb then
    case
-    when p_operation in('save_project','save_project_with_equipment') then 'project'
+    when p_operation='save_project_with_equipment' then 'project'
     when p_operation='save_catalog' and p_payload->>'kind'='cells' then 'cell'
    end
  end;

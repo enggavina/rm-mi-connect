@@ -80,7 +80,7 @@ test('catalog capability cannot authorize template operations or fall back to v1
   assert.equal(reads, 0);
 });
 
-test('new projects, equipment bundles and cells use their exact workshop authority without changing edits', async () => {
+test('project bundles and cell creation and deletion use their exact workshop authority without changing edits', async () => {
   const context = sso();
   context.capabilities = ['em.catalogs.manage', 'em.projects.manage'];
   const corporate = session();
@@ -91,15 +91,14 @@ test('new projects, equipment bundles and cells use their exact workshop authori
   authorizer.remember(context, corporate);
   const project = { id: subject, expected_updated_at: null };
   const cell = { ...project, kind: 'cells' };
-  for (const operation of ['save_project', 'save_project_with_equipment']) {
-    await assert.rejects(authorizer.authorize(context, 'wrong', operation, project, 'em.catalogs.manage'), CorporateAuthError);
-    assert.equal(await authorizer.authorize(context, 'project-protocol', operation, project, 'em.projects.manage'), true);
-    assert.equal(await authorizer.authorize(context, 'edit', operation, { ...project, expected_updated_at: new Date().toISOString() }, 'em.projects.manage'), false);
-  }
+  await assert.rejects(authorizer.authorize(context, 'wrong', 'save_project_with_equipment', project, 'em.catalogs.manage'), CorporateAuthError);
+  assert.equal(await authorizer.authorize(context, 'project-protocol', 'save_project_with_equipment', project, 'em.projects.manage'), true);
+  assert.equal(await authorizer.authorize(context, 'edit', 'save_project_with_equipment', { ...project, expected_updated_at: new Date().toISOString() }, 'em.projects.manage'), false);
+  assert.equal(await authorizer.authorize(context, 'legacy', 'save_project', project, 'em.projects.manage'), false);
   assert.equal(await authorizer.authorize(context, 'cell-protocol', 'save_catalog', cell, 'em.catalogs.manage'), true);
   const deleteCell = { ...cell, expected_updated_at: new Date().toISOString() };
   assert.equal(await authorizer.authorize(context, 'delete', 'delete_catalog', deleteCell, 'em.catalogs.manage'), true);
-  assert.deepEqual(minted, [{ operation: 'save_project', payload: project }, { operation: 'save_project_with_equipment', payload: project },
+  assert.deepEqual(minted, [{ operation: 'save_project_with_equipment', payload: project },
     { operation: 'save_catalog', payload: cell }, { operation: 'delete_catalog', payload: deleteCell }]);
-  assert.equal(reads, 4);
+  assert.equal(reads, 3);
 });

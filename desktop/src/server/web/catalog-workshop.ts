@@ -14,7 +14,7 @@ export function isScopedTemplateWrite(operation: string): boolean {
 export function rootWriteCapability(operation: string, payload: Record<string, unknown>): CorporateCapability | null {
   if (operation === 'delete_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
   if (payload.expected_updated_at !== null) return null;
-  if (operation === 'save_project' || operation === 'save_project_with_equipment') return 'em.projects.manage';
+  if (operation === 'save_project_with_equipment') return 'em.projects.manage';
   if (operation === 'save_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
   return null;
 }
