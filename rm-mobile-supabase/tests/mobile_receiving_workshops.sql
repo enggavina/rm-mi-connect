@@ -44,6 +44,9 @@ begin
  set local role authenticated;
  result:=public.rm_mobile_receiving_workshop_v1(id,phase,payload,repeat('6',64));
  reset role;
+ perform pg_temp.rx_check(result->'confirmacao'=jsonb_build_object('protocolo',id,'oficina_id',pg_temp.rx_id(office),
+  'fase',phase,'projeto_id',result->'projeto_id','equipamento_id',result->'equipamento_id'),
+  'each opening, conclusion and replay acknowledges the same protocol, office and stored identities');
  return result;
 end $$;
 

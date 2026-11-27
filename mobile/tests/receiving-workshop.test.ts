@@ -9,7 +9,8 @@ const draft = { deviceToken: 'local-device-fixture', operatorToken: 'local-opera
 
 test('the native receiving transport sends the frozen payload to the EM origin and keeps the device token in the header', async () => {
   const signal = new AbortController().signal;
-  const receipt = { projeto_id: id, equipamento_id: id };
+  const receipt = { projeto_id: id, equipamento_id: id, receiving_id: id, opening_created: true, attachments_pending: true,
+    idempotent_replay: false, confirmacao: { protocolo: id, oficina_id: workshopOrigin, fase: 'open', projeto_id: id, equipamento_id: id } };
   const response = await sendScopedReceiving({ ...draft, phase: 'open' }, signal, async (url, options) => {
     assert.equal(url, 'https://em-web-production.up.railway.app/api/mobile/recebimentos');
     assert.equal(options?.redirect, 'error');

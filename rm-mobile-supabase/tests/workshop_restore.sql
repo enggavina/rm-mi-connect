@@ -1210,6 +1210,10 @@ begin
   set local role authenticated;
   receipt:=public.rm_mobile_receiving_workshop_v1(receiving_id,'open',args,delegation);
   reset role;
+  if receipt->'confirmacao' is distinct from jsonb_build_object('protocolo',receiving_id,'oficina_id',em_fixture.id(office),
+   'fase','open','projeto_id',receipt->'projeto_id','equipamento_id',receipt->'equipamento_id') then
+   raise exception 'A abertura não confirmou o protocolo persistido da oficina.';
+  end if;
   project:=(receipt->>'projeto_id')::uuid;
   if not exists(select 1 from rm_private.receiving_workshop_protocols where submission_id=receiving_id
    and project_id=project and workshop_id=em_fixture.id(office) and opened_at is not null and completed_at is null)
@@ -1331,6 +1335,10 @@ begin
   set local role authenticated;
   replay:=public.rm_mobile_receiving_workshop_v1(protocol,'complete',args,token);
   reset role;
+  if replay->'confirmacao' is distinct from jsonb_build_object('protocolo',protocol,'oficina_id',em_fixture.id(office),
+   'fase','complete','projeto_id',replay->'projeto_id','equipamento_id',replay->'equipamento_id') then
+   raise exception 'O reenvio offline não confirmou a fase ou a oficina de origem.';
+  end if;
   if (replay->>'projeto_id')::uuid is distinct from project or (replay->>'idempotent_replay')::boolean is distinct from true
    or not exists(select 1 from rm_private.receiving_project_recoveries where submission_id=protocol
     and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office))

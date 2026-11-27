@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOperationService } from '../src/server/operation/service';
-import { openDeviceLogin, openOperationSession, operationClaims, operationQuery, readOperationCredentials,
+import { confirmsReceivingResult, openDeviceLogin, openOperationSession, operationClaims, operationQuery, readOperationCredentials,
   readOperatorCredentials } from '../src/server/operation/policy';
 import { sealSso } from '../src/server/web/sso-crypto';
 import { onlineFormSubmission } from '../src/shared/online-form';
@@ -20,6 +20,21 @@ const jwt = (patch: Record<string, unknown> = {}) => `synthetic.${encoded({
   exp: (now + 3600_000) / 1000, aud: 'authenticated', role: 'authenticated', aal: 'aal1', ...patch,
 })}.signature`;
 const accessToken = jwt();
+
+test('a receiving acknowledgement must identify the exact stored office, protocol, phase, project and equipment', () => {
+  const protocol = id('a'), workshop = id('b'), equipment = id('c'), other = id('d');
+  const confirmation = { protocolo: protocol, oficina_id: workshop, fase: 'complete', projeto_id: projectId, equipamento_id: equipment };
+  const result = { projeto_id: projectId, equipamento_id: equipment, confirmacao: confirmation, fotos_criadas: 2 };
+  assert.equal(confirmsReceivingResult(result, protocol.toUpperCase(), 'complete', workshop), true);
+  for (const [field, value] of Object.entries({ protocolo: other, oficina_id: other, fase: 'open', projeto_id: other, equipamento_id: other })) {
+    assert.equal(confirmsReceivingResult({ ...result, confirmacao: { ...confirmation, [field]: value } }, protocol, 'complete', workshop), false, field);
+  }
+  assert.equal(confirmsReceivingResult({ ...result, confirmacao: undefined }, protocol, 'complete', workshop), false);
+  assert.equal(confirmsReceivingResult({ ...result, attachments_pending: true }, protocol, 'complete', workshop), false);
+  const opening = { ...result, confirmacao: { ...confirmation, fase: 'open' }, attachments_pending: true, receiving_id: protocol };
+  assert.equal(confirmsReceivingResult(opening, protocol, 'open', workshop), true);
+  assert.equal(confirmsReceivingResult({ ...opening, receiving_id: other }, protocol, 'open', workshop), false);
+});
 const exampleWorkshop: WorkshopContext = {
   version: 2, application: 'em', channel: 'mobile', authority: CORPORATE_ISSUER,
   workshop: { id: id('7'), name: 'Segundo turno', code: 'OUTRA', active: true, revision: 1, updated_at: new Date(now).toISOString() },

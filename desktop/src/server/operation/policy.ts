@@ -11,6 +11,10 @@ const MAX_REQUEST_BYTES = 8_192;
 const id = z.string().uuid();
 const token = z.string().max(2_800).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 export const operatorToken = z.string().regex(/^[0-9a-f]{64}$/);
+const receivingResult = z.object({
+  projeto_id: id, equipamento_id: id, receiving_id: id.optional(), attachments_pending: z.boolean().optional(),
+  confirmacao: z.object({ protocolo: id, oficina_id: id, fase: z.enum(['open', 'complete']), projeto_id: id, equipamento_id: id }).strict(),
+});
 const expiry = z.number().int().positive();
 const deviceSession = z.object({ token, expiresAt: expiry }).strict();
 const session = deviceSession.extend({ operatorToken });
@@ -22,6 +26,16 @@ const claimsSchema = z.object({
 
 export function operationCookieOptions(maxAge: number, path = OPERATION_PATH) {
   return { path, maxAge, httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production' };
+}
+
+export function confirmsReceivingResult(value: unknown, submission: string, phase: 'open' | 'complete', workshop: string) {
+  const parsed = receivingResult.safeParse(value);
+  if (!parsed.success) return false;
+  const receipt = parsed.data;
+  const confirmation = receipt.confirmacao;
+  return confirmation.protocolo === submission.toLowerCase() && confirmation.oficina_id === workshop.toLowerCase()
+    && confirmation.fase === phase && confirmation.projeto_id === receipt.projeto_id && confirmation.equipamento_id === receipt.equipamento_id
+    && (phase === 'open' ? receipt.receiving_id === confirmation.protocolo : receipt.attachments_pending !== true);
 }
 
 function sealCookie(value: unknown, purpose: SsoPurpose, key?: string) {

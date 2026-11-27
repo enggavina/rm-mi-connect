@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { required } from '../config';
 import { createWorkshopContextReader, EM_IDENTITY_ISSUER, WorkshopContextError } from '../web/workshop-context';
 import { resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
-import { OPERATION_COOKIE, type OperationSelection } from './policy';
+import { confirmsReceivingResult, OPERATION_COOKIE, type OperationSelection } from './policy';
 import { createOperationService } from './service';
 import type { NativeMediaUpload } from './media-upload-policy';
 
@@ -82,7 +82,11 @@ export async function sendNativeReceiving(token: string, operatorToken: string, 
   const input = { p_client_submission_id: submission, p_phase: phase, p_params: payload, p_operator_token: operatorToken };
   const permit = await operationClient(true).rpc('rm_authorize_mobile_receiving_workshop_v1', { ...scope, ...input });
   if (permit.error) return permit;
-  return await operationClient(false, token).rpc('rm_mobile_receiving_workshop_v1', input);
+  const receipt = await operationClient(false, token).rpc('rm_mobile_receiving_workshop_v1', input);
+  if (!receipt.error && !confirmsReceivingResult(receipt.data, submission, phase, scope.p_workshop_context.workshop.id)) {
+    return { data: null, error: { code: 'PT503' } };
+  }
+  return receipt;
 }
 
 export async function sendNativeWorkshopMutation(token: string, operatorToken: string, submission: string,
