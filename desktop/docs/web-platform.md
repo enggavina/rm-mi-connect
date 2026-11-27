@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — piloto de recebimentos Android por oficina
+
+A migração **066** e o Railway **`42e46e25-b785-41a5-82e1-07f79d0b4dfa`** publicaram a abertura e a conclusão com autorização atual do dispositivo e operador. A autorização é específica para o conteúdo, o protocolo e a fase do recebimento. A origem de um recebimento novo é confirmada pelo cliente selecionado no rascunho. O QR e os recebimentos já vinculados usam a origem registrada do projeto. O reenvio preserva autoria, anexos e identificadores.
+
+O APK separado **1.2.12/código 15**, com o piloto habilitado, foi assinado com o mesmo certificado e instalado por atualização no Moto G84. SHA-256 `604d5748fa4d07e158a662ff793e09a65cb19e849e4523ff6d9a2232a011bdc7`. O contrato legado permanece ativo para os demais aparelhos durante a transição. A suíte isolada cobriu criação antes dos anexos, consulta imediata no portal, reenvio, fila anterior com o mesmo protocolo e recusa cruzada. O aceite do envio real com o APK piloto e a revisão dos clientes antigos precedem a obrigatoriedade da origem em todas as gravações. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45917505178).
+
 ## P0.1 — origem na criação de projetos e células do portal
 
 Em **26/11/2026**, a migração **065** e o Railway **`402a3bd4-67d2-4850-b088-605c594daca8`** ativaram a gravação da origem em projetos criados com equipamento e tipo e em células cadastradas no portal. A confirmação de Acessos é vinculada à sessão SSO, a uma ação e ao protocolo exato. A propriedade, o registro e o recibo são gravados na mesma transação. A exclusão autorizada da célula mantém a origem histórica e depende das verificações de vínculos.

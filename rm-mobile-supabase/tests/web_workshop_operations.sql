@@ -94,6 +94,20 @@ declare
   gantt_args jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
   v jsonb;
 begin
+  v:=pg_temp.project_read_call('receiving_list','{"q":"NEEDLE","reason":"without_type","page":1}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'items')=25
+   and (v->'items'->0->>'allocation_count')::int=1
+   and not (v->'items'->0 ? 'arquivo_nota_fiscal_url'),'receivings count and page only proven own projects and cells');
+  v:=pg_temp.project_read_call('receiving_list','{"q":"NEEDLE","reason":"without_type","page":2}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'items')=1,'receiving page two carries the filtered total');
+  v:=pg_temp.project_read_call('receiving_list','{"q":"NEEDLE","reason":"without_type","page":1}',brj);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'items'->0->>'id')::uuid=pg_temp.project_read_id(127)
+   and (v->'summary'->>'without_type')::int=1,'receiving summary includes only own projects before search');
+  v:=pg_temp.project_read_call('receiving_list','{"q":"BMA client","reason":"all","page":1}',brj);
+  perform pg_temp.project_read_check((v->>'total')::int=0,'other workshop customers are not searchable in receiving');
+  perform pg_temp.project_read_deny(format('select pg_temp.project_read_call(''receiving_list'',%L,%L)',
+   '{"q":"","reason":"all","page":1,"office":"BRJ"}',bma),'22023');
+
   v:=pg_temp.project_read_call('project_list',list_args,bma);
   perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'rows')=25
     and jsonb_array_length(v->'clients')=1 and jsonb_array_length(v->'cells')=1,'project counts and selectors are filtered before paging');

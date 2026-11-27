@@ -53,6 +53,22 @@ test('PCP reads keep planning and project capabilities independent and fail befo
   assert.deepEqual(projects.calls.map(call => call.name), ['rm_web_receivings_v1']);
 });
 
+test('scoped receiving uses normalized filters and propagates office rejection without querying the legacy list', async () => {
+  const client = { async rpc() { assert.fail('Scoped reading never falls back to the legacy list'); } } as unknown as SupabaseClient;
+  const capabilities = ['em.portal.read', 'em.projects.read'] as const;
+  let reads = 0;
+  const scoped = createPcpData(client, capabilities, async (resource, args) => {
+    reads++;
+    assert.equal(resource, 'receiving_list');
+    assert.deepEqual(args, { reason: 'without_type', q: 'OS1', page: 2 });
+    return { ...receiving(), page: 2 };
+  });
+  assert.equal((await scoped.listReceiving({ reason: 'without_type', q: ' OS1 ', page: '2' })).items[0].id, id(3));
+  assert.equal(reads, 1);
+  const failed = createPcpData(client, capabilities, async () => { throw new Error('No workshop'); });
+  await assert.rejects(failed.listReceiving(), /No workshop/);
+});
+
 test('cell queue returns a complete atomic export-only snapshot with exact versions and legacy positions', async () => {
   const f = fixture(['em.portal.read', 'em.planning.read']); const result = await f.data.getCellQueue(id(1)); assert.ok(result);
   assert.equal(result.queue_version, 'a'.repeat(64)); assert.equal(result.cell.updated_at, version); assert.equal(result.items[0].updated_at, version);

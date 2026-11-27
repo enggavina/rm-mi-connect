@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pageNumber, searchTerm, uuid } from './policy';
 import { queuePriorities, receivingReasons, type ReceivingReason } from './pcp-policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 export type { ReceivingReason, QueuePriority } from './pcp-policy';
 const text = z.string().nullable(), nullableId = uuid.nullable();
@@ -52,7 +53,7 @@ export type ReceivingPage = z.infer<typeof receivingPageSchema>;
 export type ReceivingFilters = { reason?: ReceivingReason; q?: string; page?: number | string };
 const queryError = () => new Error('Não foi possível consultar o planejamento. Tente novamente.');
 
-export function createPcpData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createPcpData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   function authorize(capability: CorporateCapability) {
     if (capabilities !== undefined && (!capabilities.includes('em.portal.read') || !capabilities.includes(capability))) {
       throw new Error('Acesso não autorizado a esta área.');
@@ -88,9 +89,16 @@ export function createPcpData(client: SupabaseClient, capabilities?: readonly Co
     authorize('em.projects.read');
     const reason = filters.reason ?? 'all', page = pageNumber(filters.page), page_size = 25;
     if (reason !== 'all' && !receivingReasons.includes(reason)) throw queryError();
-    const result = await client.rpc('rm_web_receivings_v1', { p_reason: reason, p_search: searchTerm(filters.q), p_page: page, p_page_size: page_size });
-    if (result.error) throw queryError();
-    const parsed = receivingPageSchema.safeParse(result.data);
+    const q = searchTerm(filters.q);
+    let payload: unknown;
+    if (workshopRead) {
+      payload = await workshopRead('receiving_list', { reason, q, page });
+    } else {
+      const result = await client.rpc('rm_web_receivings_v1', { p_reason: reason, p_search: q, p_page: page, p_page_size: page_size });
+      if (result.error) throw queryError();
+      payload = result.data;
+    }
+    const parsed = receivingPageSchema.safeParse(payload);
     if (!parsed.success) throw queryError();
     const data = parsed.data;
     if (data.page !== page || data.page_size !== page_size || data.items.length > page_size
@@ -128,12 +136,13 @@ function validReceivingItem(item: ReceivingItem): boolean {
   return item.reasons.length === expected.length && new Set(item.reasons).size === expected.length && expected.every(reason => item.reasons.includes(reason));
 }
 
-async function data(capability: CorporateCapability) {
+async function data(capability: CorporateCapability, scopedReceiving = false) {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser(capability);
-  return createPcpData(access.client, access.sso?.capabilities);
+  const workshopRead = scopedReceiving ? await (await import('./workshop-operation-reader')).readWorkshopOperations(access) : undefined;
+  return createPcpData(access.client, access.sso?.capabilities, workshopRead);
 }
 export async function getCellQueue(cellId: string) { return (await data('em.planning.read')).getCellQueue(cellId); }
 export async function getPlanningLoad() { return (await data('em.planning.read')).getPlanningLoad(); }
-export async function listReceiving(filters: ReceivingFilters = {}) { return (await data('em.projects.read')).listReceiving(filters); }
+export async function listReceiving(filters: ReceivingFilters = {}) { return (await data('em.projects.read', true)).listReceiving(filters); }
 export async function getPcpChoices() { return (await data('em.planning.read')).getPcpChoices(); }

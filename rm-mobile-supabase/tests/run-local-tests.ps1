@@ -42,6 +42,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'web_workshop_operations.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_root_creation.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'mobile_receiving_workshops.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'workshop_root_enforcement.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'online_operation_reads.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'online_operation_validation.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'web_engineering.sql'
