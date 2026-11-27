@@ -61,6 +61,8 @@ select rm_private.activate_root_creation_v1(repeat('a',40),pg_temp.root_id(90));
 select pg_temp.root_denied(format('select rm_private.activate_root_creation_v1(%L,%L)',repeat('b',40),pg_temp.root_id(90)),'PT409');
 insert into public.rm_tipos_equipamento(id,nome) values(pg_temp.root_id(20),'Local type 065');
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('equipment_type',pg_temp.root_id(20),pg_temp.root_id(1));
+insert into public.rm_projetos(id,nome) values(pg_temp.root_id(25),'Local pending 065');
+select rm_private.activate_workshop_direct_root_enforcement_v1();
 
 -- Both business paths require the new office permit once activated.
 select public.rm_sso_action_permit_v1(repeat('5',64),pg_temp.root_id(31),'save_project_with_equipment',pg_temp.root_project(21),'em.projects.manage');
@@ -73,6 +75,8 @@ reset role;
 
 select pg_temp.root_call(31,'save_project_with_equipment',pg_temp.root_project(21));
 select pg_temp.root_call(32,'save_catalog',pg_temp.root_payload(22,true),2);
+set constraints workshop_new_project_origin,workshop_new_cell_origin immediate;
+set constraints workshop_new_project_origin,workshop_new_cell_origin deferred;
 select pg_temp.verify_root(
  (select workshop_id=pg_temp.root_id(1) from rm_private.workshop_project_ownership where id=pg_temp.root_id(21))
  and (select workshop_id=pg_temp.root_id(2) from rm_private.workshop_cell_ownership where cell_id=pg_temp.root_id(22))
@@ -98,7 +102,6 @@ select pg_temp.verify_root(not exists(select 1 from public.rm_celulas where id=p
 select pg_temp.root_denied('select pg_temp.root_call(46,''save_catalog'',pg_temp.root_payload(22,true),2)','PT410');
 
 -- The same root cannot be reassigned, including roots with pending legacy origin.
-insert into public.rm_projetos(id,nome) values(pg_temp.root_id(25),'Local pending 065');
 select pg_temp.root_denied('select pg_temp.root_call(36,''save_project_with_equipment'',pg_temp.root_project(25))','42501');
 select pg_temp.verify_root(not exists(select 1 from rm_private.workshop_project_ownership where id=pg_temp.root_id(25)),'unknown origin preserved');
 

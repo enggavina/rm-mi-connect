@@ -27,6 +27,11 @@ begin
   raise exception 'FAIL: activation accepted before the portal writer';
  exception when sqlstate 'PT409' then null;
  end;
+ begin
+  perform rm_private.activate_workshop_direct_root_enforcement_v1();
+  raise exception 'FAIL: direct writer guard accepted before the portal writer';
+ exception when sqlstate 'PT409' then null;
+ end;
 
  update rm_private.sso_settings set require_sso=true;
  perform rm_private.activate_root_creation_v1(repeat('8',40),pg_temp.enforcement_id(8));
@@ -42,11 +47,15 @@ begin
  exception when sqlstate 'PT409' then
   if sqlerrm not like 'Conclua um recebimento da oficina piloto%' then raise;end if;
  end;
- -- Exercise the low-level constraints independently. The mobile workshop
- -- suite enables these through actual authorized opening and completion.
- alter table public.rm_projetos enable trigger workshop_new_project_origin;
- alter table public.rm_celulas enable trigger workshop_new_cell_origin;
- update rm_private.workshop_root_enforcement set activated_at=clock_timestamp(),activated_by=session_user where singleton;
+ perform rm_private.activate_workshop_direct_root_enforcement_v1();
+ perform rm_private.activate_workshop_direct_root_enforcement_v1();
+ if exists(select 1 from rm_private.workshop_root_enforcement where activated_at is not null) then
+  raise exception 'FAIL: partial guard activated the mobile cutover';
+ end if;
+ grant select,insert,update on public.rm_projetos,public.rm_celulas to service_role;
+ perform set_config('request.jwt.claim.sub',pg_temp.enforcement_id(8)::text,true);
+ perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+ set local role service_role;
 
  begin
   insert into public.rm_projetos(id,nome) values(pg_temp.enforcement_id(10),'A direct path without ownership');
@@ -60,18 +69,28 @@ begin
   raise exception 'FAIL: cell reached transaction end without ownership';
  exception when sqlstate 'PT409' then null;
  end;
+ reset role;
+ perform set_config('request.jwt.claim.sub','',true);
+ perform set_config('request.jwt.claims','{}',true);
 
  insert into public.rm_projetos(id,nome) values(pg_temp.enforcement_id(12),'Fourth-office project fixture');
  insert into rm_private.workshop_project_ownership(id,workshop_id) values(pg_temp.enforcement_id(12),pg_temp.enforcement_id(4));
  insert into public.rm_celulas(id,nome) values(pg_temp.enforcement_id(13),'Fourth-office cell fixture');
  insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(pg_temp.enforcement_id(13),pg_temp.enforcement_id(4));
  set constraints workshop_new_project_origin,workshop_new_cell_origin immediate;
+ set local role service_role;
+ insert into public.rm_celulas(id,nome) values(pg_temp.enforcement_id(13),'Updated fixture')
+  on conflict(id) do update set nome=excluded.nome;
+ reset role;
  if (select count(*) from rm_private.workshop_object_origins where workshop_id=pg_temp.enforcement_id(4))<>2
+  or (select nome from public.rm_celulas where id=pg_temp.enforcement_id(13)) is distinct from 'Updated fixture'
+  or exists(select 1 from unnest(array['anon','authenticated','service_role']) client
+   where has_function_privilege(client,'rm_private.activate_workshop_direct_root_enforcement_v1()','execute'))
   or has_function_privilege('service_role','rm_private.activate_workshop_root_enforcement_v1()','execute')
   or has_function_privilege('authenticated','rm_private.activate_workshop_root_enforcement_v1()','execute') then
   raise exception 'FAIL: declared fourth office or private activation invalid';
  end if;
 end
 $checks$;
-select 'PASS: staged root enforcement, direct path rejection, atomic assignment and independent fourth reference' result;
+select 'PASS: staged root enforcement blocks direct privileged inserts, accepts atomic ownership and preserves existing upserts' result;
 rollback;

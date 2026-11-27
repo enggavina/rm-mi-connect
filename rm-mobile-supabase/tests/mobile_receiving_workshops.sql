@@ -504,6 +504,14 @@ end
 $pristine_recovery$;
 select 'PASS: pristine legacy draft recovery preserves exact provenance, denies raw routes and completes idempotently' result;
 
+-- Reproduce the first cutover independently from the all-writer activation.
+update rm_private.sso_settings set require_sso=true;
+select rm_private.activate_root_creation_v1(repeat('8',40),pg_temp.rx_id(997));
+set constraints all immediate;
+select rm_private.activate_workshop_direct_root_enforcement_v1();
+set constraints all deferred;
+select set_config('request.jwt.claims',(auth.jwt()||'{"role":"authenticated"}'::jsonb)::text,true);
+
 do $legacy_recovery$
 declare
  opening_id uuid:=pg_temp.rx_id(160);
