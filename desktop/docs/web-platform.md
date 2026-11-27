@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Dossiê do projeto e respostas por oficina
+
+A migração **110** e o deploy Railway **`f7107f21-cc58-4a57-96f6-77e770650f72`** publicaram o commit **`1a0ea8f`**. No portal Microsoft, o dossiê consulta o projeto, as relações e a página da galeria dentro da mesma oficina. O detalhe de formulário usa o mesmo recorte para o registro, o modelo, as perguntas e as respostas. A permissão de cada módulo determina o conteúdo retornado. A galeria usa endereços autorizados pelo EM, e os endereços das evidências do formulário preservam a posição original de cada arquivo. [Projetos](https://em-web-production.up.railway.app/projetos) · [Formulários](https://em-web-production.up.railway.app/formularios) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46026598480).
+
+A auditoria encontrou 182 projetos, 778 registros de formulário e 5.951 fotos da BMA no escopo consultado. As 40 consultas de projeto e os 25 detalhes de formulário comparados mantiveram as relações, a ordem das respostas e a paginação da galeria. A migração preservou os dados das 144 tabelas auditadas. Passaram 708 testes web, 36 verificações de navegador em duas oficinas locais e a restauração em quatro oficinas. O ensaio conferiu a recusa de endereços de outra oficina para projetos e registros. Após a publicação, passaram nove verificações no navegador em produção. O emulador Android abriu o projeto real da BMA e exibiu o formulário vinculado com e sem conexão.
+
+A conferência com sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-fotos-formularios.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.1 — Origem e reenvio do protocolo de recebimento
 
 A migração **109**, publicada no Supabase `oficina-em-mi-off`, vincula o protocolo do Android à oficina, ao dispositivo, ao operador e ao projeto verificados. A confirmação emitida por Acessos vale na transação que grava o recebimento. A abertura antes dos anexos e a conclusão pela fila offline deixam evidências distintas. O reenvio mantém o projeto e a autoria originais. O caminho legado exige o fluxo autorizado quando o protocolo já tem oficina verificada ou quando o QR, o cliente ou o tipo pertencem a uma unidade diferente da oficina legada. [Recebimentos](https://em-web-production.up.railway.app/recebimentos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46023812513).
