@@ -36,8 +36,8 @@ CREATE INDEX IF NOT EXISTS idx_local_media_pending ON local_media_upload_queue(s
 export class LocalDatabase {
   private db?: SQLite.SQLiteDatabase;
   private writes: Promise<unknown> = Promise.resolve();
-  async initialize() {
-    this.db = await SQLite.openDatabaseAsync('rm-mi-connect.db');
+  async initialize(databaseName: string) {
+    this.db = await SQLite.openDatabaseAsync(databaseName);
     await this.db.execAsync(RM_MOBILE_SQLITE_DDL + EXTENSION_DDL);
     if ((await this.local<number>('queue_schema_version') ?? 0) < QUEUE_DOCUMENTS_VERSION) {
       await this.write(db => db.execAsync(QUEUE_DOCUMENTS_MIGRATION));

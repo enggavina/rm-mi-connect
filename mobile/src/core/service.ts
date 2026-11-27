@@ -27,6 +27,7 @@ import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningS
 import { sendScopedReceiving, sendWorkshopReceivingDraft, type ReceivingDraftCommand } from './receiving-workshop';
 import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { queueMatchesWorkshop, type QueueScope } from './workshop-queue-scope';
+import { WorkshopRestartRequired, workshopDatabaseName } from './workshop-database';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -59,6 +60,7 @@ class MobileService {
   private syncPromise?: Promise<void>;
   private operatorToken: string | null = null;
   private tabletUserId: string | null = null;
+  private localWorkshop: string | null = null;
   private debounce?: ReturnType<typeof setTimeout>;
   private identityBusy = false;
   private mediaWork = new Set<Promise<string>>();
@@ -126,9 +128,12 @@ class MobileService {
     return this.initialized;
   };
   private async start() {
-    await this.database.initialize();
-    await FileSystem.makeDirectoryAsync(mediaDirectory, { intermediates: true });
     const owner = await secureStorage.getItem('rm.device.owner');
+    const workshop = owner ? await secureStorage.getItem(`rm.workshop.device.${owner}`) : null;
+    const baseOffice = owner ? await secureStorage.getItem(`rm.workshop.local-base.${owner}`) : null;
+    await this.database.initialize(workshopDatabaseName(workshop, baseOffice));
+    this.localWorkshop = workshop;
+    await FileSystem.makeDirectoryAsync(mediaDirectory, { intermediates: true });
     this.tabletUserId = await secureStorage.getItem('rm.device.rm_user');
     this.update({ sessionUserId: owner, lastSync: await this.database.local<string>('last_sync') });
     if (this.snapshot.configured) {
@@ -203,7 +208,7 @@ class MobileService {
         identity = { operator: operator as Operator, token: String(token) };
         if (scopedOperatorCells) {
           try {
-            const scoped = await this.scopeOperator(owner, identity.operator, identity.token);
+            const scoped = await this.scopeOperator(owner, identity.operator, identity.token, true);
             identity.operator = scoped.operator;
             verifiedWorkshop = scoped.workshopId;
           } catch (failure) {
@@ -221,7 +226,7 @@ class MobileService {
       if (scopedOperatorCells && !verifiedWorkshop) {
         const office = await secureStorage.getItem(`rm.workshop.device.${owner}`);
         const confirmed = await secureStorage.getItem(`rm.workshop.operator.${owner}.${identity.operator.operador_id}`);
-        if (!office || office !== confirmed || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
+        if (!office || office !== confirmed || office !== this.localWorkshop || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
           throw new Error('Conecte-se para confirmar a oficina deste operador. Os trabalhos salvos foram preservados.');
         }
       }
@@ -243,6 +248,7 @@ class MobileService {
       this.scheduleSync();
     } finally {
       this.identityBusy = false;
+      this.catalogRevision++;
       // After a process restart, scoped rows are invisible until their author
       // identifies again. Restore the recovery notice from that durable queue.
       await this.refreshCounts(Boolean(this.snapshot.operator)).catch(() => undefined);
@@ -265,13 +271,12 @@ class MobileService {
 
   private async visibleCatalogRows(table: string, rows: Row[]): Promise<Row[]> {
     if (!scopedCatalog) return rows;
-    const operator = this.snapshot.operator, owner = this.snapshot.sessionUserId;
-    if (!operator || !owner) return [];
+    const operator = this.snapshot.operator;
+    const scope = await this.operatorWorkshop().catch(() => null);
+    if (!scope || operator?.operador_id !== scope.actor) return [];
     if (!operatorScopedCatalogTable(table)) return rows;
-    const workshop = await secureStorage.getItem(`rm.workshop.device.${owner}`);
-    if (!workshop) return [];
-    const manifest = await this.database.local<string[]>(operatorCatalogKey(workshop, operator.operador_id, table));
-    if (this.snapshot.operator?.operador_id !== operator.operador_id || this.snapshot.sessionUserId !== owner) return [];
+    const manifest = await this.database.local<string[]>(operatorCatalogKey(scope.workshop, scope.actor, table));
+    scope.assertCurrent();
     return visibleOperatorCatalogRows(table, rows, operator, manifest ?? null);
   }
   getLocal = <T = unknown>(key: string) => this.database.local<T>(key);
@@ -715,7 +720,7 @@ class MobileService {
       if (!workshop || this.identityBusy || this.snapshot.sessionUserId !== owner
         || this.snapshot.operator?.operador_id !== actor || this.operatorToken !== token) throw new Error('O vínculo do operador com a oficina mudou.');
     };
-    if (!workshop || workshop !== confirmed || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
+    if (!workshop || workshop !== confirmed || workshop !== this.localWorkshop || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
       throw new Error('Confirme a oficina deste dispositivo e operador.');
     }
     assertCurrent();
@@ -835,20 +840,42 @@ class MobileService {
       throw error;
     } finally { await this.refreshCounts(); this.update({ syncing: false }); }
   }
-  private async scopeOperator(owner: string, operator: Operator, token: string) {
+  private async scopeOperator(owner: string, operator: Operator, token: string, identifying = false) {
     const { data, error } = await this.supabase().auth.getSession();
     if (error || !data.session || data.session.user.id !== owner) throw Object.assign(new Error('Renove a sessão do dispositivo.'), { code: '28000' });
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 12_000);
     let scoped: Awaited<ReturnType<typeof readWorkshopOperatorCells>>;
     try { scoped = await readWorkshopOperatorCells(owner, data.session.access_token, operator, token, controller.signal, { androidBuild }); }
     finally { clearTimeout(timeout); }
-    const existing = await secureStorage.getItem(`rm.workshop.device.${owner}`);
-    if (existing && existing !== scoped.workshopId) {
-      await secureStorage.setItem(`rm.workshop.suspended.${owner}`, 'true');
-      throw Object.assign(new Error('A oficina deste dispositivo mudou. Os trabalhos anteriores precisam ser conferidos.'), { code: '42501' });
+    const pinKey = `rm.workshop.device.${owner}`;
+    const suspendedKey = `rm.workshop.suspended.${owner}`;
+    const baseKey = `rm.workshop.local-base.${owner}`;
+    const pinned = await secureStorage.getItem(pinKey);
+    const isCurrent = () => this.snapshot.sessionUserId === owner
+      && (identifying ? this.identityBusy : !this.identityBusy && this.operatorToken === token);
+    if (!isCurrent()) throw new Error('O operador mudou durante a confirmação da oficina.');
+
+    const openedOffice = this.localWorkshop;
+    if (openedOffice && openedOffice !== scoped.workshopId) {
+      await secureStorage.setItem(suspendedKey, 'true');
+      if (identifying && scopedCatalog && isCurrent()) {
+        const base = await secureStorage.getItem(baseKey);
+        workshopDatabaseName(scoped.workshopId, base ?? openedOffice);
+        if (!base) await secureStorage.setItem(baseKey, openedOffice);
+        await this.database.idle();
+        if (!isCurrent()) throw new Error('O operador mudou durante a confirmação da oficina.');
+        await secureStorage.setItem(pinKey, scoped.workshopId);
+        // Never change SQLite while autosaves or acknowledgments can still target the open database.
+        throw new WorkshopRestartRequired();
+      }
+      throw Object.assign(new Error('A oficina deste dispositivo mudou. Identifique-se com conexão para confirmar o novo vínculo.'), { code: '42501' });
     }
-    if (!existing) await secureStorage.setItem(`rm.workshop.device.${owner}`, scoped.workshopId);
-    await secureStorage.removeItem(`rm.workshop.suspended.${owner}`);
+    if (pinned !== scoped.workshopId) {
+      if (!identifying) throw Object.assign(new Error('Identifique-se para confirmar a oficina atual.'), { code: '42501' });
+      await secureStorage.setItem(pinKey, scoped.workshopId);
+    }
+    this.localWorkshop = scoped.workshopId;
+    await secureStorage.removeItem(suspendedKey);
     return scoped;
   }
   private async forgetWorkshopOperator(owner: string, operator: Operator) {
