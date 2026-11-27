@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Consultas das contas Microsoft por oficina
+
+A migração **112** e a publicação Railway **`fd3b4b2b-022f-4455-85da-30a5a817ec31`** ativaram o commit **`9a773d1`**. O tipo do equipamento na aba Informações é consultado após validar a oficina e o vínculo entre projeto, equipamento e tipo. As contas vinculadas ao portal Microsoft passam pelas consultas do EM por oficina. A ativação restringiu a leitura direta em 56 tabelas e encerrou três consultas antigas de Capacidade e Modelos de formulário. O perfil próprio e as opções comuns continuam disponíveis para a sessão. A restrição fica ligada à identidade local mesmo após desativar ou remover o vínculo Microsoft. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46033310119).
+
+A aplicação e a ativação preservaram os dados das 144 tabelas anteriores. A conferência em produção comparou 20 tipos de equipamento de projetos reais da BMA, as leituras diretas das duas contas vinculadas ao portal e a leitura do dispositivo legado da BMA. Passaram os 709 testes web, 38 verificações de interface em duas oficinas locais, a regressão PostgreSQL e o ensaio de quatro oficinas antes e depois da restauração. O ensaio confirmou as recusas cruzadas e o acesso autorizado ao tipo, ao modelo publicado, às respostas e à Capacidade.
+
+Após a ativação, nove verificações no navegador confirmaram a exigência de sessão do portal e o percurso do operador da BMA pelas células, projeto e formulário no Operacional Web. No emulador com o APK 1.2.22, um projeto real da BMA abriu com seu formulário vinculado com e sem conexão.
+
+A homologação com sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-leituras-portal.json`. A matriz inclui 25 consultas, com as três visões do Gantt, Recebimentos, Projetos, Capacidade, tipo de equipamento, formulários e galeria. [Roteiro de homologação no navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 — Armazenamento legado de documentos e assinaturas
 
 A migração **111**, publicada no Supabase `oficina-em-mi-off`, limita a leitura direta dos documentos legados à pasta da conta que fez o envio. Para a equipe, o portal e o aplicativo consultam a autorização da oficina antes de obter o endereço temporário. As regras específicas do dossiê e do acervo privado continuam aplicadas. O bucket vazio de assinaturas ficou privado pela API do Storage. A conferência preservou as configurações dos demais buckets e os metadados dos objetos. [EM em produção](https://em-web-production.up.railway.app) · [API do Storage](https://supabase.com/docs/reference/javascript/file-buckets-updatebucket) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46030284867).
