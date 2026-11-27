@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Tabelas legadas retiradas do acesso direto
+
+A migração **117** entrou no Supabase `oficina-em-mi-off` com o bloqueio de acesso direto de clientes a **31 tabelas**. O inventário consultou as estatísticas disponíveis e comparou as tabelas com seis revisões do catálogo Android e os consumidores web. Inclui a tabela antiga de rascunhos de formulário. As três tabelas internas de Aprovações e Dossiê são retiradas na ativação dos módulos por oficina, condição já atendida em produção. O ensaio preservou os registros das 148 tabelas auditadas e as permissões dos consumidores de serviço. [Migração](../../rm-mobile-supabase/migrations/117_rm_workshop_retire_unused_direct_tables.sql) · [EM em produção](https://em-web-production.up.railway.app).
+
+Passaram a regressão PostgreSQL e a matriz de quatro oficinas antes e depois da restauração. A API em produção recusou as 31 consultas diretas com a conta operacional da BMA e as mesmas 31 como visitante. Cinco consultas compatíveis do Android continuaram retornando dados. Passaram também nove verificações no navegador, e o emulador Android **1.2.24** abriu uma foto autorizada da BMA com e sem conexão. A transição das consultas legadas ainda usadas e as três visões do Gantt com sessão Microsoft real continuam no aceite da P0.2. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46047486767) · [Roteiro do Gantt](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 — Versão Android por sessão de oficina
 
 A migração **116** está no Supabase `oficina-em-mi-off`, com o consumidor **`e13b546`** publicado na implantação Railway **`56b88f9f-a24c-4ea9-883f-09c71b29cdc6`**. O EM registra a versão informada pelo APK após validar a sessão do dispositivo, a autorização do operador e a consulta de células da oficina. A versão serve ao acompanhamento da atualização. As permissões continuam vindo de Acessos, e as instalações antigas continuam aceitas durante a transição. O relatório apresenta totais por oficina e versão e indica as sessões sem observação Android, que podem incluir o Operacional Web. [EM em produção](https://em-web-production.up.railway.app) · [Consulta de versões](../../rm-mobile-supabase/scripts/workshop_android_readiness.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46044722146).
