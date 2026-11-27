@@ -285,4 +285,51 @@ begin
  reset role;
 end$$;
 select 'PASS: mobile media upload watches exact ownership, immutable metadata, and private stored files' result;
+
+create function pg_temp.rx_draft_workshop(office int,args jsonb,actual jsonb default null) returns jsonb language plpgsql as $$
+declare request_id uuid:=gen_random_uuid(); value jsonb;
+begin
+ perform public.rm_authorize_receiving_draft_workshop_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),request_id,args);
+ set local role authenticated;
+ value:=public.rm_mobile_receiving_draft_workshop_v1(request_id,coalesce(actual,args),repeat('6',64));
+ reset role;
+ return value;
+exception when others then reset role;raise;
+end$$;
+do $$
+declare legacy_id uuid:=pg_temp.rx_id(895); command jsonb; snapshot jsonb; fresh uuid:=pg_temp.rx_id(956);
+ request_id uuid:=gen_random_uuid(); foreign_client uuid:=pg_temp.rx_id(957); foreign_open jsonb; saved jsonb; replay jsonb;
+begin
+ command:=jsonb_build_object('action','read','draftId',null);
+ perform pg_temp.rx_check(pg_temp.rx_draft_workshop(1,command)->>'id'=legacy_id::text,'legacy BMA draft is recovered by its original client');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(2,%L)',command),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(1,%L,%L)',command,jsonb_set(command,'{draftId}',to_jsonb(legacy_id))),'42501');
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_receiving_draft_workshop_v1(%L,%L,repeat(''6'',64))',request_id,command),'42501');
+ reset role;
+ select payload into strict snapshot from rm_private.receiving_drafts d where d.id=legacy_id;
+ snapshot:=snapshot||'{"version":2,"eventualidades":"LOCAL revised draft"}'::jsonb;
+ command:=jsonb_build_object('action','save','draftId',legacy_id,'expectedRevision',1,'saveId',gen_random_uuid(),'payload',snapshot);
+ saved:=pg_temp.rx_draft_workshop(1,command);
+ replay:=pg_temp.rx_draft_workshop(1,command);
+ perform pg_temp.rx_check(saved->>'revision'='2' and replay=saved
+  and exists(select 1 from rm_private.receiving_draft_workshops where draft_id=legacy_id and workshop_id=pg_temp.rx_id(1)),
+  'legacy save records its proven workshop and exactly replays the original revision');
+ delete from rm_private.receiving_drafts d where d.id=legacy_id;
+ command:=jsonb_build_object('action','save','draftId',fresh,'expectedRevision',0,'saveId',gen_random_uuid(),
+  'payload',jsonb_build_object('id',fresh,'version',2,'cliente',''));
+ saved:=pg_temp.rx_draft_workshop(1,command);
+ perform pg_temp.rx_check(saved->>'id'=fresh::text
+  and exists(select 1 from rm_private.receiving_draft_workshops where draft_id=fresh and workshop_id=pg_temp.rx_id(1)),
+  'new draft freezes its office even while fields are incomplete');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_draft_workshop(2,%L)',jsonb_build_object('action','read','draftId',fresh)),'42501');
+ insert into public.rm_clientes(id,nome) values(foreign_client,'LOCAL BRJ customer');
+ insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',foreign_client,pg_temp.rx_id(2));
+ foreign_open:=jsonb_set(jsonb_set(pg_temp.rx_payload(fresh,'open'),'{p_cliente_id}',to_jsonb(foreign_client)),
+  '{p_receiving_draft_snapshot,cliente}',to_jsonb(foreign_client));
+ perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''open'',%L,2)',fresh,foreign_open),'42501');
+ perform pg_temp.rx_check((select count(*)=1 from rm_private.receiving_drafts d where d.id=fresh and d.state='draft' and d.revision=1),
+  'blocked transfer preserves the original unfinished draft');
+end$$;
+select 'PASS: receiving draft workshop, original ownership, exact retry and blocked cross-workshop recovery' result;
 rollback;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sendScopedReceiving } from '../src/core/receiving-workshop';
+import { sendScopedReceiving, sendWorkshopReceivingDraft } from '../src/core/receiving-workshop';
 
 const id = '16b86a9e-d20d-4000-a970-ec344ae6d366';
 const workshopOrigin = '16b86a9e-d20d-4000-a970-ec344ae6d368';
@@ -32,4 +32,19 @@ test('refused or unconfirmed receipts report failure so the native queue keeps t
     }), { code });
     assert.equal(requests, 1);
   }
+});
+
+test('draft transport carries the current confirmed workshop and preserves the original save on refused recovery', async () => {
+  const input = { deviceToken: draft.deviceToken, operatorToken: draft.operatorToken, workshopOrigin,
+    args: { action: 'save' as const, draftId: id, payload, expectedRevision: 2, saveId: id } };
+  const signal = new AbortController().signal;
+  await assert.rejects(sendWorkshopReceivingDraft(input, signal, async (target, init) => {
+    assert.match(String(target), /\/recebimentos\/rascunho$/);
+    assert.equal(init?.signal, signal);
+    assert.equal(new Headers(init?.headers).get('authorization'), `Bearer ${draft.deviceToken}`);
+    assert.deepEqual(JSON.parse(String(init?.body)), { operatorToken: input.operatorToken, workshopOrigin, args: input.args });
+    return Response.json({ code: '42501', message: 'A origem precisa ser conferida.' }, { status: 403 });
+  }), { code: '42501' });
+  assert.equal(await sendWorkshopReceivingDraft({ ...input, args: { action: 'read', draftId: null } }, signal,
+    async () => Response.json(null)), null);
 });

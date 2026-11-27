@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { required } from '../config';
@@ -124,4 +125,12 @@ export async function authorizeWorkshopMediaUpload(scope: Awaited<ReturnType<typ
   return await operationClient(true).rpc('rm_mobile_workshop_upload_v1', { ...scope, p_workshop_origin: input.workshopOrigin,
     p_submission: input.submission, p_operation: input.operation, p_payload: input.payload, p_asset: input.asset, p_kind: input.kind,
     p_reference: input.reference, p_mime: input.mime, p_size: input.size, p_sha256: input.sha256, p_mark_stored: stored });
+}
+
+export async function sendNativeReceivingDraft(token: string, operatorToken: string, workshopOrigin: string, args: Record<string, unknown>) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken, workshopOrigin);
+  const request = { p_request_id: randomUUID(), p_args: args, p_operator_token: operatorToken };
+  const permit = await operationClient(true).rpc('rm_authorize_receiving_draft_workshop_v1', { ...scope, ...request });
+  if (permit.error) return permit;
+  return await operationClient(false, token).rpc('rm_mobile_receiving_draft_workshop_v1', request);
 }

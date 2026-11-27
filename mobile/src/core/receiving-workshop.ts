@@ -1,6 +1,8 @@
 const receivingUrl = 'https://em-web-production.up.railway.app/api/mobile/recebimentos';
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export type ReceivingPhase = 'open' | 'complete';
+export type ReceivingDraftCommand = { action: 'read'; draftId: string | null } |
+  { action: 'save'; draftId: string; payload: Record<string, unknown>; expectedRevision: number; saveId: string };
 
 export async function sendScopedReceiving(input: {
   deviceToken: string;
@@ -22,5 +24,18 @@ export async function sendScopedReceiving(input: {
   const code = ['28000', '42501', '22023', 'P0002', 'PT409', 'PT410', 'PT503'].includes(parsed?.code) ? parsed.code : 'PT503';
   const message = typeof parsed?.message === 'string' && parsed.message.length <= 250
     ? parsed.message : 'Não foi possível confirmar a oficina. O recebimento original foi preservado.';
+  throw Object.assign(new Error(message), { code });
+}
+
+export async function sendWorkshopReceivingDraft(input: { deviceToken: string; operatorToken: string; workshopOrigin: string; args: ReceivingDraftCommand },
+  signal: AbortSignal, request = fetch) {
+  const { deviceToken, ...body } = input;
+  const response = await request(`${receivingUrl}/rascunho`, { method: 'POST', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` }, body: JSON.stringify(body) });
+  const parsed = await response.json();
+  if (response.ok) return parsed;
+  const code = ['28000', '42501', '22023', 'PT409', 'PT503'].includes(parsed?.code) ? parsed.code : 'PT503';
+  const message = typeof parsed?.message === 'string' && parsed.message.length <= 250
+    ? parsed.message : 'O rascunho original continua salvo no aparelho.';
   throw Object.assign(new Error(message), { code });
 }

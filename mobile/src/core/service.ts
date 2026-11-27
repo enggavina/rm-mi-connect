@@ -22,7 +22,7 @@ import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionR
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
 import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningState, receivingOpeningKey, storeReceivingOpening, type ReceivingOpeningState } from './receiving-opening';
-import { sendScopedReceiving } from './receiving-workshop';
+import { sendScopedReceiving, sendWorkshopReceivingDraft, type ReceivingDraftCommand } from './receiving-workshop';
 import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
@@ -34,6 +34,7 @@ const scopedCatalog = scopedOperatorCells && process.env.EXPO_PUBLIC_EM_SCOPED_C
 const scopedMutations = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MUTATIONS === 'true';
 const scopedMedia = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_MEDIA === 'true';
 const scopedUploads = scopedMedia && scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_UPLOADS === 'true';
+const scopedDrafts = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_DRAFTS === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -267,21 +268,37 @@ class MobileService {
     return { data, meta: meta?.id === data.id ? meta : receivingDraftMeta(data) };
   }
   private receivingTransport(token: string): ReceivingDraftTransport {
-    const invoke = async (params: Record<string, unknown>): Promise<ReceivingDraftRemote | null> => {
-      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 8_000);
+    const invoke = async (args: ReceivingDraftCommand): Promise<ReceivingDraftRemote | null> => {
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), scopedDrafts ? 25_000 : 8_000);
       try {
-        const { data, error } = await this.supabase().rpc('rm_receiving_draft_v1', { p_operator_token: token, ...params }).abortSignal(controller.signal);
-        if (error) throw error;
+        let data;
+        if (scopedDrafts) {
+          const scope = await this.operatorWorkshop();
+          const session = await this.supabase().auth.getSession();
+          scope.assertCurrent();
+          if (session.error || !session.data.session || session.data.session.user.id !== scope.owner || scope.token !== token) {
+            throw new Error('Confirme o operador original para sincronizar o rascunho.');
+          }
+          data = await sendWorkshopReceivingDraft({ deviceToken: session.data.session.access_token, operatorToken: token,
+            workshopOrigin: scope.workshop, args }, controller.signal);
+          scope.assertCurrent();
+        } else {
+          const params = args.action === 'save' ? { p_payload: args.payload, p_expected_revision: args.expectedRevision, p_save_id: args.saveId } : {};
+          const result = await this.supabase().rpc('rm_receiving_draft_v1', { p_operator_token: token, p_action: args.action,
+            p_draft_id: args.draftId, ...params }).abortSignal(controller.signal);
+          if (result.error) throw result.error;
+          data = result.data;
+        }
         if (data == null) return null;
         if (typeof data.id !== 'string' || !Number.isSafeInteger(data.revision) || data.revision < 1 || !['draft', 'finalized'].includes(data.state) || data.payload?.id !== data.id) throw new Error('Resposta de rascunho inválida.');
         return { ...data, payload: restoreReceiving(data.payload, '', timestamp()) } as ReceivingDraftRemote;
       } finally { clearTimeout(timeout); }
     };
     return {
-      read: id => invoke({ p_action: 'read', p_draft_id: id }),
+      read: id => invoke({ action: 'read', draftId: id }),
       save: async (id, request) => {
-        const saved = await invoke({ p_action: 'save', p_draft_id: id, p_payload: request.payload,
-          p_expected_revision: request.expectedRevision, p_save_id: request.saveId });
+        const saved = await invoke({ action: 'save', draftId: id, payload: request.payload,
+          expectedRevision: request.expectedRevision, saveId: request.saveId });
         if (!saved) throw new Error('O banco não confirmou o salvamento do rascunho.');
         return saved;
       },
