@@ -40,6 +40,34 @@ function signedMedia(response, legacyImage) {
   return copy;
 }
 
+async function verifyAndroidInstaller(page, expected) {
+  assert.match(expected.file, /^em-mi-electric-brasil-(\d+\.\d+\.\d+)-arm64\.apk$/);
+  const version = expected.file.match(/\d+\.\d+\.\d+/)[0];
+  assert.match(expected.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(Number.isInteger(expected.bytes) && expected.bytes > 0 && expected.bytes <= 52428800);
+  const link = page.getByRole('link', { name: 'Baixar APK', exact: true });
+  await link.waitFor();
+  const path = '/api/web/android/instalador';
+  assert.equal(await link.getAttribute('href'), path);
+  const signed = await page.request.get(location(path), { maxRedirects: 0 });
+  assert.equal(signed.status(), 303);
+  assert.equal(signed.headers()['cache-control'], 'private, no-store');
+  const url = new URL(signed.headers().location);
+  assert.equal(url.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
+  assert.equal(url.pathname, `/storage/v1/object/sign/rm-aplicativo-android/${version}/${expected.sha256}/${expected.file}`);
+  assert.equal(url.searchParams.size, 2);
+  assert.ok(url.searchParams.get('token'));
+  assert.equal(url.searchParams.get('download'), expected.file);
+  const download = await page.request.get(url.href, { maxRedirects: 0, timeout: 120_000 });
+  assert.equal(download.status(), 200);
+  assert.match(download.headers()['content-disposition'] ?? '', /^attachment/i);
+  const file = await download.body();
+  assert.equal(file.length, expected.bytes);
+  assert.equal(createHash('sha256').update(file).digest('hex'), expected.sha256);
+  await download.dispose();
+  await signed.dispose();
+}
+
 function receiptChecks(receipt, ownOffice) {
   if (!receipt) return [];
   assert.match(receipt.projectId, uuid);
@@ -206,6 +234,7 @@ async function main() {
               .locator(`a[href$="scope=${step.scope}"][aria-current="page"]`).waitFor();
           }
           if (step.previewAllocation) await verifyGanttPreview(page, step.previewAllocation);
+          if (step.androidInstaller) await verifyAndroidInstaller(page, step.androidInstaller);
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.image) {

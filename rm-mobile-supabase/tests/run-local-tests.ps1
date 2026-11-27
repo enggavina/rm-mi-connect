@@ -101,6 +101,7 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_origin_retention.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_direct_references.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_catalog_ownership.sql'
+  $sqlFiles += Join-Path $PSScriptRoot 'android_distribution.sql'
   if ($WorkshopRestore) {
     $migrationRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations'))
     $bootstrap = Join-Path $PSScriptRoot 'bootstrap.sql'

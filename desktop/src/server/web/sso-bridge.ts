@@ -12,6 +12,7 @@ import { createCatalogWorkshopAuthorizer, isScopedEngineeringWrite, isScopedPlan
 import { workshopReadResult, workshopRosterRequired, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
 import { AllocationExportError } from './allocation-export-data';
+import { androidPilotKey, androidPilotRelease } from '@/shared/android-pilot-release';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -53,6 +54,17 @@ const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: tr
   await rpc('rm_sso_assignment_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.team.context, p_members: value.team.members });
 } });
+export function readSsoWorkshopContext(context: SsoContext) {
+  return catalogWorkshops.readContext(context);
+}
+
+export async function signAndroidPilotApk() {
+  if (required('SUPABASE_URL') !== androidPilotRelease.platformOrigin) throw new CorporateAuthError('CORP_UNCONFIGURED');
+  const { data, error } = await bridge().storage.from(androidPilotRelease.bucket)
+    .createSignedUrl(androidPilotKey, 60, { download: androidPilotRelease.file });
+  return error ? null : data.signedUrl;
+}
+
 export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof localSsoClient>): WorkshopRead {
   return async (resource, args) => {
     const requestId = randomUUID();
