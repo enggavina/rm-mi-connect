@@ -734,7 +734,164 @@ begin
  end loop;
 end
 $workshop_team$;
+
+create function pg_temp.workshop_assignment_write(office integer,submission uuid,operation text,payload jsonb,members jsonb,
+ ttl interval default interval '10 seconds') returns jsonb language plpgsql as $$
+declare context jsonb:=pg_temp.workshop_restore_sso(office); result jsonb; hash text:=repeat(office::text,64);
+begin
+ context:=jsonb_set(context,'{expires_at}',to_jsonb((context->>'issued_at')::timestamptz+ttl));
+ if members is not null then
+  perform public.rm_sso_assignment_workshop_permit_v1(hash,submission,operation,payload,context,members);
+ end if;
+ if operation='save_engineering' then
+  perform public.rm_sso_engineering_workshop_permit_v1(hash,submission,operation,payload,context);
+ else
+  perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,
+   case when operation='save_project' then 'em.projects.manage' else 'em.planning.manage' end);
+ end if;
+ set local role authenticated;
+ result:=public.rm_web_mutate_v1(submission,operation,payload);
+ reset role;
+ return result;
+exception when others then reset role;raise;
+end
+$$;
+
+do $assignments$
+declare project uuid; allocation uuid; cell uuid; destination uuid; operator_id uuid; external_id uuid; model uuid;
+ roster jsonb; other jsonb; args jsonb; editor jsonb; result jsonb; plan jsonb; manager jsonb; reviewer jsonb; stage jsonb; engineering jsonb;
+ protocol uuid; rule_id uuid; note jsonb; rejected integer:=0;
+begin
+ perform rm_private.activate_workshop_assignments_v1();
+ if has_function_privilege('authenticated','public.rm_web_form_reviewer_assignments_snapshot_v1(uuid,uuid,boolean)','execute')
+  or has_function_privilege('authenticated','public.rm_web_stage_rules_snapshot_v1(uuid,uuid,boolean)','execute')
+  or has_function_privilege('authenticated','public.rm_sso_assignment_workshop_permit_v1(text,uuid,text,jsonb,jsonb,jsonb)','execute') then
+  raise exception 'A leitura ou emissão direta de atribuições ficou acessível.';
+ end if;
+ for office in 1..4 loop
+  project:=em_fixture.id(100+office);
+  cell:=em_fixture.id(200+office);
+  allocation:=em_fixture.id(300+office);
+  destination:=em_fixture.id(1200+office);
+  model:=em_fixture.id(400+office);
+  operator_id:=em_fixture.id(740+office);
+  external_id:=em_fixture.id(740+(office % 4)+1);
+  roster:=jsonb_build_array(jsonb_build_object('kind','corporate','subject',em_fixture.id(50+office)),
+   jsonb_build_object('kind','operator','subject',operator_id));
+  insert into public.rm_celulas(id,nome) values(destination,'Destino local '||office);
+  insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(destination,em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade)
+   values(em_fixture.id(1210+office),project,destination,'em_dia',true);
+  insert into public.rm_tablet_celula_users(celula_id,identidade_id)
+   values(cell,external_id),(destination,operator_id),(destination,external_id);
+  update public.rm_celulas_projeto set forms_ids=array[model],status='em_dia' where id=allocation;
+  args:=jsonb_build_object('project',project,'allocation',allocation,'include',true,'members',roster);
+  result:=pg_temp.workshop_restore_read(office,'assignment_people',jsonb_build_object('purpose','project','members',roster));
+  if jsonb_array_length(result)<>2 or not result @> jsonb_build_array(jsonb_build_object('id',operator_id)) then
+   raise exception 'O seletor de pessoas divergiu da equipe ativa.';
+  end if;
+  editor:=pg_temp.workshop_restore_read(office,'engineering_assignment_choices',
+   jsonb_build_object('id',em_fixture.id(1110+office),'members',roster));
+  if jsonb_array_length(editor->'users')<>1 or editor->'users'->0->>'id'<>operator_id::text
+   or exists(select 1 from jsonb_array_elements(editor->'cellUserLinks') l where l->>'identidade_id'=external_id::text) then
+   raise exception 'A engenharia retornou pessoa fora da equipe.';
+  end if;
+  for outsider in 1..4 loop
+   if outsider=office then continue;end if;
+   other:=args||jsonb_build_object('project',em_fixture.id(100+outsider),'allocation',em_fixture.id(300+outsider));
+   if pg_temp.workshop_restore_read(office,'operational_reviewers',other) is not null
+    or pg_temp.workshop_restore_read(office,'operational_stage_rules',other) is not null
+    or pg_temp.workshop_restore_read(office,'engineering_assignment_choices',
+     jsonb_build_object('id',em_fixture.id(1110+outsider),'members',roster)) is not null then
+    raise exception 'Consulta de atribuição atravessou a oficina.';
+   end if;
+  end loop;
+  result:=pg_temp.workshop_restore_read(office,'operational_reviewers',args);
+  if result->>'eligible_total' is distinct from '1' or result->'eligible_users'->0->>'id' is distinct from operator_id::text
+   or result->'forms'->0->>'id' is distinct from model::text or result->'forms'->0->>'can_assign' is distinct from 'true'
+   or pg_temp.workshop_restore_read(office,'operational_reviewers',(args-'members')||'{"include":false}')->'eligible_users'<>'[]' then
+   raise exception 'O histórico ou seletor de avaliadores não corresponde à oficina.';
+  end if;
+  reviewer:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'form_id',model,'avaliador_user_id',operator_id,
+   'expected_project_updated_at',result->'project'->'updated_at','expected_allocation_updated_at',result->'allocation'->'updated_at',
+   'expected_context_version',result->'forms'->0->'context_version','confirm_replace',true);
+  result:=pg_temp.workshop_restore_read(office,'operational_stage_rules',args);
+  if result->>'eligible_total' is distinct from '1' or result->>'memberships_total' is distinct from '2'
+   or result->'eligible_users'->0->>'id' is distinct from operator_id::text then
+   raise exception 'A regra operacional retornou opções fora da equipe.';
+  end if;
+  rule_id:=gen_random_uuid();
+  note:=jsonb_build_object('celula_destino_id',destination,'status_cel_proj','pendente','bloquear_avanco_sem_aprov',true,
+   'aprovadores_ids',jsonb_build_array(operator_id),'aprovadores_retorno_ids',jsonb_build_array(operator_id));
+  stage:=jsonb_build_object('action','create','id',rule_id,'projeto_id',project,'celula_projeto_id',allocation,
+   'expected_project_updated_at',result->'project'->'updated_at','expected_allocation_updated_at',result->'allocation'->'updated_at',
+   'expected_rules_version',result->'rules_version','config',note);
+  engineering:=jsonb_build_object('id',em_fixture.id(1110+office),'celula_id',cell,'tipo_equipamento_id',em_fixture.id(1100+office),
+   'expected_updated_at',(select updated_at from public.rm_celula_tipos_equipamento where id=em_fixture.id(1110+office)),
+   'changes',jsonb_build_object('stages',jsonb_build_array(note||jsonb_build_object('id',gen_random_uuid()))));
+  plan:=jsonb_build_object('projeto_id',project,'celula_id',cell,
+   'expected_updated_at',(select updated_at from public.rm_celulas_projeto where id=allocation),
+   'changes',jsonb_build_object('responsavel_id',operator_id));
+  manager:=jsonb_build_object('id',project,'expected_updated_at',(select updated_at from public.rm_projetos where id=project),
+   'changes',jsonb_build_object('gestor_responsavel_id',em_fixture.id(30+office)));
+
+  for note in select value from jsonb_array_elements(jsonb_build_array(
+   jsonb_build_object('operation','save_project','payload',jsonb_set(manager,'{changes,gestor_responsavel_id}',to_jsonb(em_fixture.id(30+(office % 4)+1)))),
+   jsonb_build_object('operation','plan_cell','payload',jsonb_set(plan,'{changes,responsavel_id}',to_jsonb(external_id))),
+   jsonb_build_object('operation','assign_form_reviewer','payload',jsonb_set(reviewer,'{avaliador_user_id}',to_jsonb(external_id))),
+   jsonb_build_object('operation','manage_stage_rules','payload',jsonb_set(stage,'{config,aprovadores_retorno_ids}',jsonb_build_array(external_id))),
+   jsonb_build_object('operation','save_engineering','payload',jsonb_set(engineering,'{changes,stages,0,aprovadores_ids}',jsonb_build_array(external_id)))
+  )) loop
+   begin
+    perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),note->>'operation',note->'payload',roster);
+    raise exception 'Foi possível atribuir uma pessoa de outra oficina.';
+   exception when insufficient_privilege then
+    if sqlerrm not like '%vínculo ativo%' then raise;end if;
+    rejected:=rejected+1;
+   end;
+  end loop;
+  begin
+   perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'plan_cell',plan,null);
+   raise exception 'Uma atribuição passou sem confirmação atual da equipe.';
+  exception when insufficient_privilege then
+   if sqlerrm not like '%Confirmação da equipe%' then raise;end if;
+  end;
+  perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'manage_stage_rules',stage,roster);
+  result:=pg_temp.workshop_restore_read(office,'operational_stage_rules',args);
+  if not (result->'rules' @> jsonb_build_array(jsonb_build_object('id',rule_id,'aprovadores_ids',jsonb_build_array(operator_id)))) then
+   raise exception 'O aprovador da oficina não foi preservado na regra.';
+  end if;
+  perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'assign_form_reviewer',reviewer,roster);
+  result:=pg_temp.workshop_restore_read(office,'operational_reviewers',args||jsonb_build_object('members',roster-1));
+  if result->'forms'->0->'assignment'->>'avaliador_user_id' is distinct from operator_id::text
+   or result->'forms'->0->'assignment'->>'eligible' is distinct from 'false' then
+   raise exception 'A saída do avaliador da oficina alterou o histórico ou a elegibilidade.';
+  end if;
+  protocol:=gen_random_uuid();
+  perform pg_temp.workshop_assignment_write(office,protocol,'plan_cell',plan,roster);
+  if pg_temp.workshop_assignment_write(office,protocol,'plan_cell',plan,roster-1)->>'idempotent_replay' is distinct from 'true'
+   or not exists(select 1 from public.rm_celulas_projeto where id=allocation and responsavel_id=operator_id) then
+   raise exception 'A atribuição ou repetição de protocolo alterou o responsável.';
+  end if;
+  perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'save_engineering',engineering,roster);
+  result:=pg_temp.workshop_restore_read(office,'engineering_assignment_choices',
+   jsonb_build_object('id',em_fixture.id(1110+office),'members',roster-1));
+  if result->'cellUserLinks'<>'[]' or result->'users'->0->>'id' is distinct from operator_id::text then
+   raise exception 'A engenharia perdeu a pessoa histórica ou deixou selecioná-la novamente.';
+  end if;
+  manager:=jsonb_set(manager,'{expected_updated_at}',to_jsonb((select updated_at from public.rm_projetos where id=project)));
+  perform pg_temp.workshop_assignment_write(office,gen_random_uuid(),'save_project',manager,roster);
+  if (select gestor_responsavel_id from public.rm_projetos where id=project) is distinct from em_fixture.id(30+office) then
+   raise exception 'O gestor corporativo da própria oficina não foi atribuído.';
+  end if;
+ end loop;
+ if rejected<>20 or exists(select 1 from rm_private.workshop_assignment_permits) then
+  raise exception 'Os protocolos cruzados ou consumidos não foram isolados.';
+ end if;
+end
+$assignments$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
 select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;
+select 'PASS: assignment selectors and writes in four offices; 36 denied cross-office reads and 20 denied foreign people assignments' result;

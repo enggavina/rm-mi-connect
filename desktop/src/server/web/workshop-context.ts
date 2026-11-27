@@ -4,6 +4,9 @@ import { CORPORATE_ISSUER, CORPORATE_SUPABASE_URL, corporateSettings, validateCo
 export const WORKSHOP_CONTEXT_URL = 'https://acessos.miconnect.app.br/authorization/v2/me/em/workshop-context';
 export const MOBILE_WORKSHOP_CONTEXT_URL = 'https://acessos.miconnect.app.br/authorization/v2/services/em/workshop-context';
 export const WORKSHOP_TEAM_URL = `${CORPORATE_SUPABASE_URL}/rest/v1/rpc/cp_my_em_workshop_team_v1`;
+export const WORKSHOP_ASSIGNMENT_TEAM_URL = `${CORPORATE_SUPABASE_URL}/rest/v1/rpc/cp_my_em_assignment_team_v1`;
+export const ASSIGNMENT_TEAM_CAPABILITIES = { project: 'em.projects.manage', planning: 'em.planning.manage', engineering: 'em.engineering.manage' } as const;
+export type AssignmentPurpose = keyof typeof ASSIGNMENT_TEAM_CAPABILITIES;
 export const EM_IDENTITY_ISSUER = 'https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1';
 const MAX_BYTES = 64 * 1024;
 const TIMEOUT_MS = 10_000;
@@ -121,6 +124,17 @@ export function createWorkshopContextReader({ fetcher = fetch, now = Date.now, t
     catch { throw new WorkshopContextError('WORKSHOP_FORBIDDEN'); }
     return subject;
   }
+  async function readRoster(session: VerifiedCorporateSession, purpose?: AssignmentPurpose) {
+    const subject = verifiedWebSubject(session);
+    const capability = purpose ? ASSIGNMENT_TEAM_CAPABILITIES[purpose] : 'em.catalogs.read';
+    if (!capability || !session.decision.capabilities.includes(capability)) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+    const key = teamKey();
+    if (!key || !/^sb_publishable_[A-Za-z0-9_-]{8,}$/.test(key)) throw unavailable();
+    const url = purpose ? WORKSHOP_ASSIGNMENT_TEAM_URL : WORKSHOP_TEAM_URL;
+    return readAuthority(url, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${session.accessToken}`,
+      Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(purpose ? { p_purpose: purpose } : {}) }, 'web', session.expiresAt,
+    (value, at) => validateWorkshopTeam(value, subject, at));
+  }
   return {
     async readWeb(session: VerifiedCorporateSession): Promise<WorkshopContext> {
       const subject = verifiedWebSubject(session);
@@ -128,15 +142,7 @@ export function createWorkshopContextReader({ fetcher = fetch, now = Date.now, t
         method: 'GET', headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/json' },
       }, 'web', session.expiresAt, (value, at) => validateWorkshopContext(value, { channel: 'web', subject }, at));
     },
-    async readTeam(session: VerifiedCorporateSession): Promise<WorkshopTeam> {
-      const subject = verifiedWebSubject(session);
-      if (!session.decision.capabilities.includes('em.catalogs.read')) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
-      const key = teamKey();
-      if (!key || !/^sb_publishable_[A-Za-z0-9_-]{8,}$/.test(key)) throw unavailable();
-      return readAuthority(WORKSHOP_TEAM_URL, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${session.accessToken}`,
-        Accept: 'application/json', 'Content-Type': 'application/json' }, body: '{}' }, 'web', session.expiresAt,
-      (value, at) => validateWorkshopTeam(value, subject, at));
-    },
+    readTeam: readRoster,
     async readMobile(expected: Extract<ExpectedWorkshopIdentity, { channel: 'mobile' }>, expiresAt: number, key: string): Promise<WorkshopContext> {
       if (!uuid.safeParse(expected?.deviceSubject).success || !uuid.safeParse(expected?.operatorSubject).success
         || !Number.isFinite(expiresAt) || expiresAt <= now()) throw new WorkshopContextError('WORKSHOP_UNAUTHORIZED');

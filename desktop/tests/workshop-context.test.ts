@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkshopContextReader, EM_IDENTITY_ISSUER, MOBILE_WORKSHOP_CONTEXT_URL, validateWorkshopContext, validateWorkshopTeam, WORKSHOP_CONTEXT_URL, WORKSHOP_TEAM_URL, WorkshopContextError } from '../src/server/web/workshop-context';
+import { createWorkshopContextReader, EM_IDENTITY_ISSUER, MOBILE_WORKSHOP_CONTEXT_URL, validateWorkshopContext, validateWorkshopTeam, WORKSHOP_ASSIGNMENT_TEAM_URL, WORKSHOP_CONTEXT_URL, WORKSHOP_TEAM_URL, WorkshopContextError } from '../src/server/web/workshop-context';
 import { CORPORATE_ISSUER, type VerifiedCorporateSession } from '../src/server/web/sso-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -51,6 +51,24 @@ test('unknown top-level, office and identity fields cannot be silently discarded
     { ...context(), principals: [{ ...context().principals[0], global_admin: true }] }]) {
     assert.throws(() => validateWorkshopContext(value, expected, now), rejected);
   }
+});
+
+test('assignment roster uses its own endpoint and exact operation capability without requiring catalog access', async () => {
+  const corporate = session(); corporate.decision.capabilities.push('em.projects.manage');
+  const current = { context: { ...context(), expires_at: '2026-11-17T12:00:10Z' }, members: [{ kind: 'corporate', subject: id(2) }] };
+  let calls = 0;
+  const reader = createWorkshopContextReader({ now: () => now, teamKey: () => 'sb_publishable_local_test', fetcher: async (url, opts) => {
+    calls++;
+    assert.equal(url, WORKSHOP_ASSIGNMENT_TEAM_URL);
+    assert.equal(opts?.body, '{"p_purpose":"project"}');
+    assert.equal(new Headers(opts?.headers).get('authorization'), `Bearer ${corporate.accessToken}`);
+    return calls === 1 ? Response.json(current) : Response.json({}, { status: 403 });
+  } });
+  assert.deepEqual(await reader.readTeam(corporate, 'project'), current);
+  await assert.rejects(reader.readTeam(corporate, 'planning'), (error: unknown) => error instanceof WorkshopContextError && error.status === 403);
+  await assert.rejects(reader.readTeam(corporate), (error: unknown) => error instanceof WorkshopContextError && error.status === 403);
+  await assert.rejects(reader.readTeam(corporate, 'project'), (error: unknown) => error instanceof WorkshopContextError && error.status === 403);
+  assert.equal(calls, 2);
 });
 
 test('authority version application channel and exact principal cannot be substituted', () => {

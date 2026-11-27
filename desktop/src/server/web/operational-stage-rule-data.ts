@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 import { STAGE_RULE_STATUSES } from './operational-stage-rule-policy';
 
 const timestamp = z.string().datetime({ offset: true }), text = z.string().nullable();
@@ -35,17 +36,22 @@ const unique = (ids: readonly string[]) => new Set(ids).size === ids.length;
 const unavailable = () => new Error('Não foi possível consultar as regras de etapas desta célula. Tente novamente.');
 
 /** The snapshot contains all configuration revisions and only project-scoped choices. */
-export function createOperationalStageRuleData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createOperationalStageRuleData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getOperationalStageRules(projectId: string, allocationId: string, includeChoices = false): Promise<OperationalStageRuleSnapshot | null> {
     if (capabilities !== undefined && (!readCapabilities.every(capability => capabilities.includes(capability))
       || includeChoices && !capabilities.includes('em.planning.manage'))) throw new Error('Acesso não autorizado às regras de etapas desta célula.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(allocationId).success) return null;
-    let result;
-    try { result = await client.rpc('rm_web_stage_rules_snapshot_v1', { p_project_id: projectId, p_allocation_id: allocationId, p_include_choices: includeChoices }); }
-    catch { throw unavailable(); }
-    if (result.error) throw unavailable();
-    if (result.data === null) return null;
-    const parsed = snapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
+    let value: unknown;
+    if (workshopRead) value = await workshopRead('operational_stage_rules', { project: projectId, allocation: allocationId, include: includeChoices });
+    else {
+      let result;
+      try { result = await client.rpc('rm_web_stage_rules_snapshot_v1', { p_project_id: projectId, p_allocation_id: allocationId, p_include_choices: includeChoices }); }
+      catch { throw unavailable(); }
+      if (result.error) throw unavailable();
+      value = result.data;
+    }
+    if (value === null) return null;
+    const parsed = snapshotSchema.safeParse(value); if (!parsed.success) throw unavailable();
     const snapshot = parsed.data;
     const closed = snapshot.project.data_real_de_entrega !== null || ['cancelado', 'finalizando_para_faturar'].includes(snapshot.project.status_pcp ?? '');
     const allComplete = snapshot.complete && snapshot.allocations_complete && snapshot.eligible_complete && snapshot.memberships_complete;
@@ -81,8 +87,10 @@ export function createOperationalStageRuleData(client: SupabaseClient, capabilit
 
 export async function getOperationalStageRules(projectId: string, allocationId: string) {
   const { requireWebUser } = await import('./auth');
+  const { ssoWorkshopRead } = await import('./sso-bridge');
   const access = await requireWebUser(readCapabilities);
   const includeChoices = ['administrador', 'padr_o'].includes(access.profile.perfil)
     && (!access.sso || access.sso.capabilities.includes('em.planning.manage'));
-  return createOperationalStageRuleData(access.client, access.sso?.capabilities).getOperationalStageRules(projectId, allocationId, includeChoices);
+  return createOperationalStageRuleData(access.client, access.sso?.capabilities, access.sso && ssoWorkshopRead(access.sso, access.client))
+    .getOperationalStageRules(projectId, allocationId, includeChoices);
 }

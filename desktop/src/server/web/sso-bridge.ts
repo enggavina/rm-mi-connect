@@ -9,7 +9,7 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
 import { createCatalogWorkshopAuthorizer, isScopedEngineeringWrite, isScopedPlanningWrite, isScopedTemplateWrite, requiresPlanningWorkshop, rootWriteCapability, workshopReviewCapability } from './catalog-workshop';
-import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
+import { workshopReadResult, workshopRosterRequired, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
 import { AllocationExportError } from './allocation-export-data';
 import { workshopFormReviewWritesEnabled, workshopGanttWritesEnabled, workshopOperationReadsEnabled } from './workshop-operation-reader';
@@ -50,11 +50,14 @@ const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: wo
 }, mintRead: async value => {
   await rpc('rm_sso_workshop_read_permit_v1', { p_session_hash: value.sessionHash, p_read_id: value.requestId,
     p_resource: value.resource, p_args: value.filters, p_context: value.context });
+}, mintAssignment: async value => {
+  await rpc('rm_sso_assignment_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
+    p_operation: value.operation, p_payload: value.payload, p_context: value.team.context, p_members: value.team.members });
 } });
 export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof localSsoClient>): WorkshopRead {
   return async (resource, args) => {
     const requestId = randomUUID();
-    const confirmed = resource === 'workshop_team' ? await catalogWorkshops.authorizeTeamRead(context, requestId, args)
+    const confirmed = workshopRosterRequired(resource, args) ? await catalogWorkshops.authorizeTeamRead(context, requestId, args, resource)
       : { office: await catalogWorkshops.authorizeRead(context, requestId, resource, args), args };
     const response = await client.rpc('rm_web_workshop_read_v1', { p_read_id: requestId, p_resource: resource, p_args: confirmed.args });
     if (resource === 'gantt_snapshot' && response.error?.code === 'PT413') {

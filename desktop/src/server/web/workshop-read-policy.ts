@@ -1,5 +1,6 @@
 import type { CorporateCapability } from './sso-policy';
 import { uuid } from './policy';
+import { ASSIGNMENT_TEAM_CAPABILITIES, type AssignmentPurpose } from './workshop-context';
 export const WORKSHOP_READ_RESOURCES = [
   'catalog_list', 'catalog_entry', 'template_list', 'template_draft', 'template_form', 'template_choices',
   'project_list', 'project_entry', 'planning_list', 'gantt_snapshot', 'gantt_projects', 'gantt_cells', 'operation_validation', 'receiving_list',
@@ -7,12 +8,29 @@ export const WORKSHOP_READ_RESOURCES = [
   'approval_list', 'approval_entry', 'approval_choices', 'approval_allocation', 'capacity_snapshot', 'cell_availability',
   'cell_queue', 'planning_load', 'execution_snapshot',
   'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry', 'workshop_team',
+  'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
+export function assignmentRosterPurpose(resource: WorkshopReadResource, filters: Record<string, unknown>): AssignmentPurpose | undefined {
+  if (resource === 'assignment_people') {
+    if (filters.purpose !== 'project' && filters.purpose !== 'planning') throw new Error('Consulta de responsáveis indisponível.');
+    return filters.purpose;
+  }
+  if (resource === 'engineering_assignment_choices') return 'engineering';
+  if ((resource === 'operational_reviewers' || resource === 'operational_stage_rules') && filters.include === true) return 'planning';
+  return undefined;
+}
+export function workshopRosterRequired(resource: WorkshopReadResource, filters: Record<string, unknown>) {
+  return resource === 'workshop_team' || !!assignmentRosterPurpose(resource, filters);
+}
 export function workshopReadCapabilities(resource: WorkshopReadResource, filters: Record<string, unknown> = {}): readonly CorporateCapability[] {
   switch (resource) {
     case 'catalog_list': case 'workshop_team': return ['em.portal.read', 'em.catalogs.read'];
+    case 'assignment_people': return ['em.portal.read', ASSIGNMENT_TEAM_CAPABILITIES[assignmentRosterPurpose(resource, filters)!]];
+    case 'engineering_assignment_choices': return ['em.portal.read', 'em.engineering.read', 'em.engineering.manage'];
+    case 'operational_reviewers': case 'operational_stage_rules': return ['em.portal.read', 'em.projects.read', 'em.planning.read',
+      resource === 'operational_reviewers' ? 'em.forms.read' : 'em.approvals.read', ...(filters.include === true ? ['em.planning.manage' as const] : [])];
     case 'catalog_entry': return ['em.portal.read', 'em.catalogs.read', 'em.catalogs.manage'];
     case 'template_list': case 'template_draft': case 'template_form': case 'template_choices': return ['em.portal.read', 'em.form_templates.read'];
     case 'project_list': return filters.planning === true || filters.cell != null

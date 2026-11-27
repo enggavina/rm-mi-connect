@@ -329,10 +329,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const [clients, types, users, forms, statuses] = await Promise.all([
       scope === 'project' ? all('rm_clientes', 'id,nome', undefined, 'nome') : [],
       scope === 'project' ? all('rm_tipos_equipamento', 'id,nome,sigla', undefined, 'nome') : [],
-      all('rm_users', 'id,nome,status', undefined, 'nome'),
+      workshopRead ? workshopRead('assignment_people', { purpose: scope }) : all('rm_users', 'id,nome,status', undefined, 'nome'),
       scope === 'planning' ? all('rm_forms', 'id,titulo,ativo', undefined, 'titulo') : [],
       scope === 'project' ? options('status_pcp') : [],
     ]);
+    if (!rowArray(users)) throw queryUnavailable();
     return { clients, types, users, forms: await withFormVersionLabels(client, forms), statuses };
   }
   async function getCatalogEntry(kind: EditableCatalogKind, id: string) {

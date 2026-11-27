@@ -109,10 +109,10 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
     return { matrix: pick(raw.matrix, MATRIX), form_ids: raw.form_ids,
       photos: raw.photos.map((row: WebRow) => pick(row, PHOTO)), stages: raw.stages.map((row: WebRow) => pick(row, STAGE)) };
   }
-  async function getEngineeringChoices(entry?: EngineeringSnapshot | null) {
+  async function getEngineeringChoices(entry?: EngineeringSnapshot | null, editable = false) {
     authorize();
     if (workshopRead) {
-      const result = await workshopRead('engineering_choices', { id: entry?.matrix.id ?? null });
+      const result = await workshopRead(editable ? 'engineering_assignment_choices' : 'engineering_choices', { id: entry?.matrix.id ?? null });
       const cells = scopedRows(result?.cells), types = scopedRows(result?.types), forms = scopedRows(result?.forms), users = scopedRows(result?.users);
       const links = scopedRows(result?.cellUserLinks), titles = scopedRows(result?.photoTitles);
       const cellIds = new Set(cells.map(cell => cell.id)), userIds = new Set(users.map(user => user.id));
@@ -189,7 +189,7 @@ async function data() {
 }
 export async function getEngineeringMatrix(typeId?: string) { return (await data()).getEngineeringMatrix(typeId); }
 export async function getEngineeringEntry(id: string) { return (await data()).getEngineeringEntry(id); }
-export async function getEngineeringChoices(entry?: EngineeringSnapshot | null) { return (await data()).getEngineeringChoices(entry); }
+export async function getEngineeringChoices(entry?: EngineeringSnapshot | null, editable = false) { return (await data()).getEngineeringChoices(entry, editable); }
 export async function listPhotoTitles(filters: PhotoTitleFilters = {}) { return (await data()).listPhotoTitles(filters); }
 export async function getPhotoTitle(id: string) { return (await data()).getPhotoTitle(id); }
 export const listEngineering = getEngineeringMatrix;

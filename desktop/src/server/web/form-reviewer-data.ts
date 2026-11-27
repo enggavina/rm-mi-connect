@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
@@ -30,20 +31,25 @@ const readCapabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.
 const unavailable = () => new Error('Não foi possível consultar os avaliadores desta célula. Tente novamente.');
 
 /** One atomic RLS snapshot. Candidate identities never come from the global user catalog. */
-export function createFormReviewerAssignmentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createFormReviewerAssignmentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getFormReviewerAssignments(projectId: string, allocationId: string, includeEligible = false): Promise<FormReviewerAssignmentSnapshot | null> {
     if (capabilities !== undefined && (!readCapabilities.every(capability => capabilities.includes(capability))
       || includeEligible && !capabilities.includes('em.planning.manage'))) throw new Error('Acesso não autorizado aos avaliadores desta célula.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(allocationId).success) return null;
-    let result;
-    try {
-      result = await client.rpc('rm_web_form_reviewer_assignments_snapshot_v1', {
-        p_project_id: projectId, p_allocation_id: allocationId, p_include_eligible: includeEligible,
-      });
-    } catch { throw unavailable(); }
-    if (result.error) throw unavailable();
-    if (result.data === null) return null;
-    const parsed = snapshotSchema.safeParse(result.data);
+    let value: unknown;
+    if (workshopRead) value = await workshopRead('operational_reviewers', { project: projectId, allocation: allocationId, include: includeEligible });
+    else {
+      let result;
+      try {
+        result = await client.rpc('rm_web_form_reviewer_assignments_snapshot_v1', {
+          p_project_id: projectId, p_allocation_id: allocationId, p_include_eligible: includeEligible,
+        });
+      } catch { throw unavailable(); }
+      if (result.error) throw unavailable();
+      value = result.data;
+    }
+    if (value === null) return null;
+    const parsed = snapshotSchema.safeParse(value);
     if (!parsed.success) throw unavailable();
     const snapshot = parsed.data;
     const closed = snapshot.project.data_real_de_entrega !== null
@@ -74,8 +80,10 @@ export function createFormReviewerAssignmentData(client: SupabaseClient, capabil
 
 export async function getFormReviewerAssignments(projectId: string, allocationId: string) {
   const { requireWebUser } = await import('./auth');
+  const { ssoWorkshopRead } = await import('./sso-bridge');
   const access = await requireWebUser(readCapabilities);
   const includeEligible = ['administrador', 'padr_o'].includes(access.profile.perfil)
     && (!access.sso || access.sso.capabilities.includes('em.planning.manage'));
-  return createFormReviewerAssignmentData(access.client, access.sso?.capabilities).getFormReviewerAssignments(projectId, allocationId, includeEligible);
+  return createFormReviewerAssignmentData(access.client, access.sso?.capabilities, access.sso && ssoWorkshopRead(access.sso, access.client))
+    .getFormReviewerAssignments(projectId, allocationId, includeEligible);
 }

@@ -147,3 +147,31 @@ test('enabled root edits use the current office and the established capability',
   assert.equal(await manager.authorize(context, 'edit-cell', 'save_catalog', { ...edit, kind: 'cells' }, 'em.catalogs.manage'), true);
   assert.deepEqual(minted, ['save_project', 'save_project_with_equipment', 'save_catalog']);
 });
+
+test('assignment selectors ignore submitted membership and assignment retries recheck the current roster', async () => {
+  const context: SsoContext = { ...sso(), capabilities: ['em.portal.read', 'em.planning.manage'] };
+  const corporate = session();
+  corporate.decision.capabilities = [...context.capabilities];
+  const payload = { changes: { responsavel_id: subject } };
+  const events: string[] = [];
+  const members = [{ kind: 'corporate' as const, subject }];
+  const team = { context: workshop(), members };
+  const authorizer = createCatalogWorkshopAuthorizer({ enableGanttWrites: true, reader: {
+    async readWeb() { assert.fail('the roster contains the confirmed workshop'); },
+    async readTeam(value, purpose) { assert.equal(value, corporate); assert.equal(purpose, 'planning'); events.push('roster'); return team; },
+  }, async mintRead(value) {
+    assert.deepEqual(value.filters, { purpose: 'planning', members }); events.push('read');
+  }, async mintAssignment(value) {
+    assert.equal(value.team, team); assert.equal(value.payload, payload); assert.equal(value.submissionId, 'assign'); events.push('assignment');
+  }, async mint(value) {
+    assert.equal(value.context, team.context); assert.equal(value.payload, payload); events.push('action');
+  } });
+  authorizer.remember(context, corporate);
+  await assert.rejects(authorizer.authorizeRead(context, 'read', 'assignment_people', { purpose: 'planning' }), CorporateAuthError);
+  await assert.rejects(authorizer.authorizeTeamRead(context, 'read', { purpose: 'project' }, 'assignment_people'), CorporateAuthError);
+  await authorizer.authorizeTeamRead(context, 'read', { purpose: 'planning', members: ['caller-controlled'] }, 'assignment_people');
+  for (let retry = 0; retry < 2; retry++) {
+    assert.equal(await authorizer.authorize(context, 'assign', 'plan_cell', payload, 'em.planning.manage'), true);
+  }
+  assert.deepEqual(events, ['roster', 'read', 'roster', 'assignment', 'action', 'roster', 'assignment', 'action']);
+});
