@@ -5,7 +5,8 @@ import { router, type Href } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
 import { service } from '../core';
-import { showSyncRecovery } from '../core/sync-recovery';
+import { canOpenSyncQueue, showSyncRecovery, syncQueueSummary } from '../core/sync-recovery';
+import { useQueue } from './queue';
 import { useApp } from './state';
 
 export const C = {
@@ -59,9 +60,11 @@ type ScreenProps = { title: string; subtitle?: string; children: React.ReactNode
 export function Screen({ title, subtitle, children, auth = false, backHref, backLabel = 'Voltar', eyebrow, scrollRef, floatingFooter }: ScreenProps) {
   const state = useApp();
   const [menu, setMenu] = useState(false);
+  const [recoveryIdentity, setRecoveryIdentity] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [menuError, setMenuError] = useState('');
   const pending = state.pendingMedia + state.pendingMutations;
+  const identity = state.sessionUserId && state.operator ? `${state.sessionUserId}:${state.operator.operador_id}` : null;
   const open = (href: Href) => { setMenu(false); router.navigate(href); };
   const switchOperator = async () => {
     setSwitching(true); setMenuError('');
@@ -80,6 +83,10 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={{ color: C.white, fontSize: 12, fontWeight: '600' }}>{state.online ? 'Dados aguardando envio' : 'Sem conexão'}</Text>
         <Text style={{ color: '#C4C8D0', fontSize: 11 }}>{pending ? `${state.pendingMedia} arquivos · ${state.pendingMutations} registros aguardando envio` : 'Você pode continuar trabalhando neste dispositivo.'}</Text>
+        {canOpenSyncQueue(state) && <Pressable accessibilityRole="button" accessibilityLabel="Ver pendências" onPress={() => setRecoveryIdentity(identity)}
+          style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingRight: 12 }}>
+          <Text style={{ color: C.white, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>Ver pendências</Text>
+        </Pressable>}
       </View>
       {state.online && <Pressable accessibilityRole="button" accessibilityLabel="Sincronizar agora" accessibilityState={{ disabled: state.syncing }} disabled={state.syncing}
         onPress={() => { void service.sync(true).catch(() => {}); }} style={{ minHeight: 40, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -102,6 +109,7 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
       </ScrollView>
       {floatingFooter && <View style={{ padding: 12, paddingBottom: 24, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.white }}>{floatingFooter}</View>}
     </KeyboardAvoidingView>
+    {!auth && identity && recoveryIdentity === identity && <SyncQueueDialog key={identity} close={() => setRecoveryIdentity(null)} />}
     <Modal visible={menu} onRequestClose={() => setMenu(false)} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
         <ScrollView contentContainerStyle={{ padding: 24, gap: 24, width: '100%', maxWidth: 600, alignSelf: 'center' }}>
@@ -120,6 +128,43 @@ export function Screen({ title, subtitle, children, auth = false, backHref, back
     </Modal>
   </SafeAreaView>;
 }
+
+const queueDate = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+function SyncQueueDialog({ close }: { close: () => void }) {
+  const state = useApp();
+  const { rows, ready, error } = useQueue();
+  const hasPending = state.pendingMedia + state.pendingMutations > 0;
+  return <Modal visible onRequestClose={close} animationType="slide" presentationStyle="pageSheet">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48, gap: 14, width: '100%', maxWidth: 700, alignSelf: 'center' }}>
+        <View style={[s.row, { justifyContent: 'space-between' }]}>
+          <Text accessibilityRole="header" style={s.h2}>Pendências de sincronização</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Fechar pendências" onPress={close} style={{ padding: 12 }}>
+            <Feather name="x" size={24} color={C.ink} />
+          </Pressable>
+        </View>
+        {!state.online && <Notice>Conecte-se para continuar o envio.</Notice>}
+        {hasPending && <Button title="Sincronizar agora" disabled={!state.online} busy={state.syncing} onPress={() => { void service.sync(true).catch(() => {}); }} />}
+        {hasPending && state.error && <Notice error>O envio ainda precisa de atenção. Os dados permanecem neste dispositivo.</Notice>}
+        {state.pendingMedia > 0 && <Text style={s.body}>Arquivos aguardando envio: {state.pendingMedia}</Text>}
+        {error ? <Notice error>Não foi possível consultar os protocolos pendentes.</Notice> : !ready ? <ActivityIndicator accessibilityLabel="Consultando pendências" color={C.primary} /> :
+          !hasPending && rows.length === 0 && <Notice>Não há mais envios pendentes.</Notice>}
+        {!error && rows.map(row => {
+          const item = syncQueueSummary(row);
+          const created = new Date(item.createdAt);
+          return <Card key={item.protocol}>
+            <Text style={s.h2}>{item.operation}</Text>
+            <Badge text={item.status} alert={item.failed} />
+            {!Number.isNaN(created.getTime()) && <Text style={s.muted}>{queueDate.format(created)}</Text>}
+            <Text selectable style={s.body}>Protocolo: {item.protocol}</Text>
+          </Card>;
+        })}
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>;
+}
+
 export function Select({ label, value, options, onChange, multiple = false, disabled = false }: { label: string; value: string | string[]; options: { value: string; label: string }[]; onChange: (value: string[]) => void; multiple?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(false); const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<string[]>([]);
