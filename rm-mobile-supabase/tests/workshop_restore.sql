@@ -236,7 +236,6 @@ begin
  return context;
 end$$;
 
-begin;
 create function pg_temp.workshop_restore_sso(office integer) returns jsonb language plpgsql as $$
 declare context jsonb; stamp timestamptz:=clock_timestamp();
  hash text:=repeat(office::text,64);
@@ -267,6 +266,7 @@ begin
 exception when others then reset role;raise;
 end$$;
 
+begin;
 create function pg_temp.workshop_restore_planning_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
 returns jsonb language plpgsql as $$
 declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
@@ -3216,8 +3216,13 @@ declare
  office int; other int; attempt int; action text; payload jsonb; protocol uuid; answer jsonb;
  device uuid; device_session uuid; actor uuid; token text; project uuid; cell uuid; allocation uuid;
  model uuid; question uuid; registration uuid; stage uuid; destination uuid;
- ack jsonb; original_ack jsonb; expected jsonb;
+ ack jsonb; original_ack jsonb; expected jsonb; lookup jsonb; displayed jsonb;
 begin
+ if exists(select 1 from unnest(array['anon','authenticated','service_role']) client_role(name) where
+  has_function_privilege(client_role.name,'rm_private.workshop_android_protocol_v1(jsonb,uuid)','execute')
+  or has_table_privilege(client_role.name,'rm_private.workshop_android_receipt_confirmations','select,insert,update')) then
+  raise exception 'A conferência ficou acessível fora do leitor autorizado.';
+ end if;
  for office in 1..4 loop
   device:=em_fixture.id(710+office); device_session:=em_fixture.id(720+office); actor:=em_fixture.id(740+office);
   token:=repeat(chr(96+office),64); project:=em_fixture.id(100+office); cell:=em_fixture.id(200+office);
@@ -3253,6 +3258,7 @@ begin
     when 'rm_transition_stage_approval_v1' then jsonb_build_object('p_aprovacao_etapa_id',stage,'p_acao','liberar') end;
    expected:=jsonb_build_object('protocolo',protocol,'operacao',action,'dispositivo_id',device,'operador_id',actor,
     'oficina_id',em_fixture.id(office),'projeto_id',project);
+   lookup:=jsonb_build_object('protocol',protocol,'forms',true,'photos',true,'approvals',true,'planning',true);
    for other in 1..4 loop
     if other=office then continue;end if;
     begin
@@ -3270,8 +3276,30 @@ begin
     if ack->'confirmacao' is distinct from expected or (attempt=2 and ack is distinct from original_ack||'{"idempotent_replay":true}'::jsonb) then
      raise exception 'Confirmação divergente da fila para % na oficina %.',action,office;
     end if;
+    displayed:=rm_private.workshop_android_protocol_v1(lookup,em_fixture.id(office));
+    if not coalesce(displayed @> jsonb_build_object('phase','confirmed','project_id',project,'operation',action),false)
+     or (displayed->>'last_retry_at' is not null) is distinct from (attempt=2) then
+     raise exception 'A consulta não distinguiu confirmação e reenvio de %.',action;
+    end if;
     original_ack:=ack;
    end loop;
+   for other in 1..4 loop
+    if other<>office and rm_private.workshop_android_protocol_v1(lookup,em_fixture.id(other)) is not null then
+     raise exception 'A consulta do protocolo atravessou a oficina.';
+    end if;
+   end loop;
+   if action<>'rm_add_cell_comment_v1' and rm_private.workshop_android_protocol_v1(
+    lookup||'{"forms":false,"photos":false,"approvals":false,"planning":false}',em_fixture.id(office)) is not null then
+    raise exception 'A consulta exibiu uma operação de módulo sem permissão.';
+   end if;
+   if office=3 and action='rm_submit_form_inspection_v1' then
+    if pg_temp.workshop_restore_read(3,'android_protocol',lookup) is distinct from displayed
+     or pg_temp.workshop_restore_read(4,'android_protocol',lookup) is not null then
+     raise exception 'O leitor do portal perdeu o recorte do protocolo.';
+    end if;
+    perform set_config('request.jwt.claim.sub',device::text,true);
+    perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+   end if;
    if not exists(select 1 from rm_private.mobile_mutation_receipts r where r.client_submission_id=protocol
     and r.auth_user_id=device and r.operator_id=actor and r.rpc_name=action
     and r.result-'idempotent_replay'=ack-'idempotent_replay'-'confirmacao') then
@@ -3279,6 +3307,7 @@ begin
    end if;
    if action='rm_submit_form_inspection_v1' then
     registration:=(ack->>'registro_formulario_id')::uuid;
+    if displayed->>'form_record_id' is distinct from registration::text then raise exception 'A consulta perdeu o formulário original.';end if;
     update public.rm_registros_formulario set status='direcionado' where id=registration;
     update public.rm_respostas set revisar=true where registro_formulario_id=registration and questao_id=question;
    end if;

@@ -11,7 +11,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
   'root_edit_choices', 'project_delete_context',
   'project_comments', 'project_documents', 'project_comment', 'project_attachment', 'project_audit', 'project_equipment', 'project_route',
-  'project_route_cell', 'operational_photos', 'project_detail', 'form_record_detail', 'project_equipment_type',
+  'project_route_cell', 'operational_photos', 'project_detail', 'form_record_detail', 'project_equipment_type', 'android_protocol',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -41,6 +41,8 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
       throw new Error('Seletores de edição indisponíveis.');
     case 'project_delete_context': return ['em.portal.read', 'em.projects.read', 'em.projects.manage'];
     case 'project_comments': case 'project_comment': return ['em.portal.read', 'em.projects.read', 'em.history.read'];
+    case 'android_protocol': return ['em.portal.read', 'em.projects.read', 'em.history.read',
+      ...(['forms', 'photos', 'approvals', 'planning'] as const).filter(topic => filters[topic] === true).map(topic => `em.${topic}.read` as const)];
     case 'project_documents': case 'project_attachment': return ['em.portal.read', 'em.projects.read', 'em.documents.read'];
     case 'project_equipment': case 'project_equipment_type': return ['em.portal.read', 'em.projects.read'];
     case 'project_route': return ['em.portal.read', 'em.projects.read', 'em.planning.read'];

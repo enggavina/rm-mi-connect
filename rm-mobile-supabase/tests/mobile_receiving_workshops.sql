@@ -79,9 +79,12 @@ declare
  opened jsonb;
  received jsonb;
  pid uuid;
+ lookup jsonb:=jsonb_build_object('protocol',sid,'forms',false,'photos',false,'approvals',false,'planning',false);
 begin
  opened:=pg_temp.rx_call(sid,'open',pg_temp.rx_payload(sid,'open'));
  pid:=(opened->>'projeto_id')::uuid;
+ perform pg_temp.rx_check(rm_private.workshop_android_protocol_v1(lookup,pg_temp.rx_id(1))->>'phase'='opened'
+  and rm_private.workshop_android_protocol_v1(lookup,pg_temp.rx_id(2)) is null,'only the original workshop sees an opened protocol');
  perform pg_temp.rx_check(exists(select 1 from rm_private.workshop_receiving_creation_evidence_v1() proof
   where proof.submission_id=sid and proof.creation_phase='open' and not proof.completed)
   and not rm_private.workshop_receiving_pilot_ready_v1(),'a fresh scoped opening is tracked and does not qualify before completion');
@@ -91,6 +94,10 @@ begin
  perform pg_temp.rx_check((pg_temp.rx_call(sid,'open',pg_temp.rx_payload(sid,'open'))->>'idempotent_replay')::boolean,'early retry keeps project');
  perform pg_temp.rx_reject(format('select pg_temp.rx_call(%L,''complete'',pg_temp.rx_payload(%L,''complete''),2)',sid,sid),'42501');
  received:=pg_temp.rx_call(sid,'complete',pg_temp.rx_payload(sid,'complete'));
+ perform pg_temp.rx_check(rm_private.workshop_android_protocol_v1(lookup,pg_temp.rx_id(1)) @>
+  jsonb_build_object('phase','confirmed','project_id',pid,'operation','rm_submit_recebimento_v1'),'portal finds the confirmed opening under the same protocol');
+ perform pg_temp.rx_check(rm_private.workshop_android_protocol_v1(lookup||jsonb_build_object('protocol',gen_random_uuid()),pg_temp.rx_id(1)) is null,
+  'unknown protocol returns the same neutral result');
  perform pg_temp.rx_check(received->>'projeto_id'=pid::text,'final receipt uses the original project');
  perform pg_temp.rx_check(rm_private.workshop_receiving_pilot_ready_v1(),'both scoped phases and the original receipt qualify the pilot');
  perform pg_temp.rx_check((pg_temp.rx_call(sid,'complete',pg_temp.rx_payload(sid,'complete'))->>'idempotent_replay')::boolean,'final retry keeps one receipt');
