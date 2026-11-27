@@ -6,7 +6,8 @@ set local statement_timeout='60s';
 -- Project and team reads go through the scoped web and mobile signers.
 alter policy rm_mobile_documents_read on storage.objects using (
  bucket_id='rm-documentos' and rm_private.is_rm_authenticated()
- and (storage.foldername(name))[1]=auth.uid()::text
+ -- The separately activated dossier policy still governs its own namespace.
+ and ((storage.foldername(name))[1]=auth.uid()::text or starts_with(name,'web-dossier/'))
 );
 alter policy rm_mobile_media_select on storage.objects using (
  bucket_id in('rm-fotos','rm-assinaturas') and rm_private.is_rm_authenticated()
