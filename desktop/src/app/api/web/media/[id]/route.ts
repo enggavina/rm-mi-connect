@@ -4,13 +4,14 @@ import { hasWebCapability } from '@/server/web/auth-policy';
 import { uuid } from '@/server/web/policy';
 import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
-import { isNativeWorkshopMediaPath, resolveWorkshopMedia, workshopMediaTarget } from '@/server/web/workshop-media';
+import { isNativeWorkshopMediaPath, relayLegacyWorkshopImage, resolveWorkshopMedia, workshopMediaTarget } from '@/server/web/workshop-media';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { signNativeWorkshopDocument } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
+const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
+  'Cross-Origin-Resource-Policy': 'same-origin' };
 const failure = (status: number) => Response.json({ error: 'Mídia indisponível.' }, { status, headers });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -34,6 +35,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const origin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const target = workshopMediaTarget(value.file, origin, source);
     if (!target) return failure(404);
+    const publicUrl = target.kind === 'legacy' ? target.url
+      : target.bucket !== 'rm-documentos' && value.file.startsWith(`${target.origin}/storage/v1/object/public/${target.bucket}/`)
+        ? `${target.origin}/storage/v1/object/public/${target.bucket}/${target.path.split('/').map(encodeURIComponent).join('/')}`
+        : null;
+    if (publicUrl) {
+      const image = await relayLegacyWorkshopImage(publicUrl, request.signal);
+      if (!image) return failure(404);
+      return new Response(image.body, { headers: { ...headers, 'Content-Type': image.type,
+        'Content-Security-Policy': "sandbox; default-src 'none'" } });
+    }
     let issued = false;
     const destination = await resolveWorkshopMedia(value.file, origin, source, async (bucket, path) => {
       const signed = bucket === 'rm-documentos' && isNativeWorkshopMediaPath(path) ? await signNativeWorkshopDocument(path)

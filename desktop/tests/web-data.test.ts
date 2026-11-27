@@ -293,6 +293,25 @@ test('explicit photos capability preserves submitted media for permitted form co
   assert.equal(result?.answers[0].media_restricted, undefined);
 });
 
+test('corporate gallery and form responses use scoped URLs and preserve the stored array indexes', async () => {
+  const { db } = setup();
+  const client = db as unknown as SupabaseClient;
+  const raw = 'https://files.cdn.bubble.io/historical.jpg';
+  const project = { id: id(1) };
+  db.tables.set('rm_projetos', [project]);
+  db.tables.set('rm_fotos', [{ id: id(2), projeto_id: project.id, lixeira: false, foto_url: raw }]);
+  db.tables.set('rm_registros_formulario', [{ id: id(3), projeto_id: project.id, form_id: id(4), celula_id: null }]);
+  db.tables.set('rm_respostas', [{ id: id(5), registro_formulario_id: id(3), fotos_urls: [null, raw], assinatura_url: raw }]);
+  const gallery = await createWebData(client, ['em.portal.read', 'em.projects.read', 'em.photos.read'],
+    async () => assert.fail('a preview authorizes its own request')).getProject(project.id);
+  const form = await createWebData(client, ['em.portal.read', 'em.forms.read', 'em.photos.read'], undefined,
+    async () => ({ project_id: project.id, form_id: id(4), cell_id: null })).getRecord(id(3));
+  assert.equal(gallery?.photos[0].foto_url, `/api/web/media/${id(2)}?source=project_photo`);
+  assert.deepEqual(form?.answers[0].fotos_urls, [null, `/api/web/media/${id(5)}?source=answer_photo&index=1`]);
+  assert.equal(form?.answers[0].assinatura_url, `/api/web/media/${id(5)}?source=answer_signature`);
+  assert.ok(!JSON.stringify({ gallery, form }).includes(raw));
+});
+
 test('planning without project capability does not join or load the project table', async () => {
   const { db, data } = setup(['em.portal.read', 'em.planning.read']);
   db.tables.set('rm_celulas_projeto', [{ id: id(1), projeto_id: id(2), numero_projeto: 'OS', retirada: false }]);

@@ -61,3 +61,33 @@ export async function resolveWorkshopMedia(reference: string, origin: string, so
     return null;
   }
 }
+
+const legacyImageTypes = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/bmp', 'image/tiff',
+  'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence',
+]);
+const legacyImageMaxBytes = 20 * 1024 * 1024;
+
+/** Relay an approved public image without returning its historical address. */
+export async function relayLegacyWorkshopImage(url: string, signal: AbortSignal): Promise<{ body: ReadableStream<Uint8Array>; type: string } | null> {
+  const upstream = await fetch(url, {
+    cache: 'no-store', redirect: 'error', credentials: 'omit',
+    signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+  });
+  const type = upstream.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  const length = upstream.headers.get('content-length');
+  if (upstream.status !== 200 || !upstream.body || !type || !legacyImageTypes.has(type)
+    || (length !== null && (!/^\d+$/.test(length) || Number(length) < 1 || Number(length) > legacyImageMaxBytes))) {
+    await upstream.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  let transferred = 0;
+  const body = upstream.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      transferred += chunk.byteLength;
+      if (transferred > legacyImageMaxBytes) throw new Error('Imagem histórica excede o limite.');
+      controller.enqueue(chunk);
+    },
+  }));
+  return { body, type };
+}

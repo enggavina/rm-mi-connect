@@ -12,7 +12,7 @@ import { mayReview, recordSections } from '@/components/web/review-model';
 export default async function RegistroFormulario({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireWebUser('em.forms.read');
-  const data = await createWebData(session.client, session.sso?.capabilities, undefined, await readWorkshopOperations(session)).getRecord(id);
+  const data = await createWebData(session.client, session.sso?.capabilities, undefined, await readWorkshopOperations(session, 'sso')).getRecord(id);
   if (!data) notFound();
   const { record, project, form, answers, questions, items, users } = data;
   const names = new Map(users.map(user => [user.id, user.nome]));

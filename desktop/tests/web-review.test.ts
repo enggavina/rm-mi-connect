@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
-import { resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
+import { relayLegacyWorkshopImage, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 import { workshopMediaUrl } from '../src/shared/workshop-media';
 
 test('record sections preserve submitted text, fractional order, choices and orphan answers without adding unanswered questions', () => {
@@ -85,4 +85,38 @@ test('media download signs only the expected object and keeps legacy attachments
   assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => `${signed}&token=duplicate`), null);
   const legacy = 'https://files.cdn.bubble.io/legacy.jpg';
   assert.equal(await resolveWorkshopMedia(legacy, base, 'answer_photo', async () => assert.fail('Legacy URL does not sign storage')), legacy);
+});
+
+test('the legacy image relay streams approved image formats without forwarding credentials or redirects', async t => {
+  const url = 'https://files.cdn.bubble.io/legacy.heic';
+  const bytes = new Uint8Array([1, 2, 3]);
+  const fetchMock = t.mock.method(globalThis, 'fetch', async (input, options) => {
+    assert.equal(input, url);
+    assert.equal(options?.redirect, 'error');
+    assert.equal(options?.credentials, 'omit');
+    assert.equal(options?.cache, 'no-store');
+    assert.equal(options?.headers, undefined);
+    return new Response(bytes, { headers: { 'Content-Type': 'image/heic', 'Content-Length': '3' } });
+  });
+  const relay = await relayLegacyWorkshopImage(url, new AbortController().signal);
+  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(relay?.type, 'image/heic');
+  assert.deepEqual(new Uint8Array(await new Response(relay?.body).arrayBuffer()), bytes);
+});
+
+test('the legacy image relay rejects unsafe types, failed responses and over-limit bodies', async t => {
+  const url = 'https://files.cdn.bubble.io/legacy.jpg';
+  const signal = new AbortController().signal;
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => new Response('file'));
+  for (const init of [
+    { headers: { 'Content-Type': 'image/svg+xml' } },
+    { status: 404, headers: { 'Content-Type': 'image/jpeg' } },
+    { headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(21 * 1024 * 1024) } },
+  ]) {
+    fetchMock.mock.mockImplementationOnce(async () => new Response('file', init));
+    assert.equal(await relayLegacyWorkshopImage(url, signal), null);
+  }
+  fetchMock.mock.mockImplementationOnce(async () => new Response(new Uint8Array(21 * 1024 * 1024), { headers: { 'Content-Type': 'image/jpeg' } }));
+  const relay = await relayLegacyWorkshopImage(url, signal);
+  await assert.rejects(new Response(relay?.body).arrayBuffer(), /excede o limite/);
 });

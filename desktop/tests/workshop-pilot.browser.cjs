@@ -50,6 +50,17 @@ async function main() {
           if (step.selector) await page.locator(step.selector).first().waitFor();
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+          if (step.image) {
+            const image = page.locator(step.image).first();
+            await image.scrollIntoViewIfNeeded();
+            const src = await image.getAttribute('src');
+            assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
+            await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
+            const preview = await context.request.get(location(src), { maxRedirects: 0 });
+            assert.equal(preview.status(), 200);
+            assert.match(preview.headers()['content-type'] ?? '', /^image\//);
+            assert.equal(preview.headers().location, undefined);
+          }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);

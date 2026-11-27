@@ -75,7 +75,7 @@ async function page(query: any, number: unknown, pageSize: number): Promise<WebP
 /** Injectable RLS client makes pagination and scope testable without Auth secrets. */
 export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead, operationRead?: WorkshopRead) {
   const storageOrigin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const scopedMedia = (file: unknown) => !!operationRead || isNativeWorkshopMedia(file, storageOrigin);
+  const scopedMedia = (file: unknown) => !!workshopRead || !!operationRead || isNativeWorkshopMedia(file, storageOrigin);
   const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
   const requireCapability = (capability: CorporateCapability) => {
     if (!allowed('em.portal.read') || !allowed(capability)) throw new Error('Acesso não autorizado a esta área.');
@@ -250,7 +250,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const visibleAnswers = answers.map(answer => {
       if (allowed('em.photos.read')) {
         const photos: unknown[] = Array.isArray(answer.fotos_urls) ? answer.fotos_urls : [];
-        if (!operationRead && !photos.some(scopedMedia) && !scopedMedia(answer.assinatura_url)) return answer;
+        if (!workshopRead && !operationRead && !photos.some(scopedMedia) && !scopedMedia(answer.assinatura_url)) return answer;
         return { ...answer,
           fotos_urls: photos.map((file, index) => typeof file === 'string' && file ? scopedMedia(file) ? workshopMediaUrl(answer.id, 'answer_photo', index) : file : null),
           assinatura_url: answer.assinatura_url && scopedMedia(answer.assinatura_url) ? workshopMediaUrl(answer.id, 'answer_signature') : answer.assinatura_url || null };
@@ -356,7 +356,8 @@ async function data(capability: CorporateCapability) {
   const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability);
   const { ssoWorkshopRead } = await import('./sso-bridge');
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
-  const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read', 'em.portal.read'].includes(capability) ? await readWorkshopOperations(session) : undefined;
+  const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read', 'em.portal.read'].includes(capability)
+    ? await readWorkshopOperations(session, capability === 'em.forms.read' ? 'sso' : 'rollout') : undefined;
   return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined, operationRead);
 }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }
