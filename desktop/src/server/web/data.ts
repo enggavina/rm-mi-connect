@@ -5,6 +5,7 @@ import { editableCatalogKindSchema, type EditableCatalogKind } from './catalog-p
 import { withFormVersionLabels } from './form-version-labels';
 import { projectPhotoFilters, type ProjectPhotoFilters } from './project-photo-policy';
 import { checkedWorkshopPage, type WorkshopRead } from './workshop-read-policy';
+import { workshopMediaUrl } from '@/shared/workshop-media';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -204,7 +205,9 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const equipment = equipmentRows.find(row => row.id === project.equipamento_id && row.projeto_id === project.id) || null;
     const displayProject: WebRow = { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) };
     return { project: displayProject, client: customers[0] || null, equipment,
-      allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users, photos: pictures.rows, photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
+      allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users,
+      photos: operationRead ? pictures.rows.map<WebRow>(photo => ({ ...photo, foto_url: workshopMediaUrl(photo.id, 'project_photo') })) : pictures.rows,
+      photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {
     requireCapability('em.forms.read');
@@ -225,7 +228,14 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
       all('rm_itens_questoes', ITEM, q => q.eq('form_id', record.form_id), 'indice'),
       byIds('rm_users', userColumns, [record.identidade_user_id, record.created_by_user_id, record.responsavel_user_id, record.avaliador_user_id, record.user_revisao_id]),
     ]);
-    const visibleAnswers = allowed('em.photos.read') ? answers : answers.map(answer => {
+    const visibleAnswers = answers.map(answer => {
+      if (allowed('em.photos.read')) {
+        if (!operationRead) return answer;
+        const photos: unknown[] = Array.isArray(answer.fotos_urls) ? answer.fotos_urls : [];
+        return { ...answer,
+          fotos_urls: photos.map((file, index) => typeof file === 'string' && file ? workshopMediaUrl(answer.id, 'answer_photo', index) : null),
+          assinatura_url: answer.assinatura_url ? workshopMediaUrl(answer.id, 'answer_signature') : null };
+      }
       const type = answer.tipo ?? questions.find(question => question.id === answer.questao_id)?.tipo;
       if (MEDIA_ANSWER_TYPES.has(type) || hasMediaReference(answer.resposta) || hasMediaReference(answer.itens)) {
         return { ...answer, resposta: null, itens: [], itens_questoes_ids: [], media_restricted: true };

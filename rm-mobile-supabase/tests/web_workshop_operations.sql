@@ -355,4 +355,35 @@ begin
  perform pg_temp.project_read_deny(format('select pg_temp.project_read_call(''planning_export'',%L,%L)',filters,bma),'42501');
 end$$;
 select 'PASS: scoped workshop twin projections and planning export in two offices' result;
+
+insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,foto_url,lixeira) values
+ (pg_temp.project_read_id(951),pg_temp.project_read_id(101),pg_temp.project_read_id(301),pg_temp.project_read_id(501),'https://private.invalid/own-photo',false),
+ (pg_temp.project_read_id(952),pg_temp.project_read_id(127),pg_temp.project_read_id(302),pg_temp.project_read_id(504),'https://private.invalid/foreign-photo',false),
+ (pg_temp.project_read_id(953),pg_temp.project_read_id(101),null,null,'https://private.invalid/discarded-photo',true),
+ (pg_temp.project_read_id(954),null,null,null,'https://private.invalid/template-photo',false),
+ (pg_temp.project_read_id(955),pg_temp.project_read_id(101),pg_temp.project_read_id(303),pg_temp.project_read_id(503),'https://private.invalid/pending-photo',false);
+update public.rm_respostas set fotos_urls=array['https://private.invalid/first','https://private.invalid/second'],
+ assinatura_url='https://private.invalid/signature' where id=pg_temp.project_read_id(901);
+do $$
+declare bma uuid:=pg_temp.project_read_id(1); brj uuid:=pg_temp.project_read_id(2); p jsonb; r jsonb;
+begin
+ p:=jsonb_build_object('source','project_photo','id',pg_temp.project_read_id(951));
+ r:=pg_temp.project_read_call('media_reference',p,bma);
+ perform pg_temp.project_read_check(r->>'file'='https://private.invalid/own-photo','authorized project photo');
+ perform pg_temp.project_read_check(pg_temp.project_read_call('media_reference',p,brj) is null,'foreign UUID does not disclose project media');
+ for i in 952..955 loop
+  perform pg_temp.project_read_check(pg_temp.project_read_call('media_reference',jsonb_set(p,'{id}',to_jsonb(pg_temp.project_read_id(i))),bma) is null,
+   'foreign, discarded, template or pending media stays out of the project design');
+ end loop;
+ p:=jsonb_build_object('source','answer_photo','id',pg_temp.project_read_id(901),'index',1);
+ r:=pg_temp.project_read_call('media_reference',p,bma);
+ perform pg_temp.project_read_check(r->>'file'='https://private.invalid/second'
+  and pg_temp.project_read_call('media_reference',p,brj) is null,'answer photos are indexed and scoped by the registration');
+ perform pg_temp.project_read_check(pg_temp.project_read_call('media_reference',jsonb_set(p,'{index}','2'),bma) is null,'unknown photo index');
+ p:=(p-'index')||'{"source":"answer_signature"}'::jsonb;
+ r:=pg_temp.project_read_call('media_reference',p,bma);
+ perform pg_temp.project_read_check(r->>'file'='https://private.invalid/signature'
+  and pg_temp.project_read_call('media_reference',p,brj) is null,'signature is scoped by the registration');
+end$$;
+select 'PASS: scoped project photos, answer media, signature and direct foreign reference refusal' result;
 rollback;

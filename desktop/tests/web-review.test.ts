@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
+import { workshopMediaTarget } from '../src/server/web/workshop-media';
+import { workshopMediaUrl } from '../src/shared/workshop-media';
 
 test('record sections preserve submitted text, fractional order, choices and orphan answers without adding unanswered questions', () => {
   const sections = recordSections([
@@ -51,4 +53,19 @@ test('answer media allows existing Bubble CDN and configured public photo/signat
   const base = 'https://project.supabase.co';
   for (const value of ['https://files.cdn.bubble.io/image.jpg', `${base}/storage/v1/object/public/rm-assinaturas/a.png`, `${base}/storage/v1/object/public/rm-fotos/a.jpg`]) assert.equal(safeAnswerMedia(value, base), value);
   for (const value of ['javascript:alert(1)', 'file:///secret.png', 'data:image/svg+xml,bad', 'http://files.cdn.bubble.io/a', 'https://u:p@files.cdn.bubble.io/a', 'https://files.cdn.bubble.io.evil.test/a', 'https://127.0.0.1/a', `${base}/storage/v1/object/authenticated/rm-documentos/a.pdf`, `${base}/storage/v1/object/public/rm-documentos/a.pdf`]) assert.equal(safeAnswerMedia(value, base), null);
+});
+
+test('workshop media accepts exact local references and restricts signing by storage origin and media bucket', () => {
+  const base = 'https://example.supabase.co';
+  const id = '00000000-0000-4000-8000-000000000001';
+  const photo = workshopMediaUrl(id, 'answer_photo', 2);
+  assert.equal(safeAnswerMedia(photo, base), photo);
+  assert.equal(safeAnswerMedia(`${photo}&unexpected=1`, base), null);
+  assert.equal(workshopMediaTarget('https://files.cdn.bubble.io/legacy.jpg', base, 'project_photo')?.kind, 'legacy');
+  assert.deepEqual(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/title%20view.jpg`, base, 'answer_photo'),
+    { kind: 'storage', origin: base, bucket: 'rm-fotos', path: 'owner/title view.jpg' });
+  assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg`, base, 'answer_signature'), null);
+  assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner%2F..%2Ffile.jpg`, base, 'project_photo'), null);
+  assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg?token=known`, base, 'project_photo'), null);
+  assert.equal(workshopMediaTarget('https://files.cdn.bubble.io.example.org/legacy.jpg', base, 'project_photo'), null);
 });

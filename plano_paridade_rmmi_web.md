@@ -23,9 +23,9 @@ A Central de Acessos define a oficina efetiva e seus vínculos. O portal de gest
 
 **Cobertura da P0.1.** A migração 065 já vincula a criação de projetos e células do portal a Acessos. A 066 publicou o piloto Android com origem na abertura ou na conclusão e validação da origem registrada para o QR. O APK 1.2.12 foi instalado e o Recebimento abriu no Moto G84 online e offline. O primeiro envio real no aparelho e a cobertura dos escritores antigos seguem no aceite. A 068 preparou a exigência transacional de origem e aceita referências oficiais além de BMA, BRJ e BBH, preservando o recibo da adoção inicial.
 
-**Cobertura da P0.2.** A 067 preparou Recebimentos por oficina, com busca, totais e paginação no mesmo escopo. A 069 preparou as gravações do Gantt e a 070 acrescentou o controle de edição de projetos e células existentes. A ativação das leituras e das gravações acompanha o corte de origem e a homologação em produção. [Publicações](desktop/docs/web-platform.md).
+**Cobertura da P0.2.** A 067 preparou Recebimentos por oficina, com busca, totais e paginação no mesmo escopo. A 069 preparou as gravações do Gantt e a 070 acrescentou o controle de edição de projetos e células existentes. A consulta e a revisão de respostas de formulário foram publicadas nas 072–073. A ativação das leituras e das gravações acompanha o corte de origem e a homologação em produção. [Publicações](desktop/docs/web-platform.md).
 
-**Cobertura da P0.3.** A 071 preparou a consulta de QR e o download direto de notas fiscais, documentos e anexos a partir da oficina do projeto. Galerias, assinaturas, exportações e gêmeo digital ainda integram a entrega. [Publicações](desktop/docs/web-platform.md).
+**Cobertura da P0.3.** A 071 preparou a consulta de QR e o download direto de notas fiscais, documentos e anexos a partir da oficina do projeto. A 074 publicou o recorte por oficina da exportação de planejamento e dos dados do gêmeo digital, com visão gerencial para unidades sem planta. Galerias, assinaturas, outros indicadores e os caminhos de acesso direto ao armazenamento ainda integram a entrega. [Publicações](desktop/docs/web-platform.md).
 
 ### Roteiro de homologação do piloto
 

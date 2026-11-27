@@ -1,4 +1,5 @@
 import type { WebRow } from '@/server/web/data';
+import { isWorkshopMediaUrl } from '@/shared/workshop-media';
 
 export type ReviewAnswer = WebRow & { label: string; historical: boolean; canCorrect: boolean; itemLabels: string[] };
 export type RecordSection = { id: string; title: string; description?: string; answers: ReviewAnswer[] };
@@ -59,6 +60,7 @@ export function freezeReviewRequest(input: ReviewRequest): Readonly<ReviewReques
 
 export function safeAnswerMedia(raw: unknown, supabaseOrigin: string): string | null {
   if (typeof raw !== 'string') return null;
+  if (isWorkshopMediaUrl(raw)) return raw;
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return null;

@@ -1,5 +1,17 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — gêmeo digital e exportação de planejamento por oficina
+
+A migração **074** e o Railway **`b5d39f6e-6c4c-487a-8f02-521ccb6bd546`** foram publicados com o commit `d82e104a32fd50b379c31eba196739ff69a22ed6`. O recorte é aplicado antes dos totais, das tabelas e do arquivo Excel. A BMA recebe a planta 3D. Oficinas sem planta própria usam a visão gerencial com seus projetos e células quando o recorte está habilitado.
+
+Passaram a suite PostgreSQL, 26 testes direcionados, nove cenários Chromium com dados locais e 17 testes pós-publicação com o par operacional da BMA. O ensaio de rollback e a aplicação preservaram 127 tabelas e as identidades e permissões das 263 funções anteriores. A entrada sem sessão na API do gêmeo retornou `401`. O aceite com as contas reais de duas oficinas segue pendente. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45922202717).
+
+## P0.2 — consulta e revisão de registros de formulário por oficina
+
+As migrações **072–073** e o Railway **`9e1ca7dc-adac-4882-9d0c-74f483bac488`** foram publicados com o commit `533a1e755e40ba872c5bada0ffe42b272631f01d`. A lista filtra a oficina antes da busca e dos totais. O detalhe exige o mesmo contexto de projeto, célula e modelo usado pela leitura autorizada. A aprovação e a devolução exigem um protocolo associado à sessão, oficina e conteúdo na mesma transação.
+
+A conferência em produção encontrou 778 de 778 registros de formulário classificados na BMA. A regressão e o ensaio de rollback passaram, preservando os dados de 125 tabelas e as identidades e permissões das 258 funções anteriores. Os 17 testes operacionais passaram após a publicação. A ativação geral ainda depende dos demais caminhos de operação e da homologação do piloto. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45921637814).
+
 ## P0.2 e P0.3 — edição de projetos, células, QR e downloads
 
 As migrações **070–071** e o Railway **`352e3076-4479-48b0-b351-2ae2f67a86ea`** foram publicados com o commit `c1c72d1065e7f8547ac0a2dc30ea123bb997123d`. A edição existente de projetos e células passou a suportar autorização pela oficina da Central. As consultas de QR e downloads diretos exigem a propriedade do projeto quando o recorte por oficina está habilitado. A transição segue com a configuração anterior até a homologação das gravações e filas legadas.

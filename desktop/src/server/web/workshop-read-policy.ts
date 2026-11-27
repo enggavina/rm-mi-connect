@@ -3,7 +3,7 @@ import { uuid } from './policy';
 export const WORKSHOP_READ_RESOURCES = [
   'catalog_list', 'catalog_entry', 'template_list', 'template_draft', 'template_form', 'template_choices',
   'project_list', 'project_entry', 'planning_list', 'gantt_snapshot', 'gantt_projects', 'gantt_cells', 'operation_validation', 'receiving_list',
-  'project_qr', 'document_link', 'form_record_project', 'form_record_list', 'workshop_twin', 'planning_export',
+  'project_qr', 'document_link', 'form_record_project', 'form_record_list', 'workshop_twin', 'planning_export', 'media_reference',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -28,6 +28,7 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
     case 'gantt_cells': return ['em.portal.read', 'em.planning.read'];
     case 'receiving_list': case 'project_qr': return ['em.portal.read', 'em.projects.read'];
     case 'document_link': return ['em.portal.read', 'em.documents.read'];
+    case 'media_reference': return ['em.portal.read', 'em.photos.read', filters.source === 'project_photo' ? 'em.projects.read' : 'em.forms.read'];
     case 'form_record_project': return ['em.portal.read', 'em.forms.read'];
     case 'form_record_list': return filters.project_details === true
       ? ['em.portal.read', 'em.forms.read', 'em.projects.read'] : ['em.portal.read', 'em.forms.read'];
