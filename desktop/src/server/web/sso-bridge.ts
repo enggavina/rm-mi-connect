@@ -8,7 +8,7 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
   type CorporateFlow, type VerifiedCorporateSession, type CorporateCapability } from './sso-corporate';
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
-import { createCatalogWorkshopAuthorizer, isScopedTemplateWrite } from './catalog-workshop';
+import { createCatalogWorkshopAuthorizer, isScopedTemplateWrite, rootWriteCapability } from './catalog-workshop';
 import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
 
@@ -37,7 +37,9 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   return data;
 }
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ mint: async value => {
-  await rpc(isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1', { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
+  const issuer = rootWriteCapability(value.operation, value.payload) ? 'rm_sso_root_creation_permit_v1'
+    : isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1';
+  await rpc(issuer, { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.context });
 }, mintRead: async value => {
   await rpc('rm_sso_workshop_read_permit_v1', { p_session_hash: value.sessionHash, p_read_id: value.requestId,

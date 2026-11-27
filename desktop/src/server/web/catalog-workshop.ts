@@ -11,6 +11,14 @@ export function isScopedTemplateWrite(operation: string): boolean {
   return ['create_form_template', 'save_form_template', 'publish_form_template', 'delete_form_template'].includes(operation);
 }
 
+export function rootWriteCapability(operation: string, payload: Record<string, unknown>): CorporateCapability | null {
+  if (operation === 'delete_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
+  if (payload.expected_updated_at !== null) return null;
+  if (operation === 'save_project' || operation === 'save_project_with_equipment') return 'em.projects.manage';
+  if (operation === 'save_catalog' && payload.kind === 'cells') return 'em.catalogs.manage';
+  return null;
+}
+
 /** Request objects, not serializable session fields, retain the verified bearer.
  * The bridge calls remember only after current corporate/local SSO and MFA.
  * There is no cross-request positive decision cache or new browser credential. */
@@ -37,7 +45,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
     },
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
-        : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage' : null;
+        : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage' : rootWriteCapability(operation, payload);
       if (!expected) return false;
       if (capability !== expected || !context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');
       const corporate = verified.get(context);
