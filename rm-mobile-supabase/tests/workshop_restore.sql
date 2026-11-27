@@ -2033,6 +2033,56 @@ begin
  end;
 end
 $legacy_storage$;
+do $form_options$
+declare
+ device uuid;
+ session_id uuid;
+ delegation text;
+ context jsonb;
+ full_page jsonb;
+ delta_page jsonb;
+ ids_page jsonb;
+ detail jsonb;
+ record_args jsonb;
+begin
+ if exists(select 1 from unnest(array['anon','authenticated','service_role']) actor(role)
+  where has_table_privilege(role,'rm_private.workshop_form_options_v1','select')) then
+  raise exception 'As alternativas ficaram acessíveis fora das consultas autorizadas.';
+ end if;
+ insert into public.rm_itens_questoes(id,form_id,questao_id,descricao,updated_at)
+ select em_fixture.id(1530+n),null,em_fixture.id(1480+n),'Legada '||n,'2000-01-01T00:00:00Z'::timestamptz from generate_series(1,4)n
+ union all select em_fixture.id(1540+n),em_fixture.id(400+n),em_fixture.id(1480+n),'Vinculada '||n,'2000-01-01T00:00:00Z' from generate_series(1,4)n
+ union all select em_fixture.id(1550+n),em_fixture.id(400+(n%4)+1),em_fixture.id(1480+n),'Vínculo divergente '||n,'2000-01-01T00:00:00Z' from generate_series(1,4)n;
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office); session_id:=em_fixture.id(720+office); delegation:=repeat(chr(96+office),64);
+  context:=pg_temp.workshop_restore_native_context(office,office);
+  full_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',null,null,false);
+  delta_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',
+   '2001-01-01T00:00:00Z',em_fixture.id(400+office),false);
+  ids_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',null,null,true);
+  if jsonb_array_length(full_page->'rows')<>2 or jsonb_array_length(ids_page->'rows')<>2
+   or not full_page->'rows' @> jsonb_build_array(
+    jsonb_build_object('id',em_fixture.id(1530+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)),
+    jsonb_build_object('id',em_fixture.id(1540+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)))
+   or not ids_page->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1530+office)),
+    jsonb_build_object('id',em_fixture.id(1540+office)))
+   or jsonb_array_length(delta_page->'rows')<>1 or delta_page->'rows'->0->>'id' is distinct from em_fixture.id(1530+office)::text then
+   raise exception 'O catálogo Android perdeu alternativas, ignorou a atualização incremental ou incluiu outra oficina.';
+  end if;
+  record_args:=jsonb_build_object('id',em_fixture.id(500+office),'projects',false,'documents',false,'photos',false);
+  detail:=pg_temp.workshop_restore_read(office,'form_record_detail',record_args);
+  if jsonb_array_length(detail->'items')<>2 or not detail->'items' @> jsonb_build_array(
+   jsonb_build_object('id',em_fixture.id(1530+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)),
+   jsonb_build_object('id',em_fixture.id(1540+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)))
+   or pg_temp.workshop_restore_read((office%4)+1,'form_record_detail',record_args) is not null then
+   raise exception 'O detalhe web perdeu alternativas ou aceitou uma consulta cruzada.';
+  end if;
+ end loop;
+ if (select count(*) from public.rm_itens_questoes where form_id is null and updated_at='2000-01-01T00:00:00Z')<>4 then
+  raise exception 'Os itens legados perderam a representação original.';
+ end if;
+end
+$form_options$;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
@@ -2376,56 +2426,6 @@ begin
  end if;
 end
 $retired_direct_tables$;
-do $form_options$
-declare
- device uuid;
- session_id uuid;
- delegation text;
- context jsonb;
- full_page jsonb;
- delta_page jsonb;
- ids_page jsonb;
- detail jsonb;
- record_args jsonb;
-begin
- if exists(select 1 from unnest(array['anon','authenticated','service_role']) actor(role)
-  where has_table_privilege(role,'rm_private.workshop_form_options_v1','select')) then
-  raise exception 'As alternativas ficaram acessíveis fora das consultas autorizadas.';
- end if;
- insert into public.rm_itens_questoes(id,form_id,questao_id,descricao,updated_at)
- select em_fixture.id(1530+n),null,em_fixture.id(1480+n),'Legada '||n,'2000-01-01T00:00:00Z'::timestamptz from generate_series(1,4)n
- union all select em_fixture.id(1540+n),em_fixture.id(400+n),em_fixture.id(1480+n),'Vinculada '||n,'2000-01-01T00:00:00Z' from generate_series(1,4)n
- union all select em_fixture.id(1550+n),em_fixture.id(400+(n%4)+1),em_fixture.id(1480+n),'Vínculo divergente '||n,'2000-01-01T00:00:00Z' from generate_series(1,4)n;
- for office in 1..4 loop
-  device:=em_fixture.id(710+office); session_id:=em_fixture.id(720+office); delegation:=repeat(chr(96+office),64);
-  context:=pg_temp.workshop_restore_native_context(office,office);
-  full_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',null,null,false);
-  delta_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',
-   '2001-01-01T00:00:00Z',em_fixture.id(400+office),false);
-  ids_page:=public.rm_mobile_workshop_catalog_v1(device,session_id,delegation,context,'rm_itens_questoes',null,null,true);
-  if jsonb_array_length(full_page->'rows')<>2 or jsonb_array_length(ids_page->'rows')<>2
-   or not full_page->'rows' @> jsonb_build_array(
-    jsonb_build_object('id',em_fixture.id(1530+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)),
-    jsonb_build_object('id',em_fixture.id(1540+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)))
-   or not ids_page->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1530+office)),
-    jsonb_build_object('id',em_fixture.id(1540+office)))
-   or jsonb_array_length(delta_page->'rows')<>1 or delta_page->'rows'->0->>'id' is distinct from em_fixture.id(1530+office)::text then
-   raise exception 'O catálogo Android perdeu alternativas, ignorou a atualização incremental ou incluiu outra oficina.';
-  end if;
-  record_args:=jsonb_build_object('id',em_fixture.id(500+office),'projects',false,'documents',false,'photos',false);
-  detail:=pg_temp.workshop_restore_read(office,'form_record_detail',record_args);
-  if jsonb_array_length(detail->'items')<>2 or not detail->'items' @> jsonb_build_array(
-   jsonb_build_object('id',em_fixture.id(1530+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)),
-   jsonb_build_object('id',em_fixture.id(1540+office),'form_id',em_fixture.id(400+office),'questao_id',em_fixture.id(1480+office)))
-   or pg_temp.workshop_restore_read((office%4)+1,'form_record_detail',record_args) is not null then
-   raise exception 'O detalhe web perdeu alternativas ou aceitou uma consulta cruzada.';
-  end if;
- end loop;
- if (select count(*) from public.rm_itens_questoes where form_id is null and updated_at='2000-01-01T00:00:00Z')<>4 then
-  raise exception 'Os itens legados perderam a representação original.';
- end if;
-end
-$form_options$;
 rollback;
 select 'PASS: historical form options resolve through the authorized question, replay after the native cursor and reject mismatched forms in four workshops' result;
 select 'PASS: retired direct access to legacy tables preserves drafts, supported Android queries and service grants in four workshops' result;
