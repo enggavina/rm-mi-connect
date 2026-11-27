@@ -1,5 +1,9 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Homologação do planejamento da BMA
+
+Uma sessão Microsoft real da BMA passou nas seis verificações do roteiro focado em 27/11/2026. O roteiro abriu Recebimentos, Planejamento e Projetos, encontrou a mesma alocação nas três visões do Gantt e, no Gantt do projeto, conferiu a edição e o descarte da prévia de prazo. A automação impede o envio de gravações durante a prévia. A gravação de datas, dependências, calendário e linha de base continua coberta pelo ensaio de quatro oficinas. P0.2 atingiu **5 de 5 marcos (100%)**, com aceite integral. O primeiro recebimento real do Android até o portal integra P0.1. [EM em produção](https://em-web-production.up.railway.app/cronograma?view=gantt) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 — Downloads de arquivos históricos por oficina
 
 O Railway **`8a511d49-8e3a-43cb-907e-66c86b42d9b6`**, commit **`5cf2543`**, publicou a regra de download do acervo histórico. Após confirmar a oficina, as rotas de documentos e mídia do portal e o serviço Android entregam arquivos do Bubble pela cópia privada. Quando a cópia falta, o portal informa que o arquivo está indisponível e o serviço Android omite o link de download. As referências originais são preservadas para recuperação. [EM em produção](https://em-web-production.up.railway.app) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46063636018).

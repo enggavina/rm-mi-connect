@@ -3074,9 +3074,15 @@ declare
  office integer;
  other integer;
  context jsonb;
+ device uuid;
+ device_session uuid;
+ token text;
  model uuid;
  project uuid;
  cell uuid;
+ other_model uuid;
+ other_project uuid;
+ other_cell uuid;
  question uuid;
  protocol uuid;
  version text;
@@ -3088,6 +3094,9 @@ declare
 begin
  for office in 1..4 loop
   context:=pg_temp.workshop_restore_native_context(office,office);
+  device:=em_fixture.id(710+office);
+  device_session:=em_fixture.id(720+office);
+  token:=repeat(chr(96+office),64);
   model:=em_fixture.id(400+office);
   project:=em_fixture.id(100+office);
   cell:=em_fixture.id(200+office);
@@ -3097,22 +3106,22 @@ begin
   insert into public.rm_questoes(id,form_id,enunciado,tipo,obrigatorio) values(question,model,'Conferência local','texto_curto',true);
   answers:=jsonb_build_object(question::text,'Conferido pela própria oficina');
   set local role service_role;
-  version:=public.rm_online_operation_form_entry_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
-   context,cell,project,model)->'edition'->>'version';
-  saved:=public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
-   context,cell,project,model,protocol,version,answers);
-  replay:=public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
-   context,cell,project,model,protocol,version,answers);
+  version:=public.rm_online_operation_form_entry_v1(device,device_session,token,context,cell,project,model)->'edition'->>'version';
+  saved:=public.rm_online_operation_submit_form_v1(device,device_session,token,context,cell,project,model,protocol,version,answers);
+  replay:=public.rm_online_operation_submit_form_v1(device,device_session,token,context,cell,project,model,protocol,version,answers);
+  reset role;
   for other in 1..4 loop
    if other=office then continue;end if;
+   other_cell:=em_fixture.id(200+other);
+   other_project:=em_fixture.id(100+other);
+   other_model:=em_fixture.id(400+other);
    begin
-    perform public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
-     context,em_fixture.id(200+other),em_fixture.id(100+other),em_fixture.id(400+other),protocol,version,answers);
+    set local role service_role;
+    perform public.rm_online_operation_submit_form_v1(device,device_session,token,context,other_cell,other_project,other_model,protocol,version,answers);
     raise exception 'Formulário de outra oficina aceitou protocolo.';
    exception when insufficient_privilege then null;
    end;
   end loop;
-  reset role;
   record_id:=(saved->>'registro_formulario_id')::uuid;
   if replay is distinct from saved||'{"idempotent_replay":true}'::jsonb
    or (select count(*) from public.rm_registros_formulario where client_submission_id=protocol)<>1
