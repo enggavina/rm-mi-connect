@@ -2086,6 +2086,75 @@ end
 $form_options$;
 rollback to savepoint form_options_fixture;
 release savepoint form_options_fixture;
+savepoint legacy_catalog_fixture;
+do $legacy_catalog$
+declare
+ bma_device uuid:=em_fixture.id(711);
+ bma_session uuid:=em_fixture.id(721);
+ own_cell uuid:=em_fixture.id(201);
+ foreign_cell uuid:=em_fixture.id(202);
+ own_choice uuid:=em_fixture.id(1561);
+ foreign_choice uuid:=em_fixture.id(1562);
+ visible_count bigint;
+ resource text;
+ result jsonb;
+begin
+ if has_function_privilege('service_role','rm_private.activate_workshop_legacy_bma_catalog_v1(uuid,uuid)','execute')
+  or has_function_privilege('authenticated','rm_private.activate_workshop_legacy_bma_catalog_v1(uuid,uuid)','execute')
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_bma_catalog_rows','select') then
+  raise exception 'Um cliente pode ativar ou consultar o inventário técnico do legado.';
+ end if;
+ begin
+  perform rm_private.activate_workshop_legacy_bma_catalog_v1(bma_device,bma_session);
+  raise exception 'O acesso legado foi ativado sem evidência da oficina.';
+ exception when sqlstate 'PT409' then null; end;
+ insert into public.rm_itens_questoes(id,questao_id,descricao) values
+  (own_choice,em_fixture.id(1481),'Alternativa da BMA'),(foreign_choice,em_fixture.id(1482),'Alternativa de outra oficina');
+ perform public.rm_observe_mobile_workshop_android_v1(bma_device,bma_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
+ begin
+  perform rm_private.activate_workshop_legacy_bma_catalog_v1(em_fixture.id(712),bma_session);
+  raise exception 'Um dispositivo recebeu a permissão com a sessão de outro.';
+ exception when sqlstate 'PT409' then null; end;
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(bma_device,bma_session);
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(bma_device,bma_session);
+ if (select count(*) from pg_policy where polname='rm_legacy_bma_catalog_read' and not polpermissive and polcmd='r')<>12 then
+  raise exception 'O recorte direto não foi aplicado a todos os catálogos.';
+ end if;
+
+ perform set_config('request.jwt.claim.sub',bma_device::text,true);
+ set local role authenticated;
+ if not exists(select 1 from public.rm_celulas where id=own_cell) or exists(select 1 from public.rm_celulas where id=foreign_cell)
+  or not exists(select 1 from public.rm_itens_questoes where id=own_choice and form_id is null)
+  or exists(select 1 from public.rm_itens_questoes where id=foreign_choice) then
+  raise exception 'O dispositivo antigo recebeu catálogo estrangeiro ou perdeu seus dados da BMA.';
+ end if;
+ reset role;
+ for office in 2..4 loop
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  for resource in select c.relname from pg_policy p join pg_class c on c.oid=p.polrelid where p.polname='rm_legacy_bma_catalog_read' loop
+   set local role authenticated;
+   execute format('select count(*) from public.%I',resource) into visible_count;
+   reset role;
+   if visible_count<>0 then raise exception 'O acesso direto revelou catálogos a outro dispositivo.'; end if;
+  end loop;
+  result:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   pg_temp.workshop_restore_native_context(office,office),'rm_celulas',null,null,false);
+  if jsonb_array_length(result->'rows')<>1 or result->'rows'->0->>'id' is distinct from em_fixture.id(200+office)::text then
+   raise exception 'O Android autorizado pela Central perdeu o catálogo da própria oficina.';
+  end if;
+ end loop;
+ perform public.rm_observe_mobile_workshop_android_v1(bma_device,bma_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
+ delete from rm_private.workshop_android_observations where session_id=bma_session;
+ perform set_config('request.jwt.claim.sub',bma_device::text,true);
+ set local role authenticated;
+ if exists(select 1 from public.rm_celulas) then raise exception 'O dispositivo readquiriu o acesso antigo após a transferência.'; end if;
+ reset role;
+end
+$legacy_catalog$;
+rollback to savepoint legacy_catalog_fixture;
+release savepoint legacy_catalog_fixture;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
@@ -2430,6 +2499,7 @@ begin
 end
 $retired_direct_tables$;
 rollback;
+select 'PASS: legacy direct catalogs keep BMA data on its verified tablet, deny other tablets and revoke after a verified transfer' result;
 select 'PASS: historical form options resolve through the authorized question, replay after the native cursor and reject mismatched forms in four workshops' result;
 select 'PASS: retired direct access to legacy tables preserves drafts, supported Android queries and service grants in four workshops' result;
 select 'PASS: Android version observations follow the authorized session and office, deny suspended offices and update without duplicates in four workshops' result;
