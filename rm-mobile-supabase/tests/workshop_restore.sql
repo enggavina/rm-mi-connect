@@ -2140,7 +2140,9 @@ begin
   end loop;
   result:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
    pg_temp.workshop_restore_native_context(office,office),'rm_celulas',null,null,false);
-  if jsonb_array_length(result->'rows')<>1 or result->'rows'->0->>'id' is distinct from em_fixture.id(200+office)::text then
+  if not result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(200+office)))
+   or exists(select 1 from jsonb_array_elements(result->'rows') item
+    where not rm_private.workshop_cell_owned_v1((item->>'id')::uuid,em_fixture.id(office))) then
    raise exception 'O Android autorizado pela Central perdeu o catálogo da própria oficina.';
   end if;
  end loop;
