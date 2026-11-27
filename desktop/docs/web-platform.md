@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — capacidade de pessoas e máquinas por oficina
+
+A migração **087** e o Railway **`e73e8452-ed4b-4284-8aff-452fb04d99f2`** publicaram e ativaram o recorte em **Planejamento → Capacidade de pessoas e máquinas**. A oficina vem da sessão Microsoft e do vínculo vigente em Acessos. Nomes de recursos são únicos dentro da própria oficina. Reservas exigem que o recurso, o projeto e a célula pertençam à mesma unidade. Consultas e totais usam o mesmo recorte.
+
+O ensaio com quatro oficinas passou antes e depois da restauração, incluindo 108 recusas de leitura cruzada e quatro reservas cruzadas recusadas em cada execução. Passaram os 15 cenários da interface em Chromium, o CI web/mobile, a regressão PostgreSQL, 54 verificações públicas da API e 17 do Operacional Web. No Moto G84, o APK **1.2.20/código 23** abriu as 29 células e uma foto existente da BMA online e offline. A ativação registrou zero recursos e zero reservas anteriores na BMA. O roteiro de homologação com uma sessão Microsoft real aceita a URL `/planejamento/capacidade` e o título **Capacidade de pessoas e máquinas**. [Portal do EM](https://em-web-production.up.railway.app/planejamento/capacidade) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45936896542) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 — oficina de origem do rascunho de recebimento
 
 A migração **086** e o Railway **`5560a65b-8c2d-4a77-b7ac-19a5542ce24f`** publicaram `/api/mobile/recebimentos/rascunho`. O salvamento registra a oficina com o rascunho e confere essa origem quando o app recupera ou inicia o recebimento. Rascunhos anteriores podem ser recuperados pela origem comprovada nos registros vinculados. Uma divergência mantém o trabalho disponível para conferência na oficina original.

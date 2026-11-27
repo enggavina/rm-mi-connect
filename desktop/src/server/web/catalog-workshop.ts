@@ -25,11 +25,15 @@ export function rootWriteCapability(operation: string, payload: Record<string, u
 
 export function isScopedPlanningWrite(operation: string): boolean {
   return ['save_gantt_plan', 'save_gantt_settings', 'plan_cell', 'save_project_route',
-    'manage_project_route_cell', 'assign_form_reviewer'].includes(operation);
+    'assign_form_reviewer'].includes(operation);
 }
 
 export function isScopedCapacityWrite(operation: string): boolean {
   return operation === 'save_capacity_resource' || operation === 'save_capacity_bookings';
+}
+
+export function isScopedAllocationChange(operation: string): boolean {
+  return operation === 'manage_cell_availability' || operation === 'manage_project_route_cell';
 }
 
 export function workshopReviewCapability(operation: string): CorporateCapability | null {
@@ -69,7 +73,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
         : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage'
-        : isScopedCapacityWrite(operation) || enableGanttWrites && isScopedPlanningWrite(operation) ? 'em.planning.manage'
+        : isScopedCapacityWrite(operation) || isScopedAllocationChange(operation) || enableGanttWrites && isScopedPlanningWrite(operation) ? 'em.planning.manage'
         : (enableFormReviewWrites && workshopReviewCapability(operation)) || rootWriteCapability(operation, payload, enableRootEdits);
       if (!expected) return false;
       if (capability !== expected || !context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');

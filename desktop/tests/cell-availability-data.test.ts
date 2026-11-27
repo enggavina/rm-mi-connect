@@ -60,3 +60,19 @@ test('not-found and unavailable availability responses never expose upstream err
   f.fail(); await assert.rejects(f.reader.getCellAvailability(id(1), id(2)), error => error instanceof Error && !error.message.includes('private'));
   const throws = fixture(); throws.throw(); await assert.rejects(throws.reader.getCellAvailability(id(1), id(2)), error => error instanceof Error && !error.message.includes('private'));
 });
+
+test('corporate availability uses the office reader exclusively and binds the exact allocation', async () => {
+  const client = { async rpc() { assert.fail('A consulta não pode voltar ao fluxo sem oficina.'); } } as unknown as SupabaseClient;
+  let reply: unknown = snapshot();
+  const reader = createCellAvailabilityData(client, capabilities, async (resource, args) => {
+    assert.equal(resource, 'cell_availability');
+    assert.deepEqual(args, { project_id: id(1), allocation_id: id(2) });
+    if (reply instanceof Error) throw reply;
+    return reply;
+  });
+  assert.equal((await reader.getCellAvailability(id(1), id(2)))?.allocation.id, id(2));
+  reply = null;
+  assert.equal(await reader.getCellAvailability(id(1), id(2)), null);
+  reply = new Error('Central indisponível');
+  await assert.rejects(reader.getCellAvailability(id(1), id(2)), error => error === reply);
+});

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import { workshopReadCapabilities, type WorkshopRead } from './workshop-read-policy';
 
 const timestamp = z.string().datetime({ offset: true }), text = z.string().nullable();
 const snapshotSchema = z.object({
@@ -12,20 +13,28 @@ const snapshotSchema = z.object({
   visibility_reason: text, retire_reason: text, restore_reason: text, in_queue: z.boolean(), context_version: z.string().regex(/^[0-9a-f]{64}$/),
 });
 export type CellAvailabilitySnapshot = z.infer<typeof snapshotSchema>;
-const readCapabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.planning.read'];
+const readCapabilities = workshopReadCapabilities('cell_availability');
 const unavailable = () => new Error('Não foi possível consultar a disponibilidade desta célula. Tente novamente.');
 
 /** Only coarse operational eligibility is exposed; no child counts, files or identities. */
-export function createCellAvailabilityData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createCellAvailabilityData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getCellAvailability(projectId: string, allocationId: string): Promise<CellAvailabilitySnapshot | null> {
     if (capabilities !== undefined && !readCapabilities.every(capability => capabilities.includes(capability))) throw new Error('Acesso não autorizado à disponibilidade desta célula.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(allocationId).success) return null;
-    let result;
-    try { result = await client.rpc('rm_web_cell_availability_snapshot_v1', { p_project_id: projectId, p_allocation_id: allocationId }); }
-    catch { throw unavailable(); }
-    if (result.error) throw unavailable();
-    if (result.data === null) return null;
-    const parsed = snapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
+    projectId = projectId.toLowerCase();
+    allocationId = allocationId.toLowerCase();
+    let data: unknown;
+    if (workshopRead) {
+      data = await workshopRead('cell_availability', { project_id: projectId, allocation_id: allocationId });
+    } else {
+      let result;
+      try { result = await client.rpc('rm_web_cell_availability_snapshot_v1', { p_project_id: projectId, p_allocation_id: allocationId }); }
+      catch { throw unavailable(); }
+      if (result.error) throw unavailable();
+      data = result.data;
+    }
+    if (data === null) return null;
+    const parsed = snapshotSchema.safeParse(data); if (!parsed.success) throw unavailable();
     const snapshot = parsed.data;
     const closed = snapshot.project.data_real_de_entrega !== null || ['cancelado', 'finalizando_para_faturar'].includes(snapshot.project.status_pcp ?? '');
     const inQueue = !closed && !snapshot.allocation.retirada && !['finalizado', 'n_a'].includes(snapshot.allocation.status ?? '');
@@ -40,6 +49,8 @@ export function createCellAvailabilityData(client: SupabaseClient, capabilities?
 }
 export async function getCellAvailability(projectId: string, allocationId: string) {
   const { requireWebUser } = await import('./auth');
-  const access = await requireWebUser(readCapabilities);
-  return createCellAvailabilityData(access.client, access.sso?.capabilities).getCellAvailability(projectId, allocationId);
+  const access = await requireWebUser([...readCapabilities]);
+  const { ssoWorkshopRead } = await import('./sso-bridge');
+  const workshopRead = access.sso ? ssoWorkshopRead(access.sso, access.client) : undefined;
+  return createCellAvailabilityData(access.client, access.sso?.capabilities, workshopRead).getCellAvailability(projectId, allocationId);
 }

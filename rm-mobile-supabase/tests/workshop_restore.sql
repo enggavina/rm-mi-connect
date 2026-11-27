@@ -107,7 +107,7 @@ begin
 exception when others then reset role;raise;
 end$$;
 
-create function pg_temp.workshop_restore_capacity_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
+create function pg_temp.workshop_restore_planning_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
 returns jsonb language plpgsql as $$
 declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
  hash text:=repeat(office::text,64);
@@ -120,6 +120,15 @@ begin
  return value;
 exception when others then reset role;raise;
 end$$;
+
+create function pg_temp.availability_payload(snapshot jsonb,action text,visible boolean default null) returns jsonb
+language sql as $$
+ select jsonb_build_object(
+  'action',action,'projeto_id',snapshot->'project'->'id','celula_projeto_id',snapshot->'allocation'->'id',
+  'expected_project_updated_at',snapshot->'project'->'updated_at','expected_allocation_updated_at',snapshot->'allocation'->'updated_at',
+  'expected_context_version',snapshot->'context_version','confirm_change',true)
+  ||case when action='set_visibility' then jsonb_build_object('visibilidade',visible) else '{}'::jsonb end;
+$$;
 
 create function pg_temp.workshop_restore_native(office integer,urls text[],reachable boolean default true) returns jsonb language plpgsql as $$
 declare context jsonb; stamp timestamptz:=clock_timestamp();
@@ -139,10 +148,12 @@ do $$
 declare value jsonb; project uuid; filters jsonb; own_file text; other_file text; gantt jsonb;
  capacity_filters jsonb:=jsonb_build_object('start',(clock_timestamp() at time zone 'America/Sao_Paulo')::date,'days',14,'project_id',null,'can_manage',true);
  resource uuid; resource_payload jsonb; booking_payload jsonb; submission uuid; changed jsonb; replay jsonb;
+ cell_filters jsonb; cell_snapshot jsonb; cell_payload jsonb; operation text;
  gantt_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
 begin
  update rm_private.sso_settings set require_sso=true where singleton;
  perform rm_private.activate_capacity_workshop_writes_v1();
+ perform rm_private.activate_cell_availability_workshops_v1();
  for office in 1..4 loop
   project:=em_fixture.id(100+office);
   value:=pg_temp.workshop_restore_read(office,'project_list',
@@ -181,13 +192,13 @@ begin
   end if;
   resource_payload:='{"id":null,"expected_version":null,"name":"Torno local","kind":"maquina","active":true,"weekly_minutes":[480,480,480,480,480,480,480],"exceptions":[],"acknowledge_overload":false,"reason":"Teste local de capacidade"}';
   begin
-   perform pg_temp.workshop_restore_capacity_write(office,gen_random_uuid(),'save_capacity_resource',resource_payload,false);
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_capacity_resource',resource_payload,false);
    raise exception 'A gravação antiga contornou a confirmação da oficina.';
   exception when insufficient_privilege then null;
   end;
   submission:=gen_random_uuid();
-  changed:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_resource',resource_payload);
-  replay:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_resource',resource_payload);
+  changed:=pg_temp.workshop_restore_planning_write(office,submission,'save_capacity_resource',resource_payload);
+  replay:=pg_temp.workshop_restore_planning_write(office,submission,'save_capacity_resource',resource_payload);
   resource:=(changed->>'id')::uuid;
   if replay->>'id' is distinct from resource::text or replay->>'idempotent_replay' is distinct from 'true'
    or not exists(select 1 from rm_private.capacity_resources r where r.id=resource and r.workshop_id=em_fixture.id(office)) then
@@ -199,14 +210,14 @@ begin
    'reason','Teste local de reserva','acknowledge_overload',false) into strict booking_payload
   from public.rm_celulas_projeto a where a.id=em_fixture.id(300+office);
   begin
-   perform pg_temp.workshop_restore_capacity_write(office,gen_random_uuid(),'save_capacity_bookings',
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_capacity_bookings',
     jsonb_set(booking_payload,'{allocation_id}',to_jsonb(em_fixture.id(300+(office % 4)+1))));
    raise exception 'A gravação de capacidade reservou uma etapa estrangeira.';
   exception when insufficient_privilege then null;
   end;
   submission:=gen_random_uuid();
-  changed:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_bookings',booking_payload);
-  replay:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_bookings',booking_payload);
+  changed:=pg_temp.workshop_restore_planning_write(office,submission,'save_capacity_bookings',booking_payload);
+  replay:=pg_temp.workshop_restore_planning_write(office,submission,'save_capacity_bookings',booking_payload);
   if changed->'record'->>'changed_days' is distinct from '1' or replay->>'idempotent_replay' is distinct from 'true'
    or (select count(*) from rm_private.capacity_bookings b where b.resource_id=resource)<>1 then
    raise exception 'A reserva própria não manteve uma única gravação no reenvio.';
@@ -216,6 +227,40 @@ begin
   value:=public.rm_web_capacity_snapshot_v1(capacity_filters-'can_manage');
   reset role;
   if value->'totals' is distinct from '{"resources":0,"bookings":0}'::jsonb then raise exception 'A leitura antiga devolveu recursos isolados.';end if;
+  cell_filters:=jsonb_build_object('project_id',project,'allocation_id',em_fixture.id(300+office));
+  cell_snapshot:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
+  if cell_snapshot->'allocation'->>'id' is distinct from em_fixture.id(300+office)::text
+   or cell_snapshot->>'can_retire' is distinct from 'false' or cell_snapshot->>'retire_reason' is null then
+   raise exception 'A disponibilidade perdeu a alocação própria ou evidências existentes.';
+  end if;
+  if has_function_privilege('authenticated','public.rm_web_cell_availability_snapshot_v1(uuid,uuid)','execute')
+   or has_function_privilege('authenticated','rm_private.cell_availability_metadata_v1(uuid)','execute') then
+   raise exception 'A consulta antiga de disponibilidade continua exposta.';
+  end if;
+  cell_payload:=pg_temp.availability_payload(cell_snapshot,'set_visibility',false);
+  foreach operation in array array['manage_cell_availability','manage_project_route_cell'] loop
+   begin
+    perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),operation,cell_payload,false);
+    raise exception 'Gravação antiga contornou a oficina para mudar a alocação.';
+   exception when insufficient_privilege then null;
+   end;
+   begin
+    perform pg_temp.workshop_restore_planning_write((office % 4)+1,gen_random_uuid(),operation,cell_payload);
+    raise exception 'Gravação permitiu alterar alocação de outra oficina.';
+   exception when insufficient_privilege then null;
+   end;
+  end loop;
+  submission:=gen_random_uuid();
+  changed:=pg_temp.workshop_restore_planning_write(office,submission,'manage_cell_availability',cell_payload);
+  replay:=pg_temp.workshop_restore_planning_write(office,submission,'manage_cell_availability',cell_payload);
+  value:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
+  if changed->'record'->>'visibilidade' is distinct from 'false' or replay->>'idempotent_replay' is distinct from 'true'
+   or value->>'in_queue' is distinct from 'true' or value->'allocation'->>'visibilidade' is distinct from 'false'
+   or (select count(*) from rm_private.cell_availability_events e where e.client_submission_id=submission)<>1 then
+   raise exception 'Ocultar a alocação não preservou fila, histórico ou protocolo.';
+  end if;
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_cell_availability',
+   pg_temp.availability_payload(value,'set_visibility',true));
   value:=pg_temp.workshop_restore_read(office,'form_record_project',jsonb_build_object('id',em_fixture.id(500+office)));
   if (value->>'project_id')::uuid is distinct from project then raise exception 'Formulário próprio indisponível.';end if;
   value:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo'));
@@ -246,6 +291,8 @@ begin
     or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('cell_id',em_fixture.id(200+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office),'include_closed',true)) is not null
     or pg_temp.workshop_restore_read(office,'capacity_snapshot',capacity_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office))) is not null
+    or pg_temp.workshop_restore_read(office,'cell_availability',jsonb_build_object(
+     'project_id',em_fixture.id(100+foreign_office),'allocation_id',em_fixture.id(300+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+foreign_office),'source','project_photo')) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(780+foreign_office),'source','project_photo')) is not null then
     raise exception 'Uma referência direta retornou dados de outra oficina.';
@@ -261,7 +308,30 @@ begin
    exception when insufficient_privilege then null;
    end;
   end loop;
+
+  -- An unused allocation can still be retired and restored with its original ID.
+  insert into public.rm_projetos(id,nome,status_pcp) values(em_fixture.id(900+office),'Projeto local sem registros','executando');
+  insert into rm_private.workshop_project_ownership(id,workshop_id) values(em_fixture.id(900+office),em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
+   values(em_fixture.id(910+office),em_fixture.id(900+office),em_fixture.id(200+office),true);
+  cell_filters:=jsonb_build_object('project_id',em_fixture.id(900+office),'allocation_id',em_fixture.id(910+office));
+  value:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
+  if value->>'can_retire' is distinct from 'true'
+   or pg_temp.workshop_restore_read(office,'cell_availability',cell_filters||jsonb_build_object('project_id',project)) is not null then
+   raise exception 'Disponibilidade não conferiu o par exato ou a retirada de alocação sem uso.';
+  end if;
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_cell_availability',pg_temp.availability_payload(value,'retire'));
+  value:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
+  if value->>'can_restore' is distinct from 'true' or value->>'in_queue' is distinct from 'false' then
+   raise exception 'A alocação retirada ainda aparece na fila ou perdeu o caminho de restauração.';
+  end if;
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_cell_availability',pg_temp.availability_payload(value,'restore'));
+  value:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
+  if value->'allocation'->>'id' is distinct from em_fixture.id(910+office)::text
+   or value->'allocation'->>'visibilidade' is distinct from 'false' or value->>'in_queue' is distinct from 'true' then
+   raise exception 'A restauração da alocação deve preservar ID, fila e visibilidade explícita.';
+  end if;
  end loop;
 end$$;
 rollback;
-select 'PASS: four offices, three Gantt views, capacity and own media, 108 denied cross-office reads and 4 foreign bookings, and 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: four offices, three Gantt views, capacity, availability, own media; 120 denied cross-office reads, 12 crossed writes, 8 denied reads after revocation or unavailable authority' result;
