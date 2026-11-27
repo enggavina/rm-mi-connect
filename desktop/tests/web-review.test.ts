@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { freezeReviewRequest, mayReview, recordSections, safeAnswerMedia } from '../src/components/web/review-model';
-import { relayLegacyWorkshopImage, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
+import { relayLegacyWorkshopImage, resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaTarget } from '../src/server/web/workshop-media';
 import { workshopMediaUrl } from '../src/shared/workshop-media';
 
 test('record sections preserve submitted text, fractional order, choices and orphan answers without adding unanswered questions', () => {
@@ -102,6 +102,23 @@ test('the legacy image relay streams approved image formats without forwarding c
   assert.equal(fetchMock.mock.callCount(), 1);
   assert.equal(relay?.type, 'image/heic');
   assert.deepEqual(new Uint8Array(await new Response(relay?.body).arrayBuffer()), bytes);
+});
+
+test('archive signing accepts only an authorized path and the exact signed private object', async () => {
+  const origin = 'https://example.supabase.co';
+  const workshop = '00000000-0000-4000-8000-000000000001';
+  const foreign = '00000000-0000-4000-8000-000000000002';
+  const path = `acervo-oficina/${workshop}/${'a'.repeat(64)}.heic`;
+  const url = `${origin}/storage/v1/object/sign/rm-documentos/${path}?token=example`;
+  assert.equal(await resolveWorkshopArchive(path, origin, async (bucket, file) => {
+    assert.equal(bucket, 'rm-documentos');
+    assert.equal(file, path);
+    return url;
+  }, workshop), url);
+  assert.equal(await resolveWorkshopArchive(path, origin, async () => assert.fail('foreign scope'), foreign), null);
+  assert.equal(await resolveWorkshopArchive(path.replace('.heic', '.svg'), origin, async () => assert.fail('invalid media')), null);
+  assert.equal(await resolveWorkshopArchive(path, origin, async () => url.replace(workshop, foreign)), null);
+  assert.equal(workshopMediaTarget(`${origin}/storage/v1/object/authenticated/rm-documentos/${path}`, origin, 'document'), null);
 });
 
 test('the legacy image relay rejects unsafe types, failed responses and over-limit bodies', async t => {

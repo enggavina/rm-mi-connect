@@ -65,6 +65,58 @@ insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,foto_url)
  'https://fixture.invalid/storage/v1/object/authenticated/rm-fotos/'||n||'/equipamento.png' from generate_series(1,4)n;
 insert into storage.objects(id,bucket_id,name)
  select em_fixture.id(700+n),'rm-fotos',n||'/equipamento.png' from generate_series(1,4)n;
+insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,foto_url)
+ select em_fixture.id(1450+n),em_fixture.id(100+n),em_fixture.id(200+n),em_fixture.id(300+n),
+  'https://fixtures.cdn.bubble.io/oficina-'||n||'.png' from generate_series(1,4)n;
+update public.rm_projetos set arquivo_nota_fiscal_url='https://fixtures.cdn.bubble.io/oficina-'||n||'.png'
+ from generate_series(1,4)n where id=em_fixture.id(100+n);
+insert into public.rm_questoes(id,form_id,enunciado,tipo)
+ select em_fixture.id(1480+n),em_fixture.id(400+n),'Foto do acervo','foto' from generate_series(1,4)n;
+insert into public.rm_respostas(id,registro_formulario_id,questao_id,fotos_urls)
+ select em_fixture.id(1460+n),em_fixture.id(500+n),em_fixture.id(1480+n),array['https://fixtures.cdn.bubble.io/oficina-'||n||'.png']
+ from generate_series(1,4)n;
+do $archive_seed$
+declare
+ reference text;
+ path text;
+ bytes bytea;
+ sha text;
+ saved text;
+ workshop uuid;
+ project uuid;
+begin
+ for office in 1..4 loop
+  workshop:=em_fixture.id(office);
+  project:=em_fixture.id(100+office);
+  reference:='https://fixtures.cdn.bubble.io/oficina-'||office||'.png';
+  path:='acervo-oficina/'||em_fixture.id(office)||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.png';
+  bytes:=decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+pZJcAAAAASUVORK5CYII=','base64')||set_byte('\x00'::bytea,0,12+office);
+  sha:=encode(sha256(bytes),'hex');
+  if jsonb_array_length(public.rm_workshop_archive_queue_v1(em_fixture.id(office),'bubble',em_fixture.id(100+office),null,20))<>1 then
+   raise exception 'A mesma referência de foto, formulário e nota deve ser copiada uma vez.';
+  end if;
+  insert into storage.objects(id,bucket_id,name,metadata,user_metadata) values(em_fixture.id(1470+office),'rm-documentos',path,
+   jsonb_build_object('size',octet_length(bytes),'mimetype','image/png'),jsonb_build_object('sha256',sha));
+  begin
+   perform public.rm_confirm_workshop_archive_v1(em_fixture.id(office),reference,repeat('0',64),'image/png',octet_length(bytes));
+   raise exception 'Acervo aceitou conteúdo divergente.';
+  exception when sqlstate 'PT409' then null;
+  end;
+  begin
+   perform public.rm_confirm_workshop_archive_v1(em_fixture.id((office%4)+1),reference,sha,'image/png',octet_length(bytes));
+   raise exception 'Acervo aceitou confirmar a referência de outra oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  set local role service_role;
+  saved:=public.rm_confirm_workshop_archive_v1(workshop,reference,sha,'image/png',octet_length(bytes));
+  if saved is distinct from path or public.rm_confirm_workshop_archive_v1(workshop,reference,sha,'image/png',octet_length(bytes)) is distinct from path
+   or public.rm_workshop_archive_queue_v1(workshop,'bubble',project,null,20) is distinct from '[]'::jsonb then
+   raise exception 'A confirmação repetida não conservou a cópia original.';
+  end if;
+  reset role;
+ end loop;
+end
+$archive_seed$;
 insert into auth.users(id) select em_fixture.id(710+n) from generate_series(1,4)n;
 insert into auth.sessions(id,user_id) select em_fixture.id(720+n),em_fixture.id(710+n) from generate_series(1,4)n;
 insert into public.rm_users(id,auth_user_id,nome,perfil)
@@ -1203,6 +1255,38 @@ begin
 end
 $legacy_project_origins$;
 rollback;
+begin;
+do $archive_restore$
+declare reference text; foreign_reference text; path text; snapshot jsonb;
+begin
+ for office in 1..4 loop
+  reference:='https://fixtures.cdn.bubble.io/oficina-'||office||'.png';
+  foreign_reference:='https://fixtures.cdn.bubble.io/oficina-'||((office%4)+1)||'.png';
+  path:='acervo-oficina/'||em_fixture.id(office)||'/'||encode(sha256(convert_to(reference,'UTF8')),'hex')||'.png';
+  snapshot:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(1450+office),'source','project_photo'));
+  if snapshot is distinct from jsonb_build_object('id',em_fixture.id(1450+office),'file',reference,'archive_path',path)
+   or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(1460+office),'source','answer_photo','index',0))->>'archive_path' is distinct from path
+   or pg_temp.workshop_restore_read(office,'document_link',jsonb_build_object('id',em_fixture.id(100+office),'source','invoice'))->>'archive_path' is distinct from path
+   or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(1450+(office%4)+1),'source','project_photo')) is not null
+   or rm_private.workshop_archive_link_v1(reference,em_fixture.id((office%4)+1)) is distinct from '{}'::jsonb then
+   raise exception 'A cópia restaurada precisa manter o mesmo arquivo e a oficina no portal.';
+  end if;
+  snapshot:=pg_temp.workshop_restore_native(office,array[reference,foreign_reference]);
+  if jsonb_array_length(snapshot->'files') is distinct from 3 or exists(select 1 from jsonb_array_elements(snapshot->'files') f
+   where f->>'url' is distinct from reference or f->>'archive_path' is distinct from path) then
+   raise exception 'O Android precisa usar a chave antiga e liberar somente a cópia da própria oficina.';
+  end if;
+  set local role authenticated;
+  if exists(select 1 from storage.objects o where o.bucket_id='rm-documentos' and o.name=path)
+   or has_function_privilege('public.rm_confirm_workshop_archive_v1(uuid,text,text,text,integer)','execute')
+   or has_function_privilege('public.rm_workshop_archive_queue_v1(uuid,text,uuid,text,integer)','execute') then
+   raise exception 'Acervo privado acessível por fora da autorização.';
+  end if;
+  reset role;
+ end loop;
+end
+$archive_restore$;
+rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
 select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;
@@ -1212,3 +1296,4 @@ select 'PASS: Gantt cutover across four offices from intake through calendars, d
 select 'PASS: workshop output cutover retains scoped workbook, twin, QR and invoice in four offices' result;
 select 'PASS: restored pristine receiving protocols retain their original revisions, payloads and office in four workshops' result;
 select 'PASS: exact legacy receiving receipts become visible only in the verified workshop inbox in four offices' result;
+select 'PASS: restored archive copies authorize photos, form answers and invoices only in the original workshop' result;

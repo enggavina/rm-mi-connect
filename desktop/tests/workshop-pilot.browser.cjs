@@ -62,9 +62,16 @@ async function main() {
             assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
             await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
             const preview = await context.request.get(location(src), { maxRedirects: 0 });
-            assert.equal(preview.status(), 200);
-            assert.match(preview.headers()['content-type'] ?? '', /^image\//);
-            assert.equal(preview.headers().location, undefined);
+            if (preview.status() === 303) {
+              const copy = new URL(preview.headers().location);
+              assert.equal(copy.origin, 'https://ellpxfbsrbhblyizvbbk.supabase.co');
+              assert.match(copy.pathname, /^\/storage\/v1\/object\/sign\/rm-documentos\/(acervo-oficina|mobile-oficina)\//);
+              assert.ok(copy.searchParams.get('token'));
+            } else {
+              assert.equal(preview.status(), 200);
+              assert.match(preview.headers()['content-type'] ?? '', /^image\//);
+              assert.equal(preview.headers().location, undefined);
+            }
             await preview.dispose();
           }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();

@@ -2,10 +2,11 @@ import { z } from 'zod';
 import type { WorkshopMediaSource } from '@/shared/workshop-media';
 
 export const workshopMediaMatch = z.object({ url: z.string().max(2048),
-  source: z.enum(['document', 'project_photo', 'answer_photo', 'answer_signature']) }).strict();
+  source: z.enum(['document', 'project_photo', 'answer_photo', 'answer_signature']), archive_path: z.string().optional() }).strict();
 
 const uuidSegment = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}';
 const nativePath = new RegExp(`^mobile-oficina/${uuidSegment}/${uuidSegment}/${uuidSegment}\\.(jpg|png|pdf)$`);
+const archivePath = new RegExp(`^acervo-oficina/(${uuidSegment})/[a-f0-9]{64}\\.(jpg|png|pdf|webp|heic|heif)$`);
 const nativePrefix = '/storage/v1/object/authenticated/rm-documentos/';
 export function isNativeWorkshopMediaPath(path: string) {
   return nativePath.test(path);
@@ -30,7 +31,7 @@ export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source
       .find(path => url.pathname.startsWith(path));
     if (!prefix) return null;
     const path = decodeURIComponent(url.pathname.slice(prefix.length));
-    if (!path || path.startsWith('mobile-oficina/') || /[%\\\x00-\x1f]/.test(path)
+    if (!path || path.startsWith('mobile-oficina/') || path.startsWith('acervo-oficina/') || /[%\\\x00-\x1f]/.test(path)
       || path.split('/').some(part => !part || part === '.' || part === '..')) return null;
     return { kind: 'storage' as const, origin: origin.origin, bucket, path };
   } catch {
@@ -43,11 +44,9 @@ export function isNativeWorkshopMedia(raw: unknown, origin: string) {
   return target?.kind === 'storage' && isNativeWorkshopMediaPath(target.path);
 }
 
-export async function resolveWorkshopMedia(reference: string, origin: string, source: z.infer<typeof workshopMediaMatch>['source'],
-  sign: (bucket: string, path: string) => Promise<string | undefined>): Promise<string | null> {
-  const target = workshopMediaTarget(reference, origin, source);
-  if (!target) return null;
-  if (target.kind === 'legacy') return target.url;
+type StorageSigner = (bucket: string, path: string) => Promise<string | undefined>;
+
+async function signedStorageUrl(target: { origin: string; bucket: string; path: string }, sign: StorageSigner) {
   const signed = await sign(target.bucket, target.path);
   if (!signed) return null;
   try {
@@ -60,6 +59,21 @@ export async function resolveWorkshopMedia(reference: string, origin: string, so
   } catch {
     return null;
   }
+}
+
+export async function resolveWorkshopMedia(reference: string, origin: string, source: z.infer<typeof workshopMediaMatch>['source'],
+  sign: StorageSigner): Promise<string | null> {
+  const target = workshopMediaTarget(reference, origin, source);
+  if (!target) return null;
+  return target.kind === 'legacy' ? target.url : signedStorageUrl(target, sign);
+}
+
+/** The archive path is issued by a scoped reader, never taken from a catalog URL. */
+export async function resolveWorkshopArchive(path: unknown, origin: string, sign: StorageSigner, workshop?: string) {
+  if (typeof path !== 'string') return null;
+  const match = archivePath.exec(path);
+  if (!match || workshop && match[1] !== workshop) return null;
+  return signedStorageUrl({ origin: new URL(origin).origin, bucket: 'rm-documentos', path }, sign);
 }
 
 const legacyImageTypes = new Set([

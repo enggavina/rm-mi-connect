@@ -261,9 +261,14 @@ try {
       $asset = '07610000-0000-4000-8000-{0:D12}' -f (750 + $office)
       $draft = '07610000-0000-4000-8000-{0:D12}' -f (1250 + $office)
       $draftAsset = '07610000-0000-4000-8000-{0:D12}' -f (1260 + $office)
+      $reference = [Text.Encoding]::UTF8.GetBytes("https://fixtures.cdn.bubble.io/oficina-$office.png")
+      $archiveHash = [Security.Cryptography.SHA256]::Create()
+      try { $archiveKey = [BitConverter]::ToString($archiveHash.ComputeHash($reference)).Replace('-','').ToLowerInvariant() }
+      finally { $archiveHash.Dispose() }
       $specimens = @(@{ path = "$office/equipamento.png"; marker = $office },
         @{ path = "mobile-oficina/$workshop/$protocol/$asset.png"; marker = 4 + $office },
-        @{ path = "mobile-oficina/$workshop/$draft/$draftAsset.png"; marker = 8 + $office })
+        @{ path = "mobile-oficina/$workshop/$draft/$draftAsset.png"; marker = 8 + $office },
+        @{ path = "acervo-oficina/$workshop/$archiveKey.png"; marker = 12 + $office })
       foreach ($specimen in $specimens) {
         $file = Join-Path $mediaSource $specimen.path
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
@@ -288,11 +293,11 @@ try {
       }
     }
     $manifest = & psql -X -A -t -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v ON_ERROR_STOP=1 `
-      -c 'SELECT jsonb_object_agg(object_path,upper(content_sha256)) FROM rm_private.mobile_workshop_uploads WHERE stored_at IS NOT NULL'
+      -c 'SELECT jsonb_object_agg(object_path,upper(content_sha256)) FROM (SELECT object_path,content_sha256 FROM rm_private.mobile_workshop_uploads WHERE stored_at IS NOT NULL UNION ALL SELECT object_path,content_sha256 FROM rm_private.workshop_archive_files) f'
     if ($LASTEXITCODE -ne 0) { throw 'Falha ao ler o manifesto recuperado de mídias.' }
     $files = ($manifest | ConvertFrom-Json).PSObject.Properties
-    if (@($files).Count -ne 8 -or @($files | Where-Object { $checksums[$_.Name] -cne $_.Value }).Count) {
-      throw 'O banco recuperado não corresponde às oito mídias privadas restauradas.'
+    if (@($files).Count -ne 12 -or @($files | Where-Object { $checksums[$_.Name] -cne $_.Value }).Count) {
+      throw 'O banco recuperado não corresponde aos arquivos privados restaurados.'
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v seed=false -f $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas após a restauração.' }

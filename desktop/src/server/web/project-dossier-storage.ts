@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { required } from '../config';
 import { attachmentSignatureMatches, projectAttachmentPath, type ProjectAttachmentInput } from './project-dossier-policy';
-import { isNativeWorkshopMediaPath } from './workshop-media';
+import { isNativeWorkshopMediaPath, resolveWorkshopArchive } from './workshop-media';
 
 function documentStorage() {
   const url = required('SUPABASE_URL');
@@ -16,6 +16,13 @@ export async function signNativeWorkshopDocument(path: string) {
   if (!isNativeWorkshopMediaPath(path)) return undefined;
   const { data, error } = await documentStorage().createSignedUrl(path, 60);
   return error ? undefined : data?.signedUrl;
+}
+
+export async function signWorkshopArchive(path: unknown, origin: string) {
+  return resolveWorkshopArchive(path, origin, async (_bucket, safePath) => {
+    const { data } = await documentStorage().createSignedUrl(safePath, 60);
+    return data?.signedUrl;
+  });
 }
 
 /** Only this immutable, server-derived namespace uses the private EM credential. */

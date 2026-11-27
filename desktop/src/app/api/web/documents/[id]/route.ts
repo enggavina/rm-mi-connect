@@ -5,7 +5,7 @@ import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { isNativeWorkshopMediaPath, resolveWorkshopMedia } from '@/server/web/workshop-media';
-import { signNativeWorkshopDocument } from '@/server/web/project-dossier-storage';
+import { signNativeWorkshopDocument, signWorkshopArchive } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const source = documentSource(kind);
     if (!uuid.safeParse(id).success || !source) return Response.json({ error: 'Documento inválido.' }, { status: 400, headers });
     const read = await readWorkshopOperations(current, 'sso');
-    let data: { id: string; file: unknown } | null;
+    let data: { id: string; file: unknown; archive_path?: unknown } | null;
     if (read) {
       data = await read('document_link', { id, source: kind ?? 'documentos' });
       if (data && (data.id !== id.toLowerCase() || typeof data.file !== 'string' && data.file !== null)) {
@@ -35,6 +35,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
     if (!data) return Response.json({ error: 'Documento não encontrado.' }, { status: 404, headers });
     const storageOrigin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    if (data.archive_path !== undefined) {
+      const signed = await signWorkshopArchive(data.archive_path, storageOrigin);
+      if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
+      return new Response(null, { status: 303, headers: { ...headers, Location: signed } });
+    }
     const target = documentTarget(data.file, storageOrigin);
     if (!target) return Response.json({ error: 'Este documento ainda não possui um arquivo disponível para leitura.' }, { status: 404, headers });
     let destination: string;

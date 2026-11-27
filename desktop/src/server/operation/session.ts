@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { required } from '../config';
 import { createWorkshopContextReader, EM_IDENTITY_ISSUER, WorkshopContextError } from '../web/workshop-context';
-import { resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
+import { resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
 import { OPERATION_COOKIE, type OperationSelection } from './policy';
 import { createOperationService } from './service';
 import type { NativeMediaUpload } from './media-upload-policy';
@@ -112,16 +112,23 @@ export async function loadNativeWorkshopMedia(token: string, operatorToken: stri
   if (error) return { data: null, error };
   const checked = mediaBatch.safeParse(data);
   if (!checked.success || checked.data.workshop_id !== scope.p_workshop_context.workshop.id) return { data: null, error: null };
+  const origin = required('SUPABASE_URL');
+  async function sign(bucket: string, path: string) {
+    const { data, error } = await service.storage.from(bucket).createSignedUrl(path, 60);
+    if (error && !('statusCode' in error && ['400', '404'].includes(String(error.statusCode)))) {
+      throw new Error('Armazenamento indisponível.');
+    }
+    return data?.signedUrl;
+  }
   const files = await Promise.all([...new Set(urls)].map(async reference => {
     const matches = checked.data.files.filter(match => match.url === reference);
+    const archive = matches.find(match => match.archive_path !== undefined);
+    if (archive) {
+      const url = await resolveWorkshopArchive(archive.archive_path, origin, sign, checked.data.workshop_id);
+      return url ? { reference, url } : null;
+    }
     for (const { source } of matches) {
-      const url = await resolveWorkshopMedia(reference, required('SUPABASE_URL'), source, async (bucket, path) => {
-        const { data, error } = await service.storage.from(bucket).createSignedUrl(path, 60);
-        if (error && !('statusCode' in error && ['400', '404'].includes(String(error.statusCode)))) {
-          throw new Error('Armazenamento indisponível.');
-        }
-        return data?.signedUrl;
-      });
+      const url = await resolveWorkshopMedia(reference, origin, source, sign);
       if (url) return { reference, url };
     }
     return null;
