@@ -8,6 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
+import { operatorWorkshopDenied, readWorkshopOperatorCells } from './operator-workshop';
 import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
@@ -24,6 +25,7 @@ import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type Cat
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const scopedReceiving = process.env.EXPO_PUBLIC_EM_SCOPED_RECEIVING === 'true';
+const scopedOperatorCells = process.env.EXPO_PUBLIC_EM_SCOPED_OPERATOR_CELLS === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -166,6 +168,7 @@ class MobileService {
     this.identityBusy = true;
     try {
       let identity: {operator: Operator; token: string};
+      let verifiedWorkshop: string | undefined;
       if (this.snapshot.online) {
         try {
         const { data, error } = await this.supabase().rpc('rm_authenticate_operator_v1', {
@@ -177,12 +180,30 @@ class MobileService {
         if (!data?.operator_token || !data?.operador_id) throw new Error('A migração 006 de autenticação e sincronização precisa estar aplicada.');
         const { operator_token: token, ...operator } = data;
         identity = { operator: operator as Operator, token: String(token) };
+        if (scopedOperatorCells) {
+          try {
+            const scoped = await this.scopeOperator(owner, identity.operator, identity.token);
+            identity.operator = scoped.operator;
+            verifiedWorkshop = scoped.workshopId;
+          } catch (failure) {
+            if (operatorWorkshopDenied(failure)) await this.forgetWorkshopOperator(owner, identity.operator);
+            throw failure;
+          }
+        }
         await cacheIdentity(identity.operator, identity.token, password, owner);
+        if (verifiedWorkshop) await secureStorage.setItem(`rm.workshop.operator.${owner}.${identity.operator.operador_id}`, verifiedWorkshop);
         } catch (error) {
           if (!isConnectivityError(error)) throw error;
           identity = await offlineIdentity(matricula,password,owner);
         }
       } else identity = await offlineIdentity(matricula, password, owner);
+      if (scopedOperatorCells && !verifiedWorkshop) {
+        const office = await secureStorage.getItem(`rm.workshop.device.${owner}`);
+        const confirmed = await secureStorage.getItem(`rm.workshop.operator.${owner}.${identity.operator.operador_id}`);
+        if (!office || office !== confirmed || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
+          throw new Error('Conecte-se para confirmar a oficina deste operador. Os trabalhos salvos foram preservados.');
+        }
+      }
       this.operatorToken = identity.token;
       this.update({ operator: identity.operator, error: null });
       await this.database.write(async db => {
@@ -586,6 +607,7 @@ class MobileService {
     return this.syncPromise;
   }
   private async runSync(force: boolean) {
+    if (scopedOperatorCells && (!this.operatorToken || this.identityBusy)) return;
     this.update({ syncing: true, error: null });
     try {
       const { data, error } = await this.supabase().auth.getSession();
@@ -593,6 +615,7 @@ class MobileService {
       if (data.session.user.id !== await secureStorage.getItem('rm.device.owner')) throw new Error('A sessão pertence a outra conta.');
       await this.prioritizeReceivingOpenings(force).catch(() => undefined);
       await this.refreshOperatorPermissions();
+      if (scopedOperatorCells && (!this.operatorToken || this.identityBusy)) return;
       let pushError: unknown;
       try { await uploadThenMutate(() => this.pushMedia(force), async () => {
         await this.syncReceivingDraft().catch(() => undefined);
@@ -618,6 +641,26 @@ class MobileService {
       throw error;
     } finally { await this.refreshCounts(); this.update({ syncing: false }); }
   }
+  private async scopeOperator(owner: string, operator: Operator, token: string) {
+    const { data, error } = await this.supabase().auth.getSession();
+    if (error || !data.session || data.session.user.id !== owner) throw Object.assign(new Error('Renove a sessão do dispositivo.'), { code: '28000' });
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 12_000);
+    let scoped: Awaited<ReturnType<typeof readWorkshopOperatorCells>>;
+    try { scoped = await readWorkshopOperatorCells(owner, data.session.access_token, operator, token, controller.signal); }
+    finally { clearTimeout(timeout); }
+    const existing = await secureStorage.getItem(`rm.workshop.device.${owner}`);
+    if (existing && existing !== scoped.workshopId) {
+      await secureStorage.setItem(`rm.workshop.suspended.${owner}`, 'true');
+      throw Object.assign(new Error('A oficina deste dispositivo mudou. Os trabalhos anteriores precisam ser conferidos.'), { code: '42501' });
+    }
+    if (!existing) await secureStorage.setItem(`rm.workshop.device.${owner}`, scoped.workshopId);
+    await secureStorage.removeItem(`rm.workshop.suspended.${owner}`);
+    return scoped;
+  }
+  private async forgetWorkshopOperator(owner: string, operator: Operator) {
+    await secureStorage.removeItem(`rm.workshop.operator.${owner}.${operator.operador_id}`);
+    await forgetCachedIdentity(operator.matricula);
+  }
   private async refreshOperatorPermissions() {
     const operator = this.snapshot.operator, token = this.operatorToken, owner = this.snapshot.sessionUserId;
     if (!operator || !token || !owner || this.identityBusy) return;
@@ -628,11 +671,24 @@ class MobileService {
       if (['28000', '42501'].includes(error.code)) {
         this.operatorToken = null;
         this.update({ operator: null });
-        await forgetCachedIdentity(operator.matricula);
+        if (scopedOperatorCells) await this.forgetWorkshopOperator(owner, operator);
+        else await forgetCachedIdentity(operator.matricula);
       }
       throw error;
     }
-    const refreshed = applyOperatorContext(operator, data as Operator);
+    let refreshed = applyOperatorContext(operator, data as Operator);
+    if (scopedOperatorCells) {
+      try { refreshed = (await this.scopeOperator(owner, refreshed, token)).operator; }
+      catch (failure) {
+        if (this.operatorToken === token && this.snapshot.operator?.operador_id === operator.operador_id && operatorWorkshopDenied(failure)) {
+          this.operatorToken = null;
+          this.update({ operator: null });
+          await this.forgetWorkshopOperator(owner, operator);
+        }
+        throw failure;
+      }
+      if (this.operatorToken !== token || this.snapshot.operator?.operador_id !== operator.operador_id) return;
+    }
     await refreshCachedIdentity(refreshed, token, owner);
     await this.database.write(db => db.runAsync(
       'UPDATE local_operator_session SET perfil=?,perfil_assinante_json=?,celulas_vinculadas_json=? WHERE operador_id=?',

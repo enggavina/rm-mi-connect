@@ -1,7 +1,12 @@
-param([int]$Port = 0, [switch]$WorkshopInventory)
+param([int]$Port = 0, [switch]$WorkshopInventory, [switch]$WorkshopRestore)
 $ErrorActionPreference = 'Stop'
 foreach ($command in @('initdb','pg_ctl','createdb','psql')) {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Instale PostgreSQL e adicione $command ao PATH." }
+}
+if ($WorkshopRestore) {
+  foreach ($command in @('pg_dump','pg_restore')) {
+    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Adicione $command ao PATH para ensaiar a restauração." }
+  }
 }
 if ($Port -eq 0) {
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0)
@@ -96,7 +101,17 @@ try {
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_origin_retention.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_direct_references.sql'
   $sqlFiles += Join-Path $PSScriptRoot 'workshop_catalog_ownership.sql'
+  if ($WorkshopRestore) {
+    $migrationRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\migrations'))
+    $bootstrap = Join-Path $PSScriptRoot 'bootstrap.sql'
+    $sqlFiles = @($sqlFiles | Where-Object { $_ -eq $bootstrap -or [IO.Path]::GetDirectoryName($_) -eq $migrationRoot })
+  }
   foreach ($sqlFile in $sqlFiles) {
+    if ($WorkshopRestore) {
+      & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v ON_ERROR_STOP=1 -c 'SET client_min_messages=warning' -f $sqlFile
+      if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar o banco de restauração em $sqlFile" }
+      continue
+    }
     Write-Output "Validando $([System.IO.Path]::GetFileName($sqlFile))"
     $executionFile = $sqlFile
     if ([System.IO.Path]::GetFileName($sqlFile) -eq '017_rm_web_catalog_management.sql') {
@@ -231,6 +246,41 @@ try {
     & node (Join-Path $PSScriptRoot '..\..\desktop\node_modules\tsx\dist\cli.mjs') (Join-Path $PSScriptRoot '..\scripts\prepare_workshop_inventory.ts') $inventorySource $inventoryReport
     if ($LASTEXITCODE -ne 0) { throw 'O parser recusou o inventário real do PostgreSQL isolado.' }
     Write-Output 'PASS: inventario de oficinas SQL -> JSON -> parser, sem acesso a dados de negocio.'
+  }
+  if ($WorkshopRestore) {
+    $fixture = Join-Path $PSScriptRoot 'workshop_restore.sql'
+    $databaseArchive = Join-Path $testRoot 'workshop.dump'
+    $mediaArchive = Join-Path $testRoot 'workshop-media.zip'
+    $mediaSource = Join-Path $testRoot 'media-source'
+    $mediaRestored = Join-Path $testRoot 'media-restored'
+    $checksums = @{}
+    $pixel = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+pZJcAAAAASUVORK5CYII=')
+    foreach ($office in 1..4) {
+      $directory = Join-Path $mediaSource "$office"
+      New-Item -ItemType Directory -Force -Path $directory | Out-Null
+      $file = Join-Path $directory 'equipamento.png'
+      [IO.File]::WriteAllBytes($file, [byte[]]($pixel + [byte]$office))
+      $checksums[$office] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+    }
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v seed=true -f $fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas antes do backup.' }
+    & pg_dump -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -Fc -f $databaseArchive
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao criar backup lógico isolado.' }
+    Compress-Archive -LiteralPath $mediaSource -DestinationPath $mediaArchive
+    & createdb -h 127.0.0.1 -p $Port -U postgres rmmi_restore
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao criar destino isolado da restauração.' }
+    & pg_restore -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore --exit-on-error --single-transaction $databaseArchive
+    if ($LASTEXITCODE -ne 0) { throw 'Falha na restauração lógica isolada.' }
+    Expand-Archive -LiteralPath $mediaArchive -DestinationPath $mediaRestored
+    foreach ($office in 1..4) {
+      $file = Join-Path $mediaRestored "media-source\$office\equipamento.png"
+      if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $checksums[$office]) {
+        throw "Mídia local da oficina $office divergiu após a restauração."
+      }
+    }
+    & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v seed=false -f $fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas após a restauração.' }
+    Write-Output 'PASS: restauração lógica e mídias locais verificadas em quatro oficinas.'
   }
   Write-Output 'PASS: migrations e testes transacionais executados em PostgreSQL isolado.'
 }

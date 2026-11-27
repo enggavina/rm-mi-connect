@@ -1,5 +1,17 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — indicadores e pendências de acompanhamento por oficina
+
+A migração **076** e o Railway **`5a239567-cb19-40df-a43c-154b279f9cde`** foram publicados com o commit `4542f4076f8888f447a93998d2f8450e58731c00`. A consulta de Acompanhamento filtra a origem dos projetos, registros, alocações e documentos antes de calcular totais e compor as listas. Os módulos fora da permissão retornam sem indicadores.
+
+Passaram o CI, a regressão SQL, o ensaio revertido, a conferência após aplicação e os 17 testes de produção do Operacional Web da BMA. A aplicação preservou os dados de 127 tabelas e as identidades e permissões das 267 funções anteriores. A ativação ampla segue integrada ao corte de origem. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45923361501).
+
+## P0.3 — consulta de fotos e assinaturas por oficina
+
+A migração **075** e o Railway **`dc82cbaa-4caf-4ee5-b060-577891c0ec07`** foram publicados com o commit `e7d25c81e144c58839f504be2b9570749b9a98ec`. O portal foi preparado para conferir projeto, célula, alocação ou registro de formulário antes de abrir a mídia. Arquivos do Supabase usam assinatura de 60 segundos no caminho autorizado. Referências históricas do CDN do Bubble continuam compatíveis durante a transição.
+
+Passaram 38 testes direcionados, a regressão SQL, o ensaio revertido e 17 verificações operacionais com a BMA após a publicação. A rota sem sessão retornou `401`. O inventário somente leitura contou 5.945 fotos de projeto e 291 de formulário no CDN histórico, além de seis fotos de projeto no Supabase. O corte do acesso direto aos arquivos depende da migração do histórico e da homologação do Android. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45922827750).
+
 ## P0.3 — gêmeo digital e exportação de planejamento por oficina
 
 A migração **074** e o Railway **`b5d39f6e-6c4c-487a-8f02-521ccb6bd546`** foram publicados com o commit `d82e104a32fd50b379c31eba196739ff69a22ed6`. O recorte é aplicado antes dos totais, das tabelas e do arquivo Excel. A BMA recebe a planta 3D. Oficinas sem planta própria usam a visão gerencial com seus projetos e células quando o recorte está habilitado.

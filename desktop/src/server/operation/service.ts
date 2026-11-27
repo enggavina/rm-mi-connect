@@ -101,6 +101,23 @@ export function createOperationService(deps: OperationDeps) {
   }
 
   return {
+    async loadNativeCatalog(token: string, delegation: string, selection: Omit<OperationSelection, 'formId'>) {
+      const query = operationQuery(selection);
+      if (!query || query.formId) return null;
+      const claims = await verifiedClaims(token);
+      const access = await authority(claims, delegation, claims.expiresAt);
+      const reply = await deps.readData({ ...access.args, p_workshop_context: access.workshop,
+        p_cell_id: query.cellId, p_project_id: query.projectId, p_page: query.page });
+      if (reply.error) throw reply.error.code === '42501' || reply.error.code === 'PT403'
+        ? new WorkshopContextError('WORKSHOP_FORBIDDEN') : identityError(reply.error.code);
+      const data = operationData(reply.data, query);
+      if (!data) return null;
+      const { id, code, revision } = access.workshop.workshop;
+      const expiresAt = Math.min(access.expiresAt, Date.parse(access.workshop.expires_at));
+      if (!Number.isFinite(expiresAt) || expiresAt <= now()) throw invalid();
+      return { workshop: { id, code, revision }, deviceId: claims.authUserId, operatorId: access.operator,
+        expiresAt: new Date(expiresAt).toISOString(), data };
+    },
     async authorizeNativeReceiving(token: string, delegation: string) {
       const claims = await verifiedClaims(token);
       const { args, workshop } = await authority(claims, delegation, claims.expiresAt);

@@ -25,7 +25,9 @@ A Central de Acessos define a oficina efetiva e seus vínculos. O portal de gest
 
 **Cobertura da P0.2.** A 067 preparou Recebimentos por oficina, com busca, totais e paginação no mesmo escopo. A 069 preparou as gravações do Gantt e a 070 acrescentou o controle de edição de projetos e células existentes. A consulta e a revisão de respostas de formulário foram publicadas nas 072–073. A ativação das leituras e das gravações acompanha o corte de origem e a homologação em produção. [Publicações](desktop/docs/web-platform.md).
 
-**Cobertura da P0.3.** A 071 preparou a consulta de QR e o download direto de notas fiscais, documentos e anexos a partir da oficina do projeto. A 074 publicou o recorte por oficina da exportação de planejamento e dos dados do gêmeo digital, com visão gerencial para unidades sem planta. Galerias, assinaturas, outros indicadores e os caminhos de acesso direto ao armazenamento ainda integram a entrega. [Publicações](desktop/docs/web-platform.md).
+**Cobertura da P0.3.** A 071 preparou a consulta de QR e o download direto de notas fiscais, documentos e anexos a partir da oficina do projeto. A 074 publicou o recorte por oficina da exportação de planejamento e dos dados do gêmeo digital, com visão gerencial para unidades sem planta. A 075 preparou a autorização da galeria e das evidências de formulários no portal. Outros indicadores, a migração do histórico e os caminhos de acesso direto ao armazenamento ainda integram a entrega. [Publicações](desktop/docs/web-platform.md).
+
+**Cobertura da P0.5.** O [ensaio isolado](rm-mobile-supabase/tests/run-local-tests.ps1) testa quatro oficinas e a mesma OS em todas elas. Busca, formulários, gêmeo, exportação e mídia retornaram dados próprios. As 48 recusas cruzadas passaram antes e depois da restauração lógica em um segundo banco local. Os quatro arquivos de exemplo foram conferidos por SHA-256. Para reproduzir, execute `./rm-mobile-supabase/tests/run-local-tests.ps1 -WorkshopRestore`. Restauração do armazenamento em condições reais, filas Android e homologação do piloto seguem no aceite.
 
 ### Roteiro de homologação do piloto
 

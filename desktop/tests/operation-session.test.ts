@@ -77,6 +77,21 @@ test('login and every new read validate both principals and obtain office from f
   assert.deepEqual(calls.slice(-2), ['verify', 'signOut']);
 });
 
+test('native catalog verifies the device, operator and assigned workshop before returning scoped data', async () => {
+  const { service, calls } = fixture();
+  const response = await service.loadNativeCatalog(accessToken, operatorToken, {});
+  assert.deepEqual(response, {
+    workshop: { id: exampleWorkshop.workshop.id, code: 'OUTRA', revision: 1 },
+    deviceId: userId, operatorId, expiresAt: exampleWorkshop.expires_at,
+    data: { kind: 'cells', items: [{ id: cellId, nome: 'Ensaios' }] },
+  });
+  assert.deepEqual(calls, ['verify', 'identity', 'authority', 'db']);
+  assert.equal(await service.loadNativeCatalog(accessToken, operatorToken, { projectId }), null);
+  const denied = fixture({ readWorkshop: async () => { throw new WorkshopContextError('WORKSHOP_FORBIDDEN'); },
+    readData: async () => assert.fail('Must not read without the current workshop') });
+  await assert.rejects(denied.service.loadNativeCatalog(accessToken, operatorToken, {}), { status: 403 });
+});
+
 test('revoked or unavailable Central context never uses a previous office or calls the data RPC', async () => {
   for (const [code, status] of [['WORKSHOP_FORBIDDEN', 'forbidden'], ['WORKSHOP_UNAVAILABLE', 'unavailable']] as const) {
     let calls = 0;
