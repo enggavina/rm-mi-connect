@@ -2461,6 +2461,7 @@ declare
  client_id uuid:=gen_random_uuid();
  protocol uuid:=gen_random_uuid();
  offline_protocol uuid:=gen_random_uuid();
+ pending_protocol uuid:=gen_random_uuid();
  draft_id uuid:=gen_random_uuid();
  submission uuid;
  open_args jsonb;
@@ -2469,8 +2470,12 @@ declare
  replayed jsonb;
  legacy_filters constant jsonb:='{"reason":"without_number","q":"Recebimento do ensaio","page":1}';
  legacy_inbox jsonb;
+ lookup_args jsonb;
+ looked_up jsonb;
+ expected record;
  legacy_opened_project uuid;
  legacy_completed_project uuid;
+ legacy_pending_project uuid;
  action record;
  own_stage uuid:=gen_random_uuid();
  foreign_stage uuid:=gen_random_uuid();
@@ -2490,6 +2495,7 @@ begin
  if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_mobile_writes_v1()','execute')
   or has_function_privilege('authenticated','rm_private.require_mobile_mutation_workshop_v1(uuid,text,jsonb,jsonb,uuid,text)','execute')
   or has_function_privilege('authenticated','rm_private.record_legacy_receiving_project_origin_v1(uuid,text,uuid,uuid)','execute')
+  or has_function_privilege('authenticated','rm_private.legacy_receiving_protocol_v1(uuid,uuid)','execute')
   or has_table_privilege('authenticated','rm_private.workshop_legacy_mobile_write_settings','select') then
   raise exception 'A ativação ou a validação de gravações ficaram acessíveis ao cliente.';
  end if;
@@ -2598,6 +2604,9 @@ begin
   or replayed->>'idempotent_replay' is distinct from 'true' then
   raise exception 'A conclusão direta da fila legada perdeu a criação ou o reenvio original.';
  end if;
+ saved:=public.rm_mobile_open_receiving_v1(pending_protocol,open_args||jsonb_build_object(
+  'p_receiving_draft_id',pending_protocol,'p_receiving_draft_snapshot',jsonb_build_object('id',pending_protocol,'version',2,'submitted',false)),token);
+ legacy_pending_project:=(saved->>'projeto_id')::uuid;
  if public.rm_receiving_draft_v1(token,'save',draft_id,jsonb_build_object('id',draft_id,'version',2),0,gen_random_uuid())->>'id'
   is distinct from draft_id::text then raise exception 'O rascunho legítimo não foi gravado.';end if;
  reset role;
@@ -2676,8 +2685,40 @@ begin
    raise exception 'O portal mostrou recebimento legado de outra oficina.';
   end if;
  end loop;
+
+ for expected in select * from (values (protocol,legacy_opened_project,'confirmed'),
+    (offline_protocol,legacy_completed_project,'confirmed'),(pending_protocol,legacy_pending_project,'opened')) proofs(code,project,phase) loop
+  lookup_args:=jsonb_build_object('protocol',expected.code,'forms',false,'photos',false,'approvals',false,'planning',false);
+  looked_up:=pg_temp.workshop_restore_read(1,'android_protocol',lookup_args);
+  if looked_up->>'project_id' is distinct from expected.project::text or looked_up->>'phase' is distinct from expected.phase
+   or looked_up->'last_retry_at' is distinct from 'null'::jsonb then
+   raise exception 'A consulta do protocolo legado perdeu o projeto, a fase ou inferiu um reenvio.';
+  end if;
+  for other in 2..4 loop
+   if pg_temp.workshop_restore_read(other,'android_protocol',lookup_args) is not null then
+    raise exception 'A consulta mostrou um protocolo legado de outra oficina.';
+   end if;
+  end loop;
+ end loop;
+
+ lookup_args:=jsonb_set(lookup_args,'{protocol}',to_jsonb(protocol));
+ update rm_private.workshop_legacy_catalog_access set revoked_at=clock_timestamp() where singleton;
+ if pg_temp.workshop_restore_read(1,'android_protocol',lookup_args)->>'phase' is distinct from 'confirmed' then
+  raise exception 'A retirada do tablet legado ocultou o recebimento histórico da oficina de origem.';
+ end if;
+ update rm_private.mobile_mutation_receipts set result=result||jsonb_build_object('equipamento_id',gen_random_uuid())
+  where client_submission_id=protocol;
+ if pg_temp.workshop_restore_read(1,'android_protocol',lookup_args) is not null then
+  raise exception 'Um recibo com equipamento divergente apareceu na consulta.';
+ end if;
+ update rm_private.mobile_mutation_receipts set params=params||jsonb_build_object('p_projeto_id',legacy_completed_project)
+  where client_submission_id=offline_protocol;
+ if pg_temp.workshop_restore_read(1,'android_protocol',jsonb_set(lookup_args,'{protocol}',to_jsonb(offline_protocol))) is not null then
+  raise exception 'Um recibo de QR sem prova de criação apareceu no leitor legado.';
+ end if;
 end
 $legacy_mobile_writes$;
+select 'PASS: legacy protocol lookup keeps proof, phase and workshop after tablet retirement' result;
 select 'PASS: legacy opening and offline completion require origin without counting as scoped pilot evidence' result;
 select 'PASS: scoped legacy mobile writes preserve BMA offline retries and require the verified gateway for other workshops' result;
 rollback to savepoint legacy_mobile_writes_fixture;
