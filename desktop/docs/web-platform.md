@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Aprovações de etapas e revisão de formulários por oficina
+
+A migração **101**, commit **`9cdf3bb`**, está ativa no Supabase `oficina-em-mi-off` e no Railway **df16cdd4-0272-4eca-981c-efa7bfb35575**. A fila, o detalhe e as decisões de aprovação, inclusive pelo Cronograma, usam a oficina confirmada em Acessos. A gravação de aprovações e revisões confere projeto, célula e modelo ou etapa. Os bloqueios no banco protegem vínculos novos ou alterados. O acesso direto autenticado às consultas legadas de aprovação foi encerrado. [Aprovações](https://em-web-production.up.railway.app/aprovacoes) · [Formulários](https://em-web-production.up.railway.app/formularios) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46001425962).
+
+O inventário confirmou a origem dos **923 registros de aprovação operacional** e dos **778 registros de formulário**. Em 875 aprovações operacionais sem ID explícito da alocação, o sistema continua usando o par projeto e célula de origem. A ativação preservou os registros e a autoria.
+
+Passaram 702 testes web, dez verificações no navegador com duas oficinas locais e o ensaio de quatro oficinas antes e depois da restauração. O ensaio verificou gravações próprias, recusas cruzadas e reenvios sem duplicar o histórico. Após a ativação, passaram 71 verificações da API com o dispositivo e o operador reais da BMA, incluindo os 22 catálogos, e oito verificações do Operacional Web. O APK 1.2.22 abriu, no emulador, o projeto e uma aprovação real da BMA com e sem conexão. A homologação com a sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-revisoes.json`. O roteiro consulta dados existentes e verifica os controles de revisão. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.3 — Expansão do acervo privado da BMA
 
 A migração **100**, commit **`af5c8a5`**, foi publicada no Supabase `oficina-em-mi-off` e no Railway **7eaea904-e62b-47bc-ac2d-98901b2aaf8a**. Os lotes retomáveis gravaram **6.421 de 6.423 referências (99,97%)** com verificação de conteúdo por SHA-256. O acervo inclui os **cinco anexos Word** e as 22 referências históricas do Supabase do EM. A auditoria somente leitura cruzou todas as cópias registradas com o tamanho, o tipo e o hash dos objetos privados. A referência original continua identificando o arquivo no catálogo e no cache. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45998599898).
