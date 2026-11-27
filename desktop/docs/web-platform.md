@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Fotos legadas de rascunhos no acervo privado
+
+A migração **114**, publicada no Supabase `oficina-em-mi-off`, permite arquivar fotos legadas do Recebimento quando a oficina do rascunho tem evidência e o proprietário do objeto coincide com o dispositivo original. O Android consulta o acervo após validar a oficina, o dispositivo e o operador. A referência do rascunho continua sendo usada na consulta e no cache. Um vínculo anterior da mesma foto a outra oficina impede a adoção. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46040887378).
+
+A migração preservou os dados das 146 tabelas auditadas. A foto do rascunho da BMA foi copiada com conferência do SHA-256 do original e da cópia. O bucket legado tem sete de oito objetos com cópia verificada e zero rascunhos ativos sem cópia. A busca em 132 tabelas do EM ficou sem referência para o oitavo objeto. A retirada do acesso público continua dependendo do tratamento desse objeto e da transição dos clientes legados.
+
+A regressão PostgreSQL e a restauração em quatro oficinas confirmaram o acesso do autor pela cópia com o bucket original privado, incluindo a recusa para outro operador e outra oficina. Em produção, um outro operador no mesmo dispositivo foi recusado ao consultar a cópia. Passaram nove verificações no navegador, e uma foto autorizada existente da BMA abriu no emulador Android 1.2.23 com e sem conexão.
+
 ## P0.4 — Retomada de envios Android por operador e oficina
 
 O APK **1.2.23/código 26** consulta e processa somente a fila do operador identificado e da oficina confirmada. Uma pendência de outro operador permanece no dispositivo para a retomada pelo autor. A ordem dos envios do operador ativo é preservada. Uma operação antiga sem oficina registrada só pode ser retomada pelo próprio autor. O servidor confirma a oficina do projeto e da célula antes de autorizar a foto ou assinatura pelo armazenamento privado. A recuperação usa o mesmo protocolo e preserva a origem que já estiver registrada.
