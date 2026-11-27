@@ -1211,6 +1211,10 @@ begin
   receipt:=public.rm_mobile_receiving_workshop_v1(receiving_id,'open',args,delegation);
   reset role;
   project:=(receipt->>'projeto_id')::uuid;
+  if not exists(select 1 from rm_private.receiving_workshop_protocols where submission_id=receiving_id
+   and project_id=project and workshop_id=em_fixture.id(office) and opened_at is not null and completed_at is null) then
+   raise exception 'A abertura não gravou o protocolo com a origem do projeto.';
+  end if;
   if not (receipt->>'attachments_pending')::boolean or not (
    pg_temp.workshop_restore_read(office,'receiving_list',jsonb_build_object('reason','without_number','q','Motor local do Gantt '||office,'page',1))->'items'
     @> jsonb_build_array(jsonb_build_object('id',project))) then
@@ -1301,8 +1305,9 @@ begin
  for office in 1..4 loop
   operator:=em_fixture.id(1500+office);
   protocol:=em_fixture.id(1510+office);
-  client:=em_fixture.id(1300+office);
+  client:=em_fixture.id(1520+office);
   token:=repeat('4'||office::text,32);
+  insert into public.rm_clientes(id,nome) values(client,'Cliente local anterior à classificação '||office);
   insert into public.rm_users(id,nome,perfil) values(operator,'Operador legado local '||office,'mobile');
   insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
    values(extensions.digest(token,'sha256'),em_fixture.id(710+office),em_fixture.id(730+office),operator,clock_timestamp()+interval '1 hour');
@@ -1319,6 +1324,7 @@ begin
   if exists(select 1 from rm_private.workshop_project_ownership where id=project) then
    raise exception 'O recebimento legado de teste nasceu com uma oficina indevida.';
   end if;
+  insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',client,em_fixture.id(office));
   perform public.rm_authorize_mobile_receiving_workshop_v1(em_fixture.id(710+office),em_fixture.id(720+office),token,context,protocol,'complete',args);
   set local role authenticated;
   replay:=public.rm_mobile_receiving_workshop_v1(protocol,'complete',args,token);
@@ -1326,6 +1332,8 @@ begin
   if (replay->>'projeto_id')::uuid is distinct from project or (replay->>'idempotent_replay')::boolean is distinct from true
    or not exists(select 1 from rm_private.receiving_project_recoveries where submission_id=protocol
     and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office))
+   or not exists(select 1 from rm_private.receiving_workshop_protocols where submission_id=protocol
+    and project_id=project and operator_id=operator and workshop_id=em_fixture.id(office) and opened_at is null and completed_at is not null)
    or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),
     em_fixture.id(office))->>'total')::int is distinct from 1
    or (rm_private.workshop_receiving_read_v1(jsonb_build_object('page',1,'q','Chegada legada local '||office,'reason','without_number'),

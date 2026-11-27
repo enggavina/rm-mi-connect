@@ -602,4 +602,73 @@ begin
 end
 $legacy_recovery$;
 select 'PASS: exact receiving replay classifies legacy openings and receipts without changing authors, attachments or project IDs' result;
+
+do $protocols$
+declare
+ sid uuid:=pg_temp.rx_id(989);
+ qr uuid:=pg_temp.rx_id(990);
+ offline uuid:=pg_temp.rx_id(991);
+ args jsonb:=pg_temp.rx_payload(sid,'open');
+ result jsonb;
+ prior rm_private.receiving_workshop_protocols;
+ foreign_args jsonb;
+begin
+ perform pg_temp.rx_mint(sid,'open',args);
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',sid,args),'42501');
+ reset role;
+ perform pg_temp.rx_check(not exists(select 1 from rm_private.receiving_openings where client_submission_id=sid),
+  'a pending permit cannot be presented over the raw RPC');
+ result:=pg_temp.rx_call(sid,'open',args);
+ select * into strict prior from rm_private.receiving_workshop_protocols where submission_id=sid;
+ perform pg_temp.rx_check(prior.project_id=(result->>'projeto_id')::uuid and prior.operator_id=pg_temp.rx_id(14)
+  and prior.workshop_id=pg_temp.rx_id(1) and prior.opened_at is not null and prior.completed_at is null,
+  'verified opening records the original team, project and phase');
+ perform pg_temp.rx_check((pg_temp.rx_call(sid,'open',args)->>'idempotent_replay')::boolean
+  and (select opened_at from rm_private.receiving_workshop_protocols where submission_id=sid)=prior.opened_at,
+  'opening replay preserves original verification');
+ args:=pg_temp.rx_payload(sid,'complete');
+ perform pg_temp.rx_mint(sid,'complete',args);
+ foreign_args:=pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_projeto_id',pg_temp.rx_id(779));
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_mutate_v1(%L,''rm_submit_recebimento_v1'',%L,repeat(''6'',64))',sid,args),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,foreign_args),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_mutate_v1(%L,''rm_submit_recebimento_v1'',%L,repeat(''6'',64))',qr,foreign_args),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,
+  pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_cliente_id',pg_temp.rx_id(750))),'42501');
+ reset role;
+ result:=pg_temp.rx_call(sid,'complete',args);
+ perform pg_temp.rx_check(prior.project_id=(result->>'projeto_id')::uuid and exists(
+  select 1 from rm_private.receiving_workshop_protocols where submission_id=sid and opened_at=prior.opened_at and completed_at is not null),
+  'authorized completion establishes both phases without creating another project');
+ perform pg_temp.rx_check((pg_temp.rx_call(sid,'complete',args)->>'idempotent_replay')::boolean,
+  'authorized exact replay remains available');
+
+ -- Repeat the fallback with the actual production activation function. From
+ -- here on, raw BMA QR and offline completions also need current verification.
+ update rm_private.sso_settings set require_sso=true;
+ perform rm_private.activate_root_creation_v1(repeat('8',40),pg_temp.rx_id(997));
+ set constraints all immediate;
+ perform rm_private.activate_workshop_root_enforcement_v1();
+ set constraints all deferred;
+ args:=pg_temp.rx_payload(offline,'complete');
+ set local role authenticated;
+ perform pg_temp.rx_reject(format('select public.rm_mobile_mutate_v1(%L,''rm_submit_recebimento_v1'',%L,repeat(''6'',64))',offline,args),'42501');
+ perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,
+  pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_projeto_id',prior.project_id)),'42501');
+ reset role;
+ result:=pg_temp.rx_call(offline,'complete',args);
+ set constraints workshop_new_project_origin immediate;
+ perform pg_temp.rx_check(exists(select 1 from rm_private.receiving_workshop_protocols p
+  join rm_private.mobile_mutation_receipts r on r.client_submission_id=p.submission_id and r.operator_id=p.operator_id
+  join rm_private.workshop_project_ownership o on o.id=p.project_id and o.workshop_id=p.workshop_id
+  where p.submission_id=offline and p.opened_at is null and p.completed_at is not null
+   and p.project_id=(result->>'projeto_id')::uuid and p.workshop_id=pg_temp.rx_id(1)),
+  'offline completion alone creates project, origin, exact receipt and evidence in one transaction');
+ perform pg_temp.rx_check(not has_table_privilege('authenticated','rm_private.receiving_workshop_protocols','select')
+  and not has_table_privilege('service_role','rm_private.receiving_workshop_protocols','update'),
+  'receiving proofs may not be read or changed directly');
+end
+$protocols$;
+select 'PASS: native receiving uses a transaction-bound workshop proof with phase, origin and offline replay' result;
 rollback;
