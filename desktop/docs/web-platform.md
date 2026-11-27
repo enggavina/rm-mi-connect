@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — Origem obrigatória no recebimento Android legado
+
+A migração **132** registra a oficina no momento em que um APK antigo autorizado cria o projeto da BMA. Funciona tanto na abertura antecipada quanto no recebimento concluído diretamente pela fila offline. O vínculo e o projeto são gravados na mesma transação. Reenvios usam os recibos originais. O caminho atual continua registrando a origem pela autorização de Acessos.
+
+A matriz isolada de quatro oficinas verificou abertura e conclusão sem OS, reenvios, autoria e consulta exclusiva em Recebimentos da oficina de origem. A guarda também recusou a tentativa autenticada de criar projeto sem origem. O ensaio revertido em produção preservou as 152 tabelas auditadas, as permissões e os dois recibos históricos. A consulta de prontidão separa a origem obrigatória nas criações legadas do aceite do primeiro recebimento no fluxo atual. [Migração](../../rm-mobile-supabase/migrations/132_rm_legacy_receiving_creation_origin.sql) · [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql).
+
+A migração está ativa no Supabase `oficina-em-mi-off` e a conferência encontrou zero projetos ou células sem origem. Passaram a regressão PostgreSQL, o CI web e mobile e 11 verificações em produção no navegador. No emulador Android 1.2.26, um rascunho e um formulário da BMA abriram com e sem rede e Recebimento abriu novamente após reconectar. A consulta de prontidão ainda mostra zero recebimentos confirmados pelo fluxo atual no piloto. [EM em produção](https://em-web-production.up.railway.app) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46081276276).
+
 ## P0.4 e P0.6 — Armazenamento Android após transferência de oficina
 
 O Android **1.2.26/código 29** mantém um banco SQLite por oficina após a primeira transferência confirmada. Uma confirmação em segundo plano suspende a oficina anterior. A identificação online do par dispositivo e operador permite preparar o novo vínculo. O botão **Reabrir aplicativo** abre o banco correspondente em uma nova sessão do app. O banco instalado antes da transferência pertence à primeira oficina confirmada. Retornar a essa unidade reabre o catálogo, os rascunhos e a fila originais. [Procedimento de transferência](sso.md#transferência-de-um-dispositivo-android).
