@@ -2157,6 +2157,97 @@ end
 $legacy_catalog$;
 rollback to savepoint legacy_catalog_fixture;
 release savepoint legacy_catalog_fixture;
+savepoint legacy_operations_fixture;
+do $legacy_operations$
+declare
+ device uuid:=em_fixture.id(711);
+ device_session uuid:=em_fixture.id(721);
+ operator_id uuid:=em_fixture.id(3601);
+ customer uuid:=em_fixture.id(3602);
+ protocol uuid:=em_fixture.id(3603);
+ unknown_project uuid:=em_fixture.id(3604);
+ own_project uuid:=em_fixture.id(101);
+ other_project uuid:=em_fixture.id(102);
+ own_answer uuid:=em_fixture.id(1461);
+ other_answer uuid:=em_fixture.id(1462);
+ delegation text:=repeat('c1',32);
+ opened jsonb;
+ completed jsonb;
+ base_args jsonb;
+ opened_project uuid;
+ completed_project uuid;
+ equipment uuid;
+ visible_count bigint;
+ resource text;
+ result jsonb;
+begin
+ if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_bma_operations_v1()','execute')
+  or has_function_privilege('service_role','rm_private.activate_workshop_legacy_bma_operations_v1()','execute')
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_bma_operation_rows','select') then
+  raise exception 'O inventário operacional ou a ativação ficaram acessíveis ao cliente.';
+ end if;
+ begin
+  perform rm_private.activate_workshop_legacy_bma_operations_v1();
+  raise exception 'A ativação não exigiu a conta de dispositivo aprovada.';
+ exception when sqlstate 'PT409' then null; end;
+ perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(device,device_session);
+ perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ if (select count(*) from pg_policy where polname='rm_legacy_bma_operations_read' and not polpermissive and polcmd='r')<>12 then
+  raise exception 'O recorte direto não cobriu os dados operacionais.';
+ end if;
+
+ insert into public.rm_users(id,nome,perfil) values(operator_id,'Operador de recebimento legado local','mobile');
+ insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
+  values(extensions.digest(delegation,'sha256'),device,em_fixture.id(731),operator_id,clock_timestamp()+interval '1 hour');
+ insert into public.rm_clientes(id,nome) values(customer,'Cliente de recebimento legado local');
+ insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',customer,em_fixture.id(1));
+ insert into public.rm_projetos(id,numero,created_by_user_id) values(unknown_project,'Abertura sem protocolo',operator_id);
+ base_args:=jsonb_build_object('p_operador_id',operator_id,'p_cliente_id',customer,'p_chegada_equipamento',clock_timestamp(),
+  'p_descricao_equipamento','Recebimento de teste local','p_equipamento','{}'::jsonb,'p_fotos_recebimento','[]'::jsonb);
+ perform set_config('request.jwt.claim.sub',device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+ set local role authenticated;
+ opened:=public.rm_mobile_open_receiving_v1(protocol,base_args||jsonb_build_object('p_receiving_draft_id',protocol,
+  'p_receiving_draft_revision',0,'p_receiving_draft_snapshot',jsonb_build_object('id',protocol,'version',2,'submitted',false)),delegation);
+ completed:=public.rm_mobile_mutate_v1(gen_random_uuid(),'rm_submit_recebimento_v1',base_args,delegation);
+ opened_project:=(opened->>'projeto_id')::uuid;
+ completed_project:=(completed->>'projeto_id')::uuid;
+ equipment:=(opened->>'equipamento_id')::uuid;
+ if not exists(select 1 from public.rm_projetos where id=own_project)
+  or exists(select 1 from public.rm_projetos where id in(other_project,unknown_project))
+  or not exists(select 1 from public.rm_respostas where id=own_answer)
+  or exists(select 1 from public.rm_respostas where id=other_answer)
+  or (select count(*) from public.rm_projetos where id in(opened_project,completed_project))<>2
+  or not exists(select 1 from public.rm_equipamentos where id=equipment and projeto_id=opened_project) then
+  raise exception 'O legado perdeu o recebimento autorizado ou mostrou dados externos ou sem protocolo.';
+ end if;
+ reset role;
+ if exists(select 1 from rm_private.workshop_project_ownership where id in(opened_project,completed_project)) then
+  raise exception 'A compatibilidade de leitura alterou a origem dos recebimentos.';
+ end if;
+
+ for office in 2..4 loop
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  for resource in select c.relname from pg_policy p join pg_class c on c.oid=p.polrelid where p.polname='rm_legacy_bma_operations_read' loop
+   set local role authenticated;
+   execute format('select count(*) from public.%I',resource) into visible_count;
+   reset role;
+   if visible_count<>0 then raise exception 'Dados operacionais ficaram disponíveis por acesso direto de outra oficina.'; end if;
+  end loop;
+  result:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   pg_temp.workshop_restore_native_context(office,office),'rm_projetos',null,null,false);
+  if not result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(100+office)))
+   or result->'rows' @> jsonb_build_array(jsonb_build_object('id',own_project)) then
+   raise exception 'A consulta autorizada do Android perdeu o projeto local ou incluiu a BMA.';
+  end if;
+ end loop;
+end
+$legacy_operations$;
+rollback to savepoint legacy_operations_fixture;
+release savepoint legacy_operations_fixture;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
@@ -2501,6 +2592,7 @@ begin
 end
 $retired_direct_tables$;
 rollback;
+select 'PASS: scoped legacy operational reads retain original receiving proofs, hide foreign and unverified rows, and preserve mobile gateways' result;
 select 'PASS: legacy direct catalogs keep BMA data on its verified tablet, deny other tablets and revoke after a verified transfer' result;
 select 'PASS: historical form options resolve through the authorized question, replay after the native cursor and reject mismatched forms in four workshops' result;
 select 'PASS: retired direct access to legacy tables preserves drafts, supported Android queries and service grants in four workshops' result;
