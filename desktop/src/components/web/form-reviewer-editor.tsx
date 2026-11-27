@@ -82,7 +82,7 @@ export function FormReviewerEditor({ snapshot, canManage, destination, recordPan
           {editable && form.can_assign && <button type="button" className="button small secondary" aria-label={`${buttonLabel} de ${title}`} disabled={locked || formId !== null} onClick={() => open(form.id)}><Icon name="edit" size={14} />{buttonLabel}</button>}
         </div>
         <div className={s.assignment}><p><strong>Avaliador atribuído:</strong> {assignedLabel ?? 'Ainda não definido'}</p>
-          {form.assignment && !form.assignment.eligible && <p className="notice">O avaliador atribuído não está entre os elegíveis atuais da célula. Novos envios não herdarão essa atribuição enquanto ele não estiver ativo e vinculado à célula; os registros existentes permanecem preservados.</p>}
+          {canManage && snapshot.eligible_complete && form.assignment && !form.assignment.eligible && !form.action_reason && <p className="notice">O avaliador atribuído está fora das opções atuais desta célula.</p>}
           {divergence && <p className="form-note">Os avaliadores dos registros existentes divergem da atribuição atual ou entre si. As informações dos registros permanecem identificadas abaixo.</p>}
           {!form.assignment && hasAssignmentsInRecords && <p className="form-note">Os avaliadores dos registros existentes não definem automaticamente o avaliador dos próximos envios.</p>}
           {form.action_reason && <p className="form-note">{form.action_reason}</p>}

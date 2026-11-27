@@ -30,7 +30,7 @@ export type FormReviewerAssignmentForm = FormReviewerAssignmentSnapshot['forms']
 const readCapabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.planning.read', 'em.forms.read'];
 const unavailable = () => new Error('Não foi possível consultar os avaliadores desta célula. Tente novamente.');
 
-/** One atomic RLS snapshot. Candidate identities never come from the global user catalog. */
+/** Loads reviewer history and choices from the same atomic snapshot. */
 export function createFormReviewerAssignmentData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getFormReviewerAssignments(projectId: string, allocationId: string, includeEligible = false): Promise<FormReviewerAssignmentSnapshot | null> {
     if (capabilities !== undefined && (!readCapabilities.every(capability => capabilities.includes(capability))
@@ -80,10 +80,10 @@ export function createFormReviewerAssignmentData(client: SupabaseClient, capabil
 
 export async function getFormReviewerAssignments(projectId: string, allocationId: string) {
   const { requireWebUser } = await import('./auth');
-  const { ssoWorkshopRead } = await import('./sso-bridge');
+  const { readWorkshopOperations } = await import('./workshop-operation-reader');
   const access = await requireWebUser(readCapabilities);
   const includeEligible = ['administrador', 'padr_o'].includes(access.profile.perfil)
     && (!access.sso || access.sso.capabilities.includes('em.planning.manage'));
-  return createFormReviewerAssignmentData(access.client, access.sso?.capabilities, access.sso && ssoWorkshopRead(access.sso, access.client))
+  return createFormReviewerAssignmentData(access.client, access.sso?.capabilities, await readWorkshopOperations(access))
     .getFormReviewerAssignments(projectId, allocationId, includeEligible);
 }
