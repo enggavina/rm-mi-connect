@@ -30,6 +30,19 @@ test('every protected action reads current authority and mints for the exact req
   await assert.rejects(authorizer.authorize({ ...context }, 'protocol', 'save_catalog', payload, 'em.catalogs.manage'), CorporateAuthError);
 });
 
+test('capacity writes always get separate workshop authorization while general Gantt is staged', async () => {
+  const context: SsoContext = { ...sso(), capabilities: ['em.planning.manage'] };
+  const scope = workshop(), minted: string[] = [];
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { return scope; } },
+    async mint(args) { assert.equal(args.context, scope); minted.push(args.operation); } });
+  authorizer.remember(context, session());
+  assert.equal(await authorizer.authorize(context, 'new-resource', 'save_capacity_resource', {}, 'em.planning.manage'), true);
+  assert.equal(await authorizer.authorize(context, 'book-resource', 'save_capacity_bookings', {}, 'em.planning.manage'), true);
+  assert.equal(await authorizer.authorize(context, 'save-dates', 'save_gantt_plan', {}, 'em.planning.manage'), false);
+  await assert.rejects(authorizer.authorize(context, 'bad-claim', 'save_capacity_bookings', {}, 'em.projects.manage'), CorporateAuthError);
+  assert.deepEqual(minted, ['save_capacity_resource', 'save_capacity_bookings']);
+});
+
 test('missing verification, wrong subject and wrong capability cannot contact workshop authority', async () => {
   const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { assert.fail('no network'); } }, async mint() { assert.fail('no permit'); } });
   assert.throws(() => authorizer.remember(sso(), { ...session(), user: { ...session().user, id: 'other' } }), CorporateAuthError);

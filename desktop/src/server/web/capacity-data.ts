@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { uuid } from './policy';
 import { calendarDay } from './gantt';
 import { ganttRevision } from './gantt-policy';
-import { createGanttData, ganttSnapshotSchema } from './gantt-data';
+import { createGanttData, ganttSnapshotSchema, GanttSelectionUnavailable } from './gantt-data';
 import { CAPACITY_MAX_BOOKINGS, CAPACITY_MAX_RESOURCES, CAPACITY_READ_SCOPES, capacityDaySchema, capacityExceptionsSchema, capacityFiltersSchema, capacityKindSchema, capacityWeekSchema, type CapacityFilters } from './capacity-policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 const timestamp = z.string().datetime({ offset: true }), text = z.string().nullable();
 export const capacityResourceSchema = z.object({ id: uuid, name: z.string().min(1).max(120), kind: capacityKindSchema, active: z.boolean(),
@@ -22,15 +23,22 @@ export type CapacityResource = z.infer<typeof capacityResourceSchema>;
 export type CapacityBooking = z.infer<typeof capacityBookingSchema>;
 const unavailable = () => new Error('Não foi possível consultar a capacidade. Tente novamente.');
 const key = (id: string) => id.toLowerCase();
-export function createCapacityData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createCapacityData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead, canManage = false) {
   return { async getCapacitySnapshot(input: CapacityFilters): Promise<CapacitySnapshot> {
     if (capabilities && !CAPACITY_READ_SCOPES.every(scope => capabilities.includes(scope))) throw new Error('Acesso não autorizado a esta área.');
     const filters = capacityFiltersSchema.safeParse(input); if (!filters.success) throw unavailable();
-    let result;
-    try { result = await client.rpc('rm_web_capacity_snapshot_v1', { p_filters: filters.data }); } catch { throw unavailable(); }
-    if (result.error) throw result.error.code === 'PT413' ? new Error('A consulta de capacidade excede o limite. Reduza o período.') : unavailable();
-    try { if (Buffer.byteLength(JSON.stringify(result.data), 'utf8') > 10 * 1024 * 1024) throw unavailable(); } catch { throw unavailable(); }
-    const parsed = capacitySnapshotSchema.safeParse(result.data); if (!parsed.success) throw unavailable();
+    let snapshot: unknown;
+    if (workshopRead) {
+      snapshot = await workshopRead('capacity_snapshot', { ...filters.data, can_manage: canManage && (capabilities?.includes('em.planning.manage') ?? true) });
+      if (snapshot === null && filters.data.project_id) throw new GanttSelectionUnavailable();
+    } else {
+      let result;
+      try { result = await client.rpc('rm_web_capacity_snapshot_v1', { p_filters: filters.data }); } catch { throw unavailable(); }
+      if (result.error) throw result.error.code === 'PT413' ? new Error('A consulta de capacidade excede o limite. Reduza o período.') : unavailable();
+      snapshot = result.data;
+    }
+    try { if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > 10 * 1024 * 1024) throw unavailable(); } catch { throw unavailable(); }
+    const parsed = capacitySnapshotSchema.safeParse(snapshot); if (!parsed.success) throw unavailable();
     const data = parsed.data;
     if (data.start !== filters.data.start || data.days !== filters.data.days) throw unavailable();
     if (!data.complete) {
@@ -73,6 +81,9 @@ export function createCapacityData(client: SupabaseClient, capabilities?: readon
 }
 export async function getCapacitySnapshot(filters: CapacityFilters) {
   const { requireWebUser } = await import('./auth');
-  const session = await requireWebUser('em.planning.read');
-  return createCapacityData(session.client, session.sso?.capabilities).getCapacitySnapshot(filters);
+  const { ssoWorkshopRead } = await import('./sso-bridge');
+  const session = await requireWebUser(CAPACITY_READ_SCOPES);
+  const workshopRead = session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined;
+  const canManage = ['administrador', 'padr_o'].includes(session.profile.perfil);
+  return createCapacityData(session.client, session.sso?.capabilities, workshopRead, canManage).getCapacitySnapshot(filters);
 }

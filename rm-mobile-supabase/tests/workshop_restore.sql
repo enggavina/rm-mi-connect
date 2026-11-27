@@ -32,6 +32,12 @@ insert into rm_private.gantt_baselines(id,projeto_id,label,items,created_by)
  select em_fixture.id(800+n),a.projeto_id,'Linha de base local '||n,jsonb_build_array(jsonb_build_object('allocation_id',a.id,
   'data_inicio',a.data_inicio,'data_limite',a.data_limite)),em_fixture.id(30+n)
  from generate_series(1,4)n join public.rm_celulas_projeto a on a.id=em_fixture.id(300+n);
+insert into rm_private.capacity_resources(id,name,kind,active,weekly_minutes,exceptions,updated_by,workshop_id)
+ select em_fixture.id(810+n),'Bancada comum','maquina',true,'[480,480,480,480,480,480,480]','[]',em_fixture.id(30+n),em_fixture.id(n)
+ from generate_series(1,4)n;
+insert into rm_private.capacity_bookings(id,resource_id,allocation_id,day,minutes,updated_by)
+ select em_fixture.id(820+n),em_fixture.id(810+n),em_fixture.id(300+n),(clock_timestamp() at time zone 'America/Sao_Paulo')::date+1,60*n,em_fixture.id(30+n)
+ from generate_series(1,4)n;
 insert into public.rm_forms(id,titulo) select em_fixture.id(400+n),'Modelo local '||n from generate_series(1,4)n;
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id)
  select 'form_model',em_fixture.id(400+n),em_fixture.id(n) from generate_series(1,4)n;
@@ -71,8 +77,8 @@ commit;
 \endif
 
 begin;
-create function pg_temp.workshop_restore_read(office integer,resource text,args jsonb) returns jsonb language plpgsql as $$
-declare request_id uuid:=gen_random_uuid(); context jsonb; stamp timestamptz:=clock_timestamp(); value jsonb;
+create function pg_temp.workshop_restore_sso(office integer) returns jsonb language plpgsql as $$
+declare context jsonb; stamp timestamptz:=clock_timestamp();
  hash text:=repeat(office::text,64);
 begin
  perform set_config('request.jwt.claim.sub',em_fixture.id(10+office)::text,true);
@@ -83,6 +89,13 @@ begin
   'principals',jsonb_build_array(jsonb_build_object('kind','corporate','issuer',authority,'subject',em_fixture.id(50+office),'revision',1)),
   'issued_at',stamp,'expires_at',stamp+interval '5 minutes') into strict context
  from rm_private.workshop_references where id=em_fixture.id(office);
+ return context;
+end$$;
+
+create function pg_temp.workshop_restore_read(office integer,resource text,args jsonb) returns jsonb language plpgsql as $$
+declare request_id uuid:=gen_random_uuid(); context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
+ hash text:=repeat(office::text,64);
+begin
  perform public.rm_sso_workshop_read_permit_v1(hash,request_id,resource,args,context);
  set local role authenticated;
  value:=public.rm_web_workshop_read_v1(request_id,resource,args);
@@ -91,6 +104,20 @@ begin
   raise exception 'Resposta da consulta divergiu da oficina local.';
  end if;
  return nullif(value->'data','null'::jsonb);
+exception when others then reset role;raise;
+end$$;
+
+create function pg_temp.workshop_restore_capacity_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
+returns jsonb language plpgsql as $$
+declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
+ hash text:=repeat(office::text,64);
+begin
+ if scoped then perform public.rm_sso_gantt_workshop_permit_v1(hash,submission,operation,payload,context);
+ else perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,'em.planning.manage');end if;
+ set local role authenticated;
+ value:=public.rm_web_mutate_v1(submission,operation,payload);
+ reset role;
+ return value;
 exception when others then reset role;raise;
 end$$;
 
@@ -110,8 +137,12 @@ end$$;
 
 do $$
 declare value jsonb; project uuid; filters jsonb; own_file text; other_file text; gantt jsonb;
+ capacity_filters jsonb:=jsonb_build_object('start',(clock_timestamp() at time zone 'America/Sao_Paulo')::date,'days',14,'project_id',null,'can_manage',true);
+ resource uuid; resource_payload jsonb; booking_payload jsonb; submission uuid; changed jsonb; replay jsonb;
  gantt_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
 begin
+ update rm_private.sso_settings set require_sso=true where singleton;
+ perform rm_private.activate_capacity_workshop_writes_v1();
  for office in 1..4 loop
   project:=em_fixture.id(100+office);
   value:=pg_temp.workshop_restore_read(office,'project_list',
@@ -140,6 +171,51 @@ begin
     raise exception 'Uma das três visões do Gantt perdeu seu intervalo ou linha de base.';
    end if;
   end loop;
+  value:=pg_temp.workshop_restore_read(office,'capacity_snapshot',capacity_filters||jsonb_build_object('project_id',project));
+  if value->'totals' is distinct from '{"resources":1,"bookings":1}'::jsonb
+   or value->'resources'->0->>'id' is distinct from em_fixture.id(810+office)::text
+   or (value->'resources'->0->'booked_days'->0->>'minutes')::int is distinct from 60*office
+   or value->'bookings'->0->>'project_id' is distinct from project::text
+   or value->'project_plan'->'items'->0->>'can_edit' is distinct from 'true' then
+   raise exception 'A restauração de capacidade misturou oficinas ou perdeu versões e reservas.';
+  end if;
+  resource_payload:='{"id":null,"expected_version":null,"name":"Torno local","kind":"maquina","active":true,"weekly_minutes":[480,480,480,480,480,480,480],"exceptions":[],"acknowledge_overload":false,"reason":"Teste local de capacidade"}';
+  begin
+   perform pg_temp.workshop_restore_capacity_write(office,gen_random_uuid(),'save_capacity_resource',resource_payload,false);
+   raise exception 'A gravação antiga contornou a confirmação da oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  changed:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_resource',resource_payload);
+  replay:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_resource',resource_payload);
+  resource:=(changed->>'id')::uuid;
+  if replay->>'id' is distinct from resource::text or replay->>'idempotent_replay' is distinct from 'true'
+   or not exists(select 1 from rm_private.capacity_resources r where r.id=resource and r.workshop_id=em_fixture.id(office)) then
+   raise exception 'A gravação de capacidade não preservou oficina e protocolo.';
+  end if;
+  select jsonb_build_object('resource_id',resource,'expected_resource_version',rm_private.capacity_resource_version_v1(resource),
+   'allocation_id',a.id,'expected_allocation_updated_at',a.updated_at,'expected_project_version',rm_private.web_gantt_project_version_v1(a.projeto_id),
+   'days',jsonb_build_array(jsonb_build_object('date',(capacity_filters->>'start')::date+1,'minutes',30)),
+   'reason','Teste local de reserva','acknowledge_overload',false) into strict booking_payload
+  from public.rm_celulas_projeto a where a.id=em_fixture.id(300+office);
+  begin
+   perform pg_temp.workshop_restore_capacity_write(office,gen_random_uuid(),'save_capacity_bookings',
+    jsonb_set(booking_payload,'{allocation_id}',to_jsonb(em_fixture.id(300+(office % 4)+1))));
+   raise exception 'A gravação de capacidade reservou uma etapa estrangeira.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  changed:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_bookings',booking_payload);
+  replay:=pg_temp.workshop_restore_capacity_write(office,submission,'save_capacity_bookings',booking_payload);
+  if changed->'record'->>'changed_days' is distinct from '1' or replay->>'idempotent_replay' is distinct from 'true'
+   or (select count(*) from rm_private.capacity_bookings b where b.resource_id=resource)<>1 then
+   raise exception 'A reserva própria não manteve uma única gravação no reenvio.';
+  end if;
+  perform pg_temp.workshop_restore_sso(office);
+  set local role authenticated;
+  value:=public.rm_web_capacity_snapshot_v1(capacity_filters-'can_manage');
+  reset role;
+  if value->'totals' is distinct from '{"resources":0,"bookings":0}'::jsonb then raise exception 'A leitura antiga devolveu recursos isolados.';end if;
   value:=pg_temp.workshop_restore_read(office,'form_record_project',jsonb_build_object('id',em_fixture.id(500+office)));
   if (value->>'project_id')::uuid is distinct from project then raise exception 'Formulário próprio indisponível.';end if;
   value:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo'));
@@ -169,6 +245,7 @@ begin
     or pg_temp.workshop_restore_read(office,'form_record_project',jsonb_build_object('id',em_fixture.id(500+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('cell_id',em_fixture.id(200+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office),'include_closed',true)) is not null
+    or pg_temp.workshop_restore_read(office,'capacity_snapshot',capacity_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+foreign_office),'source','project_photo')) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(780+foreign_office),'source','project_photo')) is not null then
     raise exception 'Uma referência direta retornou dados de outra oficina.';
@@ -187,4 +264,4 @@ begin
  end loop;
 end$$;
 rollback;
-select 'PASS: four offices, three Gantt views, own media, 96 denied cross-office checks, and 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: four offices, three Gantt views, capacity and own media, 108 denied cross-office reads and 4 foreign bookings, and 8 denied reads after revocation or unavailable authority' result;

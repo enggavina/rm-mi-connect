@@ -1,8 +1,10 @@
+import { notFound } from 'next/navigation';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { CAPACITY_READ_SCOPES, capacityFiltersSchema } from '@/server/web/capacity-policy';
 import { createCapacityData } from '@/server/web/capacity-data';
-import { listGanttProjects } from '@/server/web/gantt-data';
+import { createGanttData, GanttSelectionUnavailable } from '@/server/web/gantt-data';
+import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { calendarDay, isoCalendarDay, saoPauloDay } from '@/server/web/gantt';
 import { scheduleId } from '@/server/web/project-schedule-policy';
 import { CapacityPlanner } from '@/components/web/capacity-planner';
@@ -16,19 +18,20 @@ export default async function Capacidade({ searchParams }: { searchParams: Promi
   const today = isoCalendarDay(saoPauloDay(new Date())!);
   const checked = capacityFiltersSchema.safeParse({ start: value('start') ?? today, days: value('days') ? Number(value('days')) : 14, project_id: projectId });
   const filters = checked.success ? checked.data : { start: today, days: 14 as const, project_id: projectId };
+  const canManage = ['administrador', 'padr_o'].includes(session.profile.perfil) && hasWebCapability(session, 'em.planning.manage');
+  const operations = session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined;
   const [snapshot, projects] = await Promise.all([
-    createCapacityData(session.client, session.sso?.capabilities).getCapacitySnapshot(filters),
-    listGanttProjects(value('q'), value('page')),
-  ]);
+    createCapacityData(session.client, session.sso?.capabilities, operations, canManage).getCapacitySnapshot(filters),
+    createGanttData(session.client, session.sso?.capabilities, operations).listGanttProjects(value('q'), value('page')),
+  ]).catch(error => { if (error instanceof GanttSelectionUnavailable) notFound(); throw error; });
   const query = new URLSearchParams({ start: filters.start, days: String(filters.days) });
   if (projectId) query.set('project', projectId);
   const initialAllocation = scheduleId(params.allocation);
   if (initialAllocation) query.set('allocation', initialAllocation);
   const destination = `/planejamento/capacidade?${query}`;
   const project = snapshot.project_plan?.projects.find(item => item.id === projectId);
-  const canManage = ['administrador', 'padr_o'].includes(session.profile.perfil) && hasWebCapability(session, 'em.planning.manage');
   return <><PageHeading eyebrow="PCP · RECURSOS DA OFICINA" title="Capacidade de pessoas e máquinas"
-    description="Cadastre os recursos da oficina e distribua as horas de cada etapa por dia. O mapa reúne as reservas de todos os projetos e células para mostrar a carga compartilhada."
+    description="Cadastre os recursos da oficina e distribua as horas de cada etapa por dia. O mapa reúne as reservas dos projetos e células da sua oficina."
     actions={<a className="button secondary" href="/cronograma?view=gantt">Gantt e prazos</a>} />
     <PcpNavigation active="capacity" />
     {(!checked.success || params.project && !projectId) && <p className="notice" role="status">Algum filtro informado é inválido. Usando um período válido; selecione o projeto desejado abaixo.</p>}

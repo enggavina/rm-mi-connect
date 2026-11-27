@@ -5,6 +5,7 @@ import type { actionUser, WebActionResult } from '../src/server/web/mutation';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
 import { createCapacityActions } from '../src/server/web/capacity-mutations';
 import { createCapacityData } from '../src/server/web/capacity-data';
+import { GanttSelectionUnavailable } from '../src/server/web/gantt-data';
 import { capacityFiltersSchema, saveCapacityBookingsSchema, saveCapacityResourceSchema } from '../src/server/web/capacity-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -50,6 +51,18 @@ test('capacity boundary requires every read capability before performing a reque
   for (const missing of caps.slice(0, 3)) { const f = reader(snapshot(), caps.filter(cap => cap !== missing)); await assert.rejects(() => f.getCapacitySnapshot(filters), /Acesso/); assert.equal(f.calls.length, 0); }
   const f = reader(snapshot()); const result = await f.getCapacitySnapshot(filters);
   assert.equal(result.bookings[0].updated_at, stamp); assert.deepEqual(result.resources[0].weekly_minutes, resource.weekly_minutes); assert.equal(f.calls.length, 1);
+});
+test('SSO capacity reads use the workshop and hide projects outside it without a legacy lookup', async () => {
+  const client = { rpc: async () => assert.fail('Unexpected legacy lookup') } as unknown as SupabaseClient;
+  const requests: unknown[][] = [];
+  const capacity = createCapacityData(client, caps, async (...args) => {
+    requests.push(args);
+    return args[1].project_id ? null : snapshot();
+  }, true);
+  assert.equal((await capacity.getCapacitySnapshot(filters)).totals.bookings, 1);
+  await assert.rejects(capacity.getCapacitySnapshot({ ...filters, project_id: id(99) }), GanttSelectionUnavailable);
+  assert.deepEqual(requests, [['capacity_snapshot', { ...filters, can_manage: true }],
+    ['capacity_snapshot', { ...filters, project_id: id(99), can_manage: true }]]);
 });
 test('capacity rejects partial, mismatched, duplicated and unreferenced snapshots', async () => {
   const data = snapshot();
