@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 e P0.5 — Consulta de recebimentos legados por protocolo
+
+A migração **133** amplia **Projetos → Protocolo do Android**. Um protocolo de recebimento antigo passa a aparecer na oficina de origem quando o vínculo histórico do tablet, a autoria, o projeto e o equipamento conferem. A consulta mostra a abertura pendente ou o envio confirmado conforme o registro original. O histórico continua acessível à oficina depois da retirada do tablet. [Migração](../../rm-mobile-supabase/migrations/133_rm_legacy_receiving_protocol_lookup.sql).
+
+A matriz isolada verificou a abertura pendente, duas formas de conclusão e recusas em três outras oficinas. Também recusou o recibo com equipamento divergente e o QR sem prova da criação. No ensaio revertido do Supabase, os dois protocolos históricos reais apontaram para os projetos originais da BMA. As quatro consultas com BRJ e BBH retornaram vazias. O ensaio preservou as 152 tabelas auditadas.
+
+Para a conferência no portal com Microsoft, a matriz local `.tmp/oficinas-piloto-bma-protocolos-legados.json` contém os dois protocolos já conferidos pelo banco. Use `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-protocolos-legados.json`. O roteiro abre Recebimentos e confere os links e a fase dos dois protocolos. O aceite do primeiro recebimento do fluxo atual e da recuperação de uma fila real segue em seus próprios testes. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
+A 133 está ativa no Supabase `oficina-em-mi-off`. A conferência após a publicação confirmou novamente os dois protocolos da BMA e as quatro recusas cruzadas. Passaram a regressão PostgreSQL, o CI, 11 verificações no navegador em produção e a consulta de rascunho e formulário da BMA no emulador Android 1.2.26 com e sem rede. [Protocolo do Android em produção](https://em-web-production.up.railway.app/projetos/protocolo) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46082219801).
+
 ## P0.1 — Origem obrigatória no recebimento Android legado
 
 A migração **132** registra a oficina no momento em que um APK antigo autorizado cria o projeto da BMA. Funciona tanto na abertura antecipada quanto no recebimento concluído diretamente pela fila offline. O vínculo e o projeto são gravados na mesma transação. Reenvios usam os recibos originais. O caminho atual continua registrando a origem pela autorização de Acessos.
