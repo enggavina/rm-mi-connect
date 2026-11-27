@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 e P0.3 — Fotos previstas no roteiro da célula por oficina
+
+A migração **106** e o Railway **`7c6372f3-d95a-4cdf-922d-563094ee6d00`** publicaram o commit **`8a3cd30`**. O Roteiro do projeto e o Cronograma consultam as fotos previstas da alocação na oficina confirmada em Acessos. O seletor usa o vínculo oficial do título com a oficina e a célula. Inclusão, substituição, edição de tag, retirada e restauração conferem a mesma versão do catálogo e exigem autorização atual da oficina. O acesso direto à consulta antiga foi encerrado. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46015838776).
+
+A auditoria encontrou 173 títulos classificados e 14.160 registros fotográficos da BMA, com zero títulos vinculados a esses registros fora da oficina. As 40 comparações em 20 alocações existentes coincidiram com e sem opções de edição. A publicação preservou os registros nas 143 tabelas conferidas. Passaram 705 testes web, a regressão PostgreSQL, 24 verificações no navegador em duas oficinas locais e o ensaio de quatro oficinas antes e depois da restauração. Em cada execução do ensaio, as 20 alterações autorizadas tiveram reenvio confirmado e as gravações sem oficina ou de outra oficina foram recusadas. As fotos capturadas conservaram a evidência durante a substituição de uma previsão.
+
+Passaram nove verificações da API e oito passos do Operacional Web em produção. A foto real da BMA continuou disponível por link privado, com tamanho e SHA-256 conferidos. Ela apareceu no registro de fotos do emulador Android com e sem rede. A conferência com uma sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-fotos-roteiro.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Formulários do roteiro da célula por oficina
 
 A migração **105** e o Railway **`d888a42a-190a-4f37-afde-4325d16d8850`** publicaram o commit **`2084c9f`**. A tela Projetos → Roteiro → Formulários usa a oficina confirmada em Acessos para consultar a alocação, os modelos vinculados e os modelos disponíveis. A gravação confere a mesma versão da alocação e do catálogo. Mudanças no catálogo de outra oficina ficam fora dessa conferência. A consulta antiga deixou de aceitar execução direta por contas autenticadas. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46014011039).
