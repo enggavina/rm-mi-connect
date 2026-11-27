@@ -15,6 +15,10 @@ const origin = new URL(matrix.origin);
 assert.equal(origin.href, origin.origin + '/');
 assert.ok(origin.protocol === 'https:' || (origin.protocol === 'http:' && origin.hostname === 'localhost'));
 assert.ok(Array.isArray(matrix.offices) && matrix.offices.length >= 1);
+const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+const protocolPage = '/projetos/protocolo';
+const protocolOperations = new Set(['Recebimento', 'Formulário', 'Correção de formulário', 'Registro de foto',
+  'Aprovação de etapa', 'Atualização de status', 'Comentário', 'Apontamento de execução']);
 let stepDescription = 'iniciar o navegador';
 
 function location(path) {
@@ -38,7 +42,6 @@ function signedMedia(response, legacyImage) {
 
 function receiptChecks(receipt, ownOffice) {
   if (!receipt) return [];
-  const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
   assert.match(receipt.projectId, uuid);
   assert.ok(typeof receipt.search === 'string' && receipt.search.trim().length > 0 && receipt.search.length <= 100);
   assert.ok(['receiving', 'planning'].includes(receipt.phase));
@@ -68,6 +71,61 @@ function receiptChecks(receipt, ownOffice) {
     const direct = scope === 'project' || scope === 'cell';
     return { path, heading: direct ? '404' : heading, absentSelector: selector, searchOnly: !direct };
   })];
+}
+
+function androidProtocols(office) {
+  if (office.androidProtocols === undefined) return [];
+  assert.ok(Array.isArray(office.androidProtocols));
+  for (const result of office.androidProtocols) {
+    assert.match(result.code, uuid);
+    assert.match(result.projectId, uuid);
+    assert.ok(protocolOperations.has(result.operation));
+    assert.ok(result.phase === 'confirmed' || (result.phase === 'opened' && result.operation === 'Recebimento'));
+    assert.ok(result.projectNumber === null || (typeof result.projectNumber === 'string' && result.projectNumber.trim()));
+    assert.ok(result.replayed === undefined || typeof result.replayed === 'boolean');
+    if (result.formRecordId !== undefined) {
+      assert.match(result.formRecordId, uuid);
+      assert.ok(result.operation === 'Formulário' || result.operation === 'Correção de formulário');
+    }
+  }
+  return office.androidProtocols;
+}
+
+async function verifyAndroidProtocol(page, result, ownOffice) {
+  const expected = location(protocolPage + '?' + new URLSearchParams({ protocolo: result.code }));
+  if (ownOffice) {
+    const response = await page.goto(location(protocolPage), { waitUntil: 'domcontentloaded' });
+    assert.equal(response?.status(), 200);
+    await page.getByRole('textbox', { name: 'Protocolo do Android', exact: true }).fill(result.code);
+    const [submitted] = await Promise.all([
+      page.waitForResponse(res => res.url() === expected && res.request().method() === 'GET'),
+      page.getByRole('button', { name: 'Consultar', exact: true }).click(),
+    ]);
+    assert.equal(submitted.status(), 200);
+    await page.waitForURL(expected, { waitUntil: 'domcontentloaded' });
+  } else {
+    assert.equal((await page.goto(expected, { waitUntil: 'domcontentloaded' }))?.status(), 200);
+  }
+  assert.equal(page.url(), expected, 'A consulta de protocolo foi redirecionada.');
+  await page.getByRole('heading', { name: 'Protocolo do Android', exact: true }).waitFor();
+  const project = page.getByRole('link', { name: 'Abrir projeto', exact: true });
+  const form = page.getByRole('link', { name: 'Abrir formulário', exact: true });
+  const retry = page.getByText('Último reenvio confirmado', { exact: true });
+  if (!ownOffice) {
+    await page.getByText('Protocolo não encontrado', { exact: true }).waitFor();
+    assert.equal(await project.count(), 0);
+    assert.equal(await form.count(), 0);
+    assert.equal(await retry.count(), 0);
+    return;
+  }
+  await page.getByRole('heading', { name: result.operation, exact: true }).waitFor();
+  await page.getByText(result.phase === 'opened' ? 'Abertura confirmada · conclusão pendente' : 'Envio confirmado', { exact: true }).waitFor();
+  await page.getByText(result.code, { exact: true }).waitFor();
+  await page.getByText(result.projectNumber === null ? 'Recebimento sem OS' : `OS ${result.projectNumber}`, { exact: true }).waitFor();
+  assert.equal(await project.getAttribute('href'), `/projetos/${result.projectId}`);
+  if (result.formRecordId) assert.equal(await form.getAttribute('href'), `/formularios/${result.formRecordId}`);
+  if (result.replayed === true) await retry.waitFor();
+  if (result.replayed === false) assert.equal(await retry.count(), 0);
 }
 
 async function verifyGanttPreview(page, allocation) {
@@ -106,20 +164,30 @@ async function authenticate(page, office) {
 }
 
 async function main() {
+  const protocols = matrix.offices.map(androidProtocols);
+  const allCodes = protocols.flat().map(({ code }) => code);
+  assert.equal(new Set(allCodes).size, allCodes.length, 'Cada protocolo deve identificar uma única unidade na matriz.');
   const browser = await chromium.launch({ channel: 'chrome', headless: false });
   try {
-    for (const office of matrix.offices) {
+    for (const [officeIndex, office] of matrix.offices.entries()) {
       assert.match(office.code, /^[A-Z0-9_-]+$/);
       assert.ok(Array.isArray(office.allowed));
       assert.ok(Array.isArray(office.denied));
       const receipt = receiptChecks(office.receipt, true);
       const otherReceipts = matrix.offices.filter(other => other !== office).flatMap(other => receiptChecks(other.receipt, false));
-      assert.ok(office.allowed.length + receipt.length > 0);
+      const ownProtocols = protocols[officeIndex];
+      const foreignProtocols = protocols.filter((_, index) => index !== officeIndex).flat();
+      assert.ok(office.allowed.length + receipt.length + ownProtocols.length > 0);
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       try {
         const page = await context.newPage();
         stepDescription = `${office.code} · autenticação Microsoft`;
         await authenticate(page, office);
+        for (const [index, result] of ownProtocols.entries()) {
+          stepDescription = `${office.code} · protocolo Android próprio ${index + 1}`;
+          await verifyAndroidProtocol(page, result, true);
+          process.stdout.write(`PASS ${office.code} protocolo Android próprio ${index + 1}\n`);
+        }
         for (const [index, step] of [...office.allowed, ...receipt].entries()) {
           stepDescription = `${office.code} · consulta própria ${index + 1}`;
           const expected = location(step.path);
@@ -204,6 +272,11 @@ async function main() {
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.absentSelector) assert.equal(await page.locator(step.absentSelector).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta cruzada ${index + 1}\n`);
+        }
+        for (const [index, result] of foreignProtocols.entries()) {
+          stepDescription = `${office.code} · protocolo Android cruzado ${index + 1}`;
+          await verifyAndroidProtocol(page, result, false);
+          process.stdout.write(`PASS ${office.code} protocolo Android cruzado ${index + 1}\n`);
         }
       } finally {
         await context.close();
