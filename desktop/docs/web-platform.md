@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Lista de Planejamento por oficina
+
+O consumidor **`d484800`** foi publicado no Railway **`bf6081f5-6db3-4827-a16f-737669e9b953`** sobre a migração 095. A lista de Planejamento usa o vínculo atual do SSO para filtrar alocações e células antes de calcular totais e páginas. Conta sem permissão de Projetos pesquisa os campos disponíveis na alocação. [Planejamento](https://em-web-production.up.railway.app/planejamento) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/45981628086).
+
+Passaram 695 testes web e 12 cenários de interface que combinaram Planejamento e Gantt em duas oficinas locais. Antes e depois da publicação, 220 consultas técnicas conferiram as 1.494 alocações ativas para consulta e 29 células da BMA, incluindo páginas vazias e os dois perfis de detalhe de projeto. Também passaram sete passos do Operacional Web e a abertura de uma foto existente no Moto G84 com e sem conexão. A conferência das telas com Microsoft interativo usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-planejamento.json`. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Gantt por oficina
 
 A migração **095** e o consumidor **`cd25695`** foram publicados no Railway **`5aac8524-ca7e-4b46-80c1-cdac4283b76a`**. O Gantt geral, por célula e por projeto usa a oficina atual determinada por Acessos. Datas, dependências, calendário e linha de base seguem a autorização da oficina e o perfil de planejamento. Alocar ou reorganizar etapas exige a origem confirmada do projeto e da célula. Recebimentos de clientes legados continuam visíveis no fluxo de conferência e podem ser alocados depois da classificação. [Gantt do EM](https://em-web-production.up.railway.app/cronograma?view=gantt) · [Contrato](../../rm-mobile-supabase/WEB_WORKSHOP_OPERATIONS.md).
@@ -8,7 +14,7 @@ A virada preservou as **1.495 alocações** e encerrou o acesso autenticado às 
 
 Passaram 694 testes web, a regressão PostgreSQL, oito cenários no Chromium com duas oficinas locais e o ensaio de quatro oficinas antes e depois da restauração. O ensaio percorreu recebimento Android, confirmação no portal, alocação, três visões do Gantt, gravação de datas, dependências, calendário e linha de base, reenvio e recusas cruzadas. Em produção, passaram 69 verificações de API e sete passos do Operacional Web. No Moto G84, o APK 1.2.22 abriu uma foto existente com e sem conexão. [Ensaio](../../rm-mobile-supabase/tests/run-local-tests.ps1).
 
-A confirmação visual do Gantt com uma sessão Microsoft real da BMA segue no aceite. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-gantt.json`. A matriz confere a renderização das três visões e inclui Recebimentos e os demais pontos do piloto. Projetos e Planejamento continuam com a ativação geral separada, assim como a exigência de origem nos clientes antigos. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+A confirmação visual do Gantt com uma sessão Microsoft real da BMA segue no aceite. Execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-gantt.json`. A matriz confere a renderização das três visões e inclui Recebimentos e os demais pontos do piloto. A ativação geral de Projetos e a exigência de origem nos clientes antigos seguem em etapas próprias. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
 
 ## P0.3 e P0.4 — Anexos privados do rascunho de recebimento
 
