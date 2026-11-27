@@ -1733,6 +1733,90 @@ begin
  end loop;
 end
 $route_cell$;
+do $photo_configuration$
+declare
+ project uuid; allocation uuid; cell uuid; title uuid; second_title uuid; original_photo uuid;
+ replacement uuid; evidence uuid; submission uuid; args jsonb; snapshot jsonb; result jsonb; payload jsonb; item jsonb; action text;
+begin
+ perform rm_private.activate_operational_photo_workshop_v1();
+ if has_function_privilege('authenticated','public.rm_web_operational_photos_snapshot_v1(uuid,uuid,boolean)','execute') then
+  raise exception 'A consulta antiga das fotos previstas continuou exposta.';
+ end if;
+ for office in 1..4 loop
+  cell:=em_fixture.id(200+office); title:=em_fixture.id(1900+office); second_title:=em_fixture.id(1910+office);
+  insert into public.rm_cadastro_fotos(id,titulo,celula_nome) values(title,'Título de preparação','Nome legado'),(second_title,'Título substituto','Nome legado');
+  insert into rm_private.engineering_photo_title_scope(title_id,workshop_id,cell_id) values
+   (title,em_fixture.id(office),cell),(second_title,em_fixture.id(office),cell);
+ end loop;
+ for office in 1..4 loop
+  project:=em_fixture.id(1920+office);allocation:=em_fixture.id(1930+office);cell:=em_fixture.id(200+office);
+  title:=em_fixture.id(1900+office);second_title:=em_fixture.id(1910+office); evidence:=em_fixture.id(1940+office);
+  original_photo:=em_fixture.id(1950+office);replacement:=em_fixture.id(1960+office);
+  insert into public.rm_projetos(id,nome,status_pcp) values(project,'Fotos previstas locais '||office,'executando');
+  insert into rm_private.workshop_project_ownership(id,workshop_id) values(project,em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade) values(allocation,project,cell,'pendente',true);
+  insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,categoria_foto,titulo,foto_url)
+   values(evidence,project,cell,allocation,'obrigat_ria','Evidência preservada','https://fixture.invalid/received.png');
+  args:=jsonb_build_object('project',project,'allocation',allocation,'include',true);
+  snapshot:=pg_temp.workshop_restore_read(office,'operational_photos',args);
+  if not snapshot->'titles' @> jsonb_build_array(jsonb_build_object('id',title))
+   or not snapshot->'photos' @> jsonb_build_array(jsonb_build_object('id',evidence,'captured',true,'can_replace',false,'can_retire',false))
+   or pg_temp.workshop_restore_read(office,'operational_photos',jsonb_set(args,'{include}','false'))->'titles' is distinct from '[]'::jsonb then
+   raise exception 'Título local explícito ou evidência histórica indisponível.';
+  end if;
+  for other in 1..4 loop
+   if office=other then continue;end if;
+   if pg_temp.workshop_restore_read(other,'operational_photos',args) is not null
+    or snapshot->'titles' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(1900+other))) then
+    raise exception 'Fotos ou títulos de outra oficina apareceram no roteiro.';
+   end if;
+  end loop;
+  update public.rm_cadastro_fotos set titulo=titulo||' revisado' where id=em_fixture.id(1900+(office%4)+1);
+  if pg_temp.workshop_restore_read(office,'operational_photos',args) is distinct from snapshot then
+   raise exception 'A revisão de um título estrangeiro afetou a configuração local.';
+  end if;
+  foreach action in array array['add','replace','tag','retire','restore'] loop
+   payload:=jsonb_build_object('projeto_id',project,'celula_projeto_id',allocation,'action',action,
+    'expected_project_updated_at',snapshot->'project'->'updated_at','expected_allocation_updated_at',snapshot->'allocation'->'updated_at',
+    'expected_photos_version',snapshot->>'photos_version');
+   if action='add' then payload:=payload||jsonb_build_object('items',jsonb_build_array(jsonb_build_object('id',original_photo,'cadastro_foto_id',title)));
+   else
+    select x into strict item from jsonb_array_elements(snapshot->'photos') x where x->>'id'=(case when action='replace' then original_photo else replacement end)::text;
+    payload:=payload||jsonb_build_object('foto_id',item->'id','expected_foto_updated_at',item->'updated_at');
+    if action='replace' then payload:=payload||jsonb_build_object('new_id',replacement,'cadastro_foto_id',second_title,'numero',10,'descricao',null,'tag',null,'confirm_change',true);
+    elsif action='tag' then payload:=payload||jsonb_build_object('tag','Teste de isolamento');end if;
+   end if;
+   begin
+    perform pg_temp.workshop_restore_planning_write((office%4)+1,gen_random_uuid(),'manage_operational_photos',payload);
+    raise exception 'Uma alteração de foto passou com o contexto de outra oficina.';
+   exception when insufficient_privilege then null;end;
+   begin
+    perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_operational_photos',payload,false);
+    raise exception 'A alteração de foto passou pelo protocolo sem oficina.';
+   exception when insufficient_privilege then null;end;
+   if action in('add','replace') then
+    begin
+     perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'manage_operational_photos',jsonb_set(payload,
+      case when action='add' then '{items,0,cadastro_foto_id}'::text[] else '{cadastro_foto_id}'::text[] end,to_jsonb(em_fixture.id(1900+(office%4)+1))));
+     raise exception 'Um título estrangeiro foi aceito na alocação.';
+    exception when invalid_parameter_value then null;end;
+   end if;
+   submission:=gen_random_uuid();
+   result:=pg_temp.workshop_restore_planning_write(office,submission,'manage_operational_photos',payload);
+   snapshot:=pg_temp.workshop_restore_read(office,'operational_photos',args);
+   if snapshot->>'photos_version' is distinct from result->'record'->>'photos_version'
+    or (pg_temp.workshop_restore_planning_write(office,submission,'manage_operational_photos',payload))->>'idempotent_replay' is distinct from 'true' then
+    raise exception 'Consulta, alteração e reenvio das fotos previstas divergiram.';
+   end if;
+  end loop;
+  if not (select lixeira from public.rm_fotos where id=original_photo)
+   or not exists(select 1 from public.rm_fotos where id=replacement and not lixeira and cadastro_foto_id=second_title and tag='Teste de isolamento')
+   or not exists(select 1 from public.rm_fotos where id=evidence and not lixeira and foto_url='https://fixture.invalid/received.png') then
+   raise exception 'O histórico da substituição ou o arquivo capturado se perdeu.';
+  end if;
+ end loop;
+end
+$photo_configuration$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1750,3 +1834,4 @@ select 'PASS: receiving and project reads are isolated with the overview and twi
 select 'PASS: project and cell edits, equipment and deletion scopes hold in four workshops without closing mobile intake' result;
 select 'PASS: project dossier reads and writes, versioned private files and exact replay isolated in four workshops' result;
 select 'PASS: route cell form choices and versioned writes isolated in four workshops' result;
+select 'PASS: operational photo titles, lifecycle and original evidence isolated in four workshops' result;

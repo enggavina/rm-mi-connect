@@ -32,7 +32,7 @@ export function isScopedPlanningWrite(operation: string): boolean {
 
 export function requiresPlanningWorkshop(operation: string): boolean {
   return ['save_capacity_resource', 'save_capacity_bookings', 'manage_cell_availability', 'manage_project_route_cell',
-    'save_cell_queue', 'review_execution_session'].includes(operation);
+    'save_cell_queue', 'review_execution_session', 'manage_operational_photos'].includes(operation);
 }
 
 export function isScopedEngineeringWrite(operation: string): boolean {

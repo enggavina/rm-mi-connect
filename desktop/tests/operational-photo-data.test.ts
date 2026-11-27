@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
 import { createOperationalPhotoData } from '../src/server/web/operational-photo-data';
+import { workshopReadCapabilities } from '../src/server/web/workshop-read-policy';
+import { requiresPlanningWorkshop } from '../src/server/web/catalog-workshop';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const version = '2026-10-29T18:03:24.123456+00:00';
@@ -85,4 +87,21 @@ test('collection limits do not expose truncated editable sets; unavailable error
   f.set(null); assert.equal(await f.reader.getOperationalPhotos(id(1), id(2)), null);
   f.fail({ message: 'private upstream secret' });
   await assert.rejects(f.reader.getOperationalPhotos(id(1), id(2)), error => error instanceof Error && !error.message.includes('private'));
+});
+
+test('photo planning uses the verified workshop for reads and writes without falling back to the old reader', async () => {
+  const client = { rpc: async () => assert.fail('unexpected legacy RPC') } as unknown as SupabaseClient;
+  const calls: unknown[] = [];
+  let denied = false;
+  const reader = createOperationalPhotoData(client, capabilities, async (resource, args) => {
+    calls.push({ resource, args });
+    return denied ? null : snapshot();
+  });
+  assert.equal((await reader.getOperationalPhotos(id(1), id(2), true))?.titles.length, 3);
+  assert.deepEqual((await reader.getOperationalPhotos(id(1), id(2)))?.titles, []);
+  denied = true;
+  assert.equal(await reader.getOperationalPhotos(id(1), id(2), true), null);
+  assert.deepEqual(calls, [true, false, true].map(include => ({ resource: 'operational_photos', args: { project: id(1), allocation: id(2), include } })));
+  assert.deepEqual(workshopReadCapabilities('operational_photos', { include: true }), capabilities);
+  assert.equal(requiresPlanningWorkshop('manage_operational_photos'), true);
 });

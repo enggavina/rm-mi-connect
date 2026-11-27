@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
+import type { WorkshopRead } from './workshop-read-policy';
+import { readWorkshopOperations } from './workshop-operation-reader';
 
 const timestamp = z.string().datetime({ offset: true });
 const text = z.string().nullable();
@@ -31,18 +33,23 @@ export type OperationalPhotoTitle = OperationalPhotoSnapshot['titles'][number];
 const readCapabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.planning.read', 'em.photos.read'];
 const unavailable = () => new Error('Não foi possível consultar as fotos previstas desta célula. Tente novamente.');
 
-/** Same RLS client as the project; the DTO never transports photo URLs or files. */
-export function createOperationalPhotoData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+/** The snapshot never transports photo URLs or files. */
+export function createOperationalPhotoData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   async function getOperationalPhotos(projectId: string, allocationId: string, includeTitles = false): Promise<OperationalPhotoSnapshot | null> {
     if (capabilities !== undefined && (!readCapabilities.every(capability => capabilities.includes(capability))
       || includeTitles && !capabilities.includes('em.planning.manage'))) throw new Error('Acesso não autorizado às fotos previstas desta célula.');
     if (!uuid.safeParse(projectId).success || !uuid.safeParse(allocationId).success) return null;
-    const result = await client.rpc('rm_web_operational_photos_snapshot_v1', {
-      p_project_id: projectId, p_allocation_id: allocationId, p_include_titles: includeTitles,
-    });
-    if (result.error) throw unavailable();
-    if (result.data === null) return null;
-    const parsed = snapshotSchema.safeParse(result.data);
+    let value: unknown;
+    if (workshopRead) value = await workshopRead('operational_photos', { project: projectId, allocation: allocationId, include: includeTitles });
+    else {
+      const result = await client.rpc('rm_web_operational_photos_snapshot_v1', {
+        p_project_id: projectId, p_allocation_id: allocationId, p_include_titles: includeTitles,
+      });
+      if (result.error) throw unavailable();
+      value = result.data;
+    }
+    if (value === null) return null;
+    const parsed = snapshotSchema.safeParse(value);
     if (!parsed.success) throw unavailable();
     const snapshot = parsed.data;
     const closed = snapshot.project.data_real_de_entrega !== null
@@ -77,5 +84,6 @@ export async function getOperationalPhotos(projectId: string, allocationId: stri
   const access = await requireWebUser(readCapabilities);
   const includeTitles = ['administrador', 'padr_o'].includes(access.profile.perfil)
     && (!access.sso || access.sso.capabilities.includes('em.planning.manage'));
-  return createOperationalPhotoData(access.client, access.sso?.capabilities).getOperationalPhotos(projectId, allocationId, includeTitles);
+  return createOperationalPhotoData(access.client, access.sso?.capabilities, await readWorkshopOperations(access))
+    .getOperationalPhotos(projectId, allocationId, includeTitles);
 }

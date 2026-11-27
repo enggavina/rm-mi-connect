@@ -11,7 +11,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'assignment_people', 'engineering_assignment_choices', 'operational_reviewers', 'operational_stage_rules',
   'root_edit_choices', 'project_delete_context',
   'project_comments', 'project_documents', 'project_comment', 'project_attachment', 'project_audit', 'project_equipment', 'project_route',
-  'project_route_cell',
+  'project_route_cell', 'operational_photos',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -45,6 +45,8 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
     case 'project_equipment': return ['em.portal.read', 'em.projects.read'];
     case 'project_route': return ['em.portal.read', 'em.projects.read', 'em.planning.read'];
     case 'project_route_cell': return ['em.portal.read', 'em.projects.read', 'em.planning.read', 'em.forms.read',
+      ...(filters.include === true ? ['em.planning.manage' as const] : [])];
+    case 'operational_photos': return ['em.portal.read', 'em.projects.read', 'em.planning.read', 'em.photos.read',
       ...(filters.include === true ? ['em.planning.manage' as const] : [])];
     case 'project_audit': {
       const required: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.history.read'];
