@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — Versão Android por sessão de oficina
+
+A migração **116** está no Supabase `oficina-em-mi-off`, com o consumidor **`e13b546`** publicado na implantação Railway **`56b88f9f-a24c-4ea9-883f-09c71b29cdc6`**. O EM registra a versão informada pelo APK após validar a sessão do dispositivo, a autorização do operador e a consulta de células da oficina. A versão serve ao acompanhamento da atualização. As permissões continuam vindo de Acessos, e as instalações antigas continuam aceitas durante a transição. O relatório apresenta totais por oficina e versão e indica as sessões sem observação Android, que podem incluir o Operacional Web. [EM em produção](https://em-web-production.up.railway.app) · [Consulta de versões](../../rm-mobile-supabase/scripts/workshop_android_readiness.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46044722146).
+
+A regressão PostgreSQL e a matriz antes e depois da restauração confirmaram o registro para a oficina correta, a recusa para sessão incompatível ou oficina suspensa e a supressão de duplicatas. Em produção, passaram nove verificações no navegador e a API recusou duas chamadas sem credencial válida, mesmo com a versão informada. A atualização no emulador preservou os dados locais, abriu as 29 células da BMA, exibiu uma foto autorizada com e sem conexão e gerou uma observação **1.2.24/código 27** para a BMA no relatório. A conferência em aparelho físico e a adoção em campo seguem pendentes. O roteiro do Gantt ainda aguarda uma sessão Microsoft do PCP para executar as três visões. [Roteiro do navegador](../tests/workshop-pilot.browser.cjs).
+
+Instalador do piloto `artifacts/em-mi-electric-brasil-1.2.24-piloto-bma.apk`, SHA-256 `ec5865afe2e02cdcd1dbacf71fccace2ac57d00d2af55c0e12f5d5234b4713b5`.
+
 ## P0.3 — Recuperação privada da foto legada sem projeto
 
 A migração **115**, publicada no Supabase `oficina-em-mi-off`, registrou a cópia privada da última foto legada sem referência operacional. A busca em 133 tabelas confirmou a ausência de referência. O cadastro preserva o proprietário e a versão do objeto original. A cópia JPEG de 80.998 bytes foi baixada e conferida por SHA-256. A retentativa confirmou o mesmo comprovante. O arquivo ficou disponível para recuperação técnica fora do acervo das oficinas. [EM em produção](https://em-web-production.up.railway.app) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46043249169).
