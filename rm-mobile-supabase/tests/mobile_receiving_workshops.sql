@@ -143,11 +143,34 @@ begin
  page:=pg_temp.rx_catalog(2,'rm_clientes');
  perform pg_temp.rx_check(jsonb_array_length(page->'rows')=1 and page->'rows'->0->>'id'=pg_temp.rx_id(750)::text,
   'rebound operator only receives the other office catalogue');
- perform pg_temp.rx_reject('select pg_temp.rx_catalog(1,''rm_users'')','22023');
+ perform pg_temp.rx_reject('select pg_temp.rx_catalog(1,''rm_sync_outbox'')','22023');
  perform pg_temp.rx_reject('select public.rm_mobile_workshop_catalog_v1(pg_temp.rx_id(11),pg_temp.rx_id(17),repeat(''6'',64),pg_temp.rx_context(),''rm_celulas'',null,null,false)','28000');
  set local role authenticated;
  perform pg_temp.rx_reject('select pg_temp.rx_catalog(1,''rm_clientes'')','42501');
  reset role;
 end$$;
 select 'PASS: native workshop catalog pagination, immutable ID reconciliation and office boundaries' result;
+
+insert into public.rm_users(id,nome,email) values(pg_temp.rx_id(775),'LOCAL manager BRJ','local-shadow@example.invalid');
+insert into public.rm_projetos(id,nome,gestor_responsavel_id) values(pg_temp.rx_id(779),'LOCAL BRJ project',pg_temp.rx_id(775));
+insert into rm_private.workshop_project_ownership(id,workshop_id) values(pg_temp.rx_id(779),pg_temp.rx_id(2));
+do $$
+declare page jsonb;
+begin
+ page:=pg_temp.rx_catalog(1,'rm_users');
+ perform pg_temp.rx_check(exists(select 1 from jsonb_array_elements(page->'rows') r where r->>'id'=pg_temp.rx_id(14)::text)
+  and not exists(select 1 from jsonb_array_elements(page->'rows') r where r->>'id'=pg_temp.rx_id(775)::text),
+  'operator can resolve self and not an unrelated workshop manager');
+ page:=pg_temp.rx_catalog(2,'rm_users');
+ perform pg_temp.rx_check(exists(select 1 from jsonb_array_elements(page->'rows') r where r->>'id'=pg_temp.rx_id(775)::text
+  and not(r?'email') and not(r?'auth_user_id') and not(r?'matricula')),'staff projection contains names without authentication data');
+ page:=pg_temp.rx_catalog(1,'rm_documentos');
+ perform pg_temp.rx_check(exists(select 1 from jsonb_array_elements(page->'rows') r where r->>'arquivo_url' like '%invoice.pdf')
+  and pg_temp.rx_catalog(2,'rm_documentos')->'rows'='[]'::jsonb,'receiving invoice follows workshop scope');
+ page:=pg_temp.rx_catalog(1,'rm_fotos');
+ perform pg_temp.rx_check(exists(select 1 from jsonb_array_elements(page->'rows') r where r->>'foto_url' like '%front.jpg')
+  and pg_temp.rx_catalog(2,'rm_fotos')->'rows'='[]'::jsonb,'project photos follow workshop scope');
+ perform pg_temp.rx_check(pg_temp.rx_catalog(1,'rm_cadastro_fotos')->'rows'='[]'::jsonb,'unowned legacy photo title dictionary is not synced');
+end$$;
+select 'PASS: native related catalog, actors, media and historical workshop boundaries' result;
 rollback;

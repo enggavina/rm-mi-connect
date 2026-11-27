@@ -9,7 +9,7 @@ import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
 import { operatorWorkshopDenied, readWorkshopOperatorCells } from './operator-workshop';
-import { readWorkshopCatalogPage, scopedCatalogTable, type CatalogCursor, type CatalogSession } from './catalog-workshop';
+import { operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows, type CatalogCursor, type CatalogSession } from './catalog-workshop';
 import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
 import { documentFileName, documentType, MAX_DOCUMENT_BYTES, privateDocumentPath } from './document-policy';
@@ -227,8 +227,26 @@ class MobileService {
     await this.database.idle();
     this.operatorToken = null; this.update({ operator: null, error: null });
   }
-  list = (table: string, filter?: CatalogFilter) => this.database.list(table, filter);
-  get = (table: string, id: string) => this.database.get(table, id);
+  list = async (table: string, filter?: CatalogFilter) => {
+    const rows = await this.database.list(table, filter);
+    return this.visibleCatalogRows(table, rows);
+  };
+  get = async (table: string, id: string) => {
+    const row = await this.database.get(table, id);
+    return row ? (await this.visibleCatalogRows(table, [row]))[0] ?? null : null;
+  };
+
+  private async visibleCatalogRows(table: string, rows: Row[]): Promise<Row[]> {
+    if (!scopedCatalog) return rows;
+    const operator = this.snapshot.operator, owner = this.snapshot.sessionUserId;
+    if (!operator || !owner) return [];
+    if (!operatorScopedCatalogTable(table)) return rows;
+    const workshop = await secureStorage.getItem(`rm.workshop.device.${owner}`);
+    if (!workshop) return [];
+    const manifest = await this.database.local<string[]>(operatorCatalogKey(workshop, operator.operador_id, table));
+    if (this.snapshot.operator?.operador_id !== operator.operador_id || this.snapshot.sessionUserId !== owner) return [];
+    return visibleOperatorCatalogRows(table, rows, operator, manifest ?? null);
+  }
   getLocal = <T = unknown>(key: string) => this.database.local<T>(key);
   async saveLocal(key: string, value: unknown) { await this.database.saveLocal(key, value); this.update({}); }
   private async readReceivingEntry(db: ReturnType<LocalDatabase['connection']>, actor: string): Promise<ReceivingDraftEntry | null> {
@@ -634,8 +652,9 @@ class MobileService {
       if (scopedCatalog) {
         const operatorToken = this.operatorToken;
         const workshopId = await secureStorage.getItem(`rm.workshop.device.${data.session.user.id}`);
-        if (!operatorToken || !workshopId || this.operatorToken !== operatorToken) throw new Error('Identifique o operador antes de sincronizar o catálogo.');
-        catalogSession = { deviceToken: data.session.access_token, operatorToken, workshopId };
+        const operatorId = this.snapshot.operator?.operador_id;
+        if (!operatorToken || !operatorId || !workshopId || this.operatorToken !== operatorToken) throw new Error('Identifique o operador antes de sincronizar o catálogo.');
+        catalogSession = { deviceToken: data.session.access_token, operatorToken, operatorId, workshopId };
       }
       await this.pull(catalogSession);
       const at = timestamp();
@@ -802,7 +821,7 @@ class MobileService {
   private async pull(scope?: CatalogSession) {
     try {
     for (const table of TABLES) {
-      if (scope && scopedCatalogTable(table)) {
+      if (scope) {
         await this.pullWorkshopCatalog(table, scope);
         continue;
       }
@@ -839,8 +858,10 @@ class MobileService {
     }
   }
   private async pullWorkshopCatalog(table: CatalogTable, scope: CatalogSession) {
-    const cursorKey = `workshop-cursor:${scope.workshopId}:${table}`;
-    const reconcileKey = `workshop-reconciled:${scope.workshopId}:${table}`;
+    const personal = operatorScopedCatalogTable(table);
+    const partition = personal ? `${scope.workshopId}:${scope.operatorId}` : scope.workshopId;
+    const cursorKey = `workshop-cursor:${partition}:${table}`;
+    const reconcileKey = `workshop-reconciled:${partition}:${table}`;
     const cursor = await this.database.local<CatalogCursor>(cursorKey);
     let after = cursor ? { at: new Date(Date.parse(cursor.at) - 1000).toISOString(), id: '00000000-0000-0000-0000-000000000000' } : null;
     let latest = cursor;
@@ -878,7 +899,8 @@ class MobileService {
       const last = rows[rows.length - 1];
       after = { at: last.updated_at, id: last.id };
     }
-    await this.database.removeMissing(table, ids);
+    if (personal) await this.database.saveLocal(operatorCatalogKey(scope.workshopId, scope.operatorId, table), [...ids]);
+    else await this.database.removeMissing(table, ids);
     await this.database.saveLocal(reconcileKey, Date.now());
   }
   private async reconcile(table: CatalogTable) {

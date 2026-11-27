@@ -1,13 +1,18 @@
-import type { CatalogTable } from './types';
+import type { CatalogTable, Operator, Row } from './types';
 
 const syncUrl = 'https://em-web-production.up.railway.app/api/mobile/sincronizacao';
-const tables = new Set<CatalogTable>(['rm_celulas', 'rm_projetos', 'rm_celulas_projeto', 'rm_equipamentos',
-  'rm_clientes', 'rm_tipos_equipamento', 'rm_forms', 'rm_questoes', 'rm_itens_questoes']);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export type CatalogCursor = { at: string; id: string };
-export type CatalogSession = { deviceToken: string; operatorToken: string; workshopId: string };
-export const scopedCatalogTable = (table: CatalogTable) => tables.has(table);
+export type CatalogSession = { deviceToken: string; operatorToken: string; operatorId: string; workshopId: string };
+export const operatorScopedCatalogTable = (table: string) => ['rm_celulas', 'rm_celulas_projeto', 'rm_tablet_celula_users'].includes(table);
+export const operatorCatalogKey = (workshop: string, operator: string, table: string) => `workshop-visible:${workshop}:${operator}:${table}`;
+
+export function visibleOperatorCatalogRows(table: string, rows: Row[], operator: Operator, manifest: string[] | null) {
+  const cells = new Set(operator.celulas_vinculadas.map(cell => cell.celula_id));
+  const visible = manifest === null ? null : new Set(Array.isArray(manifest) ? manifest : []);
+  return rows.filter(row => cells.has(table === 'rm_celulas' ? row.id : row.celula_id) && (!visible || visible.has(row.id)));
+}
 
 export async function readWorkshopCatalogPage(session: CatalogSession, table: CatalogTable, after: CatalogCursor | null,
   idsOnly: boolean, request = fetch) {

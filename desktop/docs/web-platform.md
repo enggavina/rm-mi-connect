@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — consulta e decisão de aprovações por oficina
+
+As migrações **079–080** e o Railway **`32c8149a-f437-48bb-959b-ac3540335ff3`** foram publicados com o commit `5760c3e4b2f1fdb3a53130e0f09d0cf97cdd5ab2`. A consulta recorta fila, histórico e seletores antes da paginação. A decisão confirma projeto, célula de origem e destino antes da transição. A ação usa a permissão própria de aprovações e mantém o histórico original, inclusive no reenvio.
+
+Passaram a regressão SQL, o CI, o ensaio revertido, a aplicação e 17 verificações do Operacional Web na BMA. Os testes de decisão conferiram uma única entrada de auditoria após reenvio e recusaram a operação da outra unidade. A ativação acompanha o corte dos módulos operacionais. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45926727359).
+
 ## P0.2 — roteiro do projeto e avaliadores por oficina
 
 A migração **078** e o Railway **`2fc6703a-1c9d-42dd-b758-95b1dd8bf575`** foram publicados com o commit `468929e45112744a6cb1328c6229f86497627edc`. A gravação do roteiro confere as etapas da oficina. A configuração de formulários da alocação e a atribuição de avaliadores passam pela mesma autorização de projeto, célula e modelo. Os testes recusaram etapas e modelos de outra unidade.

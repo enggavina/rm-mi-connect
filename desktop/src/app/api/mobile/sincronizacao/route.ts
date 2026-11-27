@@ -4,7 +4,9 @@ import { loadNativeCatalogPage } from '@/server/operation/session';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 
 const tables = ['rm_celulas', 'rm_projetos', 'rm_celulas_projeto', 'rm_equipamentos', 'rm_clientes', 'rm_tipos_equipamento',
-  'rm_forms', 'rm_questoes', 'rm_itens_questoes'] as const;
+  'rm_forms', 'rm_questoes', 'rm_itens_questoes', 'rm_users', 'rm_tablet_celula_users', 'rm_celula_tipos_equipamento',
+  'rm_celula_form_tipos_equipamento', 'rm_fotos', 'rm_registros_formulario', 'rm_respostas', 'rm_aprovacoes_etapas',
+  'rm_comentarios', 'rm_logs_aprovacao', 'rm_documentos', 'rm_docs', 'rm_cadastro_fotos'] as const;
 const schema = z.object({ operatorToken, table: z.enum(tables),
   after: z.object({ at: z.iso.datetime({ offset: true }), id: z.uuid() }).strict().nullable(), idsOnly: z.boolean() }).strict();
 const page = z.object({ workshop_id: z.uuid(), table: z.enum(tables), complete: z.boolean(),
