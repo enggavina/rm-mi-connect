@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — Formulários do roteiro da célula por oficina
+
+A migração **105** e o Railway **`d888a42a-190a-4f37-afde-4325d16d8850`** publicaram o commit **`2084c9f`**. A tela Projetos → Roteiro → Formulários usa a oficina confirmada em Acessos para consultar a alocação, os modelos vinculados e os modelos disponíveis. A gravação confere a mesma versão da alocação e do catálogo. Mudanças no catálogo de outra oficina ficam fora dessa conferência. A consulta antiga deixou de aceitar execução direta por contas autenticadas. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46014011039).
+
+O inventário confirmou a origem das 1.495 alocações e dos 59 modelos ativos da BMA. As 40 comparações em 20 alocações existentes devolveram o mesmo conteúdo e a mesma versão, com e sem os seletores de edição. A publicação preservou os registros das 143 tabelas conferidas. Passaram 704 testes web, a regressão PostgreSQL, o ensaio de quatro oficinas antes e depois da restauração e 20 verificações de navegador em duas oficinas locais. A API passou por sete verificações em produção e o Operacional Web abriu um formulário real em oito passos de regressão com o operador BMA. O mesmo modelo apareceu no emulador Android com e sem conexão.
+
+A conferência em uma sessão Microsoft real usa `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-roteiro-celula.json`. A matriz consulta uma alocação e um formulário existentes da BMA. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 e P0.3 — Dossiê do projeto e anexos privados por oficina
 
 A migração **104** e o Railway **344e689b-63e9-43f2-b10d-e93097a54dd5** publicaram o commit **`9a70c56`**. A oficina confirmada em Acessos protege comentários e correções, documentos e pastas, versões de anexos, histórico, roteiro e consulta técnica do equipamento. A seleção de fotos e as gravações do dossiê usam autorização para a operação e o projeto. A reserva e a finalização de anexos conferem a oficina em cada etapa. [Projetos](https://em-web-production.up.railway.app/projetos) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46008679713).
