@@ -21,6 +21,7 @@ type OperationDeps = {
   )) => Promise<Reply>;
   writeForm: (args: IdentityParams & { p_workshop_context: WorkshopContext; p_cell_id: string; p_project_id: string;
     p_form_id: string; p_protocol: string; p_version: string; p_answers: OnlineFormSubmission['answers'] }) => Promise<Reply>;
+  observeAndroid?: (args: IdentityParams & { p_workshop_context: WorkshopContext; p_app_version: string; p_build_code: number }) => void;
   signOut: (token: string) => Promise<void>;
   now?: () => number;
   cookieKey?: string;
@@ -101,7 +102,8 @@ export function createOperationService(deps: OperationDeps) {
   }
 
   return {
-    async loadNativeCatalog(token: string, delegation: string, selection: Omit<OperationSelection, 'formId'>) {
+    async loadNativeCatalog(token: string, delegation: string, selection: Omit<OperationSelection, 'formId'>,
+      android?: { version: string; code: number }) {
       const query = operationQuery(selection);
       if (!query || query.formId) return null;
       const claims = await verifiedClaims(token);
@@ -115,6 +117,8 @@ export function createOperationService(deps: OperationDeps) {
       const { id, code, revision } = access.workshop.workshop;
       const expiresAt = Math.min(access.expiresAt, Date.parse(access.workshop.expires_at));
       if (!Number.isFinite(expiresAt) || expiresAt <= now()) throw invalid();
+      if (data.kind === 'cells' && android) deps.observeAndroid?.({ ...access.args, p_workshop_context: access.workshop,
+        p_app_version: android.version, p_build_code: android.code });
       return { workshop: { id, code, revision }, deviceId: claims.authUserId, operatorId: access.operator,
         expiresAt: new Date(expiresAt).toISOString(), data };
     },

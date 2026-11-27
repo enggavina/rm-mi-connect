@@ -24,8 +24,11 @@ export async function POST(request: Request) {
   catch { return failure(400); }
   const { operatorToken: delegation, ...selection } = input;
   if (selection.projectId && !selection.cellId) return failure(400);
+  const build = request.headers.get('x-em-android-build')?.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\/(\d{1,10})$/);
+  const code = Number(build?.[2]);
+  const android = build && code >= 1 && code <= 2_100_000_000 ? { version: build[1], code } : undefined;
   try {
-    const result = await operationService.loadNativeCatalog(bearer, delegation, selection);
+    const result = await operationService.loadNativeCatalog(bearer, delegation, selection, android);
     return result ? Response.json(result, { headers }) : failure(404);
   } catch (error) {
     return failure(error instanceof WorkshopContextError && [401, 403].includes(error.status) ? error.status : 503);

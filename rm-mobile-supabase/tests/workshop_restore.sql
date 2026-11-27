@@ -2286,7 +2286,50 @@ begin
  end if;
 end
 $photo_recovery$;
+do $android_adoption$
+declare
+ device uuid; session_id uuid; delegation text; context jsonb; first_seen timestamptz;
+begin
+ if not has_function_privilege('service_role','public.rm_observe_mobile_workshop_android_v1(uuid,uuid,text,jsonb,text,integer)','execute')
+  or exists(select 1 from unnest(array['anon','authenticated']) a(role) where
+   has_function_privilege(role,'public.rm_observe_mobile_workshop_android_v1(uuid,uuid,text,jsonb,text,integer)','execute'))
+  or has_table_privilege('service_role','rm_private.workshop_android_observations','select') then
+  raise exception 'O registro de versões concedeu acesso direto ou ao aplicativo.';
+ end if;
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office); session_id:=em_fixture.id(720+office); delegation:=repeat(chr(96+office),64);
+  context:=pg_temp.workshop_restore_native_context(office,office);
+  begin
+   perform public.rm_observe_mobile_workshop_android_v1(device,em_fixture.id(720+(office%4)+1),delegation,context,'1.2.24',27);
+   raise exception 'Uma sessão estrangeira registrou versão.';
+  exception when sqlstate '28000' then null;
+  end;
+  begin
+   perform public.rm_observe_mobile_workshop_android_v1(device,session_id,delegation,jsonb_set(context,'{workshop,active}','false'),'1.2.24',27);
+   raise exception 'Uma oficina suspensa registrou versão.';
+  exception when sqlstate '42501' then null;
+  end;
+  perform public.rm_observe_mobile_workshop_android_v1(device,session_id,delegation,context,'1.2.24',27);
+  select seen.observed_at into strict first_seen from rm_private.workshop_android_observations seen
+   where seen.session_id=em_fixture.id(720+office) and seen.workshop_id=em_fixture.id(office)
+    and seen.app_version='1.2.24' and seen.build_code=27;
+  perform public.rm_observe_mobile_workshop_android_v1(device,session_id,delegation,context,'1.2.24',27);
+  if not exists(select 1 from rm_private.workshop_android_observations seen where seen.session_id=em_fixture.id(720+office) and seen.observed_at=first_seen) then
+   raise exception 'O mesmo aplicativo gravou uma observação repetida na mesma sessão.';
+  end if;
+  perform public.rm_observe_mobile_workshop_android_v1(device,session_id,delegation,context,'1.2.25',28);
+  if not exists(select 1 from rm_private.workshop_android_observations seen where seen.session_id=em_fixture.id(720+office)
+    and seen.workshop_id=em_fixture.id(office) and seen.observed_at>=first_seen and seen.build_code=28) then
+   raise exception 'A sessão não registrou a troca de versão do aplicativo.';
+  end if;
+ end loop;
+ if (select count(*) from rm_private.workshop_android_observations)<>4 then
+  raise exception 'O indicador misturou as sessões de oficinas distintas.';
+ end if;
+end
+$android_adoption$;
 rollback;
+select 'PASS: Android version observations follow the authorized session and office, deny suspended offices and update without duplicates in four workshops' result;
 select 'PASS: orphan legacy photo custody preserves owner and versions, remains private and excludes operational references in four workshops' result;
 select 'PASS: legacy draft photos reach the verified archive only with original device, owner and office in four workshops' result;
 select 'PASS: scoped equipment types and direct portal read cutover in four workshops; native reads preserved' result;

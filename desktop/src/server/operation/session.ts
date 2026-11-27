@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { after } from 'next/server';
 import { z } from 'zod';
 import { required } from '../config';
 import { createWorkshopContextReader, EM_IDENTITY_ISSUER, WorkshopContextError } from '../web/workshop-context';
@@ -54,6 +55,16 @@ export const operationService = createOperationService({
   },
   async writeForm(args) {
     return await operationClient(true).rpc('rm_online_operation_submit_form_v1', args);
+  },
+  observeAndroid(args) {
+    after(async () => {
+      try {
+        const { error } = await operationClient(true).rpc('rm_observe_mobile_workshop_android_v1', args);
+        if (error) console.warn('Não foi possível registrar a versão Android confirmada.');
+      } catch {
+        console.warn('Não foi possível registrar a versão Android confirmada.');
+      }
+    });
   },
   async signOut(token) {
     const { error } = await operationClient().auth.admin.signOut(token, 'local');

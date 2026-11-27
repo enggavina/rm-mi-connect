@@ -1,7 +1,8 @@
 import 'react-native-url-polyfill/auto';
-import { AppState, Image } from 'react-native';
+import { AppState, Image, Platform } from 'react-native';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import NetInfo from '@react-native-community/netinfo';
+import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -39,6 +40,8 @@ const scopedUploads = scopedMedia && scopedMutations && process.env.EXPO_PUBLIC_
 const scopedDrafts = scopedCatalog && process.env.EXPO_PUBLIC_EM_SCOPED_DRAFTS === 'true';
 const scopedDraftMedia = scopedDrafts && scopedUploads && scopedReceiving;
 const scopedExecution = scopedMutations && process.env.EXPO_PUBLIC_EM_SCOPED_EXECUTION === 'true';
+const androidBuild = Platform.OS === 'android' && scopedDraftMedia && scopedExecution && Constants.expoConfig?.version
+  && Constants.expoConfig.android?.versionCode ? `${Constants.expoConfig.version}/${Constants.expoConfig.android.versionCode}` : undefined;
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -835,7 +838,7 @@ class MobileService {
     if (error || !data.session || data.session.user.id !== owner) throw Object.assign(new Error('Renove a sessão do dispositivo.'), { code: '28000' });
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 12_000);
     let scoped: Awaited<ReturnType<typeof readWorkshopOperatorCells>>;
-    try { scoped = await readWorkshopOperatorCells(owner, data.session.access_token, operator, token, controller.signal); }
+    try { scoped = await readWorkshopOperatorCells(owner, data.session.access_token, operator, token, controller.signal, { androidBuild }); }
     finally { clearTimeout(timeout); }
     const existing = await secureStorage.getItem(`rm.workshop.device.${owner}`);
     if (existing && existing !== scoped.workshopId) {

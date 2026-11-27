@@ -86,18 +86,26 @@ test('queued native writes compare their original workshop against each fresh au
 });
 
 test('native catalog verifies the device, operator and assigned workshop before returning scoped data', async () => {
-  const { service, calls } = fixture();
-  const response = await service.loadNativeCatalog(accessToken, operatorToken, {});
+  const android = { version: '1.2.24', code: 27 };
+  const { service, calls } = fixture({ observeAndroid(args) {
+    calls.push('build');
+    assert.deepEqual(args, { p_auth_user_id: userId, p_session_id: sessionId, p_operator_token: operatorToken,
+      p_workshop_context: exampleWorkshop, p_app_version: '1.2.24', p_build_code: 27 });
+  } });
+  const response = await service.loadNativeCatalog(accessToken, operatorToken, {}, android);
   assert.deepEqual(response, {
     workshop: { id: exampleWorkshop.workshop.id, code: 'OUTRA', revision: 1 },
     deviceId: userId, operatorId, expiresAt: exampleWorkshop.expires_at,
     data: { kind: 'cells', items: [{ id: cellId, nome: 'Ensaios' }] },
   });
-  assert.deepEqual(calls, ['verify', 'identity', 'authority', 'db']);
+  assert.deepEqual(calls, ['verify', 'identity', 'authority', 'db', 'build']);
+  assert.deepEqual(await service.loadNativeCatalog(accessToken, operatorToken, {}), response);
+  assert.deepEqual(calls.slice(-4), ['verify', 'identity', 'authority', 'db']);
   assert.equal(await service.loadNativeCatalog(accessToken, operatorToken, { projectId }), null);
   const denied = fixture({ readWorkshop: async () => { throw new WorkshopContextError('WORKSHOP_FORBIDDEN'); },
-    readData: async () => assert.fail('Must not read without the current workshop') });
-  await assert.rejects(denied.service.loadNativeCatalog(accessToken, operatorToken, {}), { status: 403 });
+    readData: async () => assert.fail('Must not read without the current workshop'),
+    observeAndroid: () => assert.fail('Must not record a build without the current workshop') });
+  await assert.rejects(denied.service.loadNativeCatalog(accessToken, operatorToken, {}, android), { status: 403 });
 });
 
 test('revoked or unavailable Central context never uses a previous office or calls the data RPC', async () => {

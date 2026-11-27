@@ -9,11 +9,12 @@ export function operatorWorkshopDenied(error: unknown) {
 
 export async function readWorkshopOperatorCells(
   deviceId: string, deviceToken: string, operator: Operator, operatorToken: string,
-  signal: AbortSignal, request = fetch,
+  signal: AbortSignal, { androidBuild, request = fetch }: { androidBuild?: string; request?: typeof fetch } = {},
 ) {
   const response = await request(catalogUrl, {
     method: 'POST', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}`,
+      ...(androidBuild ? { 'X-EM-Android-Build': androidBuild } : {}) },
     body: JSON.stringify({ operatorToken }),
   });
   if (!response.ok) throw Object.assign(new Error('Não foi possível confirmar as células da oficina. Os trabalhos salvos foram preservados.'),
