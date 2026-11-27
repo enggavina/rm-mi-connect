@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Armazenamento legado de documentos e assinaturas
+
+A migração **111**, publicada no Supabase `oficina-em-mi-off`, limita a leitura direta dos documentos legados à pasta da conta que fez o envio. Para a equipe, o portal e o aplicativo consultam a autorização da oficina antes de obter o endereço temporário. As regras específicas do dossiê e do acervo privado continuam aplicadas. O bucket vazio de assinaturas ficou privado pela API do Storage. A conferência preservou as configurações dos demais buckets e os metadados dos objetos. [EM em produção](https://em-web-production.up.railway.app) · [API do Storage](https://supabase.com/docs/reference/javascript/file-buckets-updatebucket) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46030284867).
+
+O ensaio e a aplicação preservaram os registros das 144 tabelas auditadas. Passaram 66 suítes PostgreSQL e a matriz de quatro oficinas antes e depois da restauração. O ensaio confirmou a leitura e o reenvio por quem enviou o arquivo, a recusa para outro dispositivo e o bloqueio de novos envios de assinaturas enquanto o bucket está público. Em produção, dois downloads diretos fora da pasta da conta BMA passaram a ser recusados. Quatro PDFs históricos foram baixados com autorização da oficina e conferidos por SHA-256. Passaram nove verificações no navegador, e o PDF autorizado abriu no emulador com conexão, sem conexão e após reabrir o catálogo offline. [Teste do PDF no Android](../../mobile/tests/workshop-document-offline.py) · [Roteiro Microsoft para o acervo](../tests/workshop-pilot.browser.cjs).
+
+O bucket legado de fotos permanece público. Seis das oito fotos armazenadas já têm cópia privada confirmada. Das outras duas, uma pertence a um rascunho ativo sem vínculo de oficina confirmado, e a outra está sem referência confirmada. A consulta privada de prontidão impede o fechamento enquanto houver essa dependência.
+
 ## P0.2 — Dossiê do projeto e respostas por oficina
 
 A migração **110** e o deploy Railway **`f7107f21-cc58-4a57-96f6-77e770650f72`** publicaram o commit **`1a0ea8f`**. No portal Microsoft, o dossiê consulta o projeto, as relações e a página da galeria dentro da mesma oficina. O detalhe de formulário usa o mesmo recorte para o registro, o modelo, as perguntas e as respostas. A permissão de cada módulo determina o conteúdo retornado. A galeria usa endereços autorizados pelo EM, e os endereços das evidências do formulário preservam a posição original de cada arquivo. [Projetos](https://em-web-production.up.railway.app/projetos) · [Formulários](https://em-web-production.up.railway.app/formularios) · [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46026598480).
