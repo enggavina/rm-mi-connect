@@ -1305,6 +1305,110 @@ begin
  end loop;
 end
 $legacy_project_origins$;
+create function pg_temp.workshop_restore_decide(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
+returns jsonb language plpgsql as $$
+declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
+ hash text:=repeat(office::text,64);
+begin
+ if scoped then perform public.rm_sso_form_review_workshop_permit_v1(hash,submission,operation,payload,context);
+ else perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,
+  case when operation='review_form' then 'em.forms.review' else 'em.approvals.decide' end);end if;
+ set local role authenticated;
+ value:=public.rm_web_mutate_v1(submission,operation,payload);
+ reset role;
+ return value;
+exception when others then reset role;raise;
+end$$;
+
+do $review_cutover$
+declare
+ project uuid; cell uuid; allocation uuid; destination uuid; stage uuid; registration uuid;
+ changes jsonb; params jsonb; output jsonb; submission uuid; operation text;
+begin
+ if (select activated_at is not null from rm_private.workshop_root_enforcement where singleton) then
+  raise exception 'A revisão precisa ser ativável com entradas não alocadas ainda disponíveis.';
+ end if;
+ begin
+  insert into public.rm_registros_formulario(id,projeto_id,celula_id,form_id)
+   values(em_fixture.id(1510),em_fixture.id(101),em_fixture.id(202),em_fixture.id(401));
+  perform rm_private.activate_workshop_review_cutover_v1();
+  raise exception 'A ativação aceitou um formulário com origem cruzada.';
+ exception when sqlstate 'PT409' then null;
+ end;
+ perform rm_private.activate_workshop_review_cutover_v1();
+ if not exists(select 1 from rm_private.form_review_workshop_settings where singleton and enforced)
+  or has_function_privilege('authenticated','public.rm_web_stage_approvals_v1(uuid,uuid,text,boolean,text,integer,integer)','execute')
+  or has_function_privilege('authenticated','public.rm_web_stage_approval_snapshot_v1(uuid)','execute')
+  or has_table_privilege('authenticated','rm_private.web_stage_approval_context_v1','select') then
+  raise exception 'A revisão ainda permite consulta ou decisão fora do contexto de oficina.';
+ end if;
+ set constraints public.workshop_review_stage_origin,public.workshop_review_form_origin immediate;
+ -- A template can still be registered independently of a project.
+ insert into public.rm_aprovacoes_etapas(id,celula_origem_id,ativo) values(em_fixture.id(1511),em_fixture.id(201),true);
+ for office in 1..4 loop
+  project:=em_fixture.id(100+office); cell:=em_fixture.id(200+office); allocation:=em_fixture.id(300+office);
+  registration:=em_fixture.id(500+office); stage:=em_fixture.id(1530+office); destination:=em_fixture.id(1550+office);
+  insert into public.rm_celulas(id,nome) values(destination,'Destino local da revisão '||office);
+  insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(destination,em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade)
+   values(em_fixture.id(1570+office),project,destination,'pendente',false);
+  update public.rm_celulas_projeto set status='em_dia' where id=allocation;
+  -- Keep the legacy missing allocation ID. The operational resolver still uses the project/cell pair.
+  insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,celula_destino_id,status_cel_proj)
+   values(stage,project,cell,destination,'em_dia');
+  update public.rm_registros_formulario set status='em_an_lise',preenchido=true where id=registration;
+  begin
+   insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,celula_destino_id,ativo)
+    values(em_fixture.id(1590+office),project,cell,em_fixture.id(200+(office%4)+1),true);
+   raise exception 'Uma etapa nova foi vinculada à célula de outra oficina.';
+  exception when sqlstate 'PT409' then null;
+  end;
+  begin
+   insert into public.rm_registros_formulario(id,projeto_id,celula_id,form_id)
+    values(em_fixture.id(1600+office),project,cell,em_fixture.id(400+(office%4)+1));
+   raise exception 'Uma revisão aceitou um modelo de outra oficina.';
+  exception when sqlstate 'PT409' then null;
+  end;
+  output:=pg_temp.workshop_restore_read(office,'approval_entry',jsonb_build_object('id',stage));
+  if output->'available_actions' is distinct from '["liberar"]'::jsonb or output->'stage'->'celula_projeto_id' is distinct from 'null'::jsonb then
+   raise exception 'A consulta da etapa legada perdeu a ação operacional.';
+  end if;
+  select jsonb_build_object('review_form',jsonb_build_object('registro_formulario_id',r.id,'expected_updated_at',r.updated_at,
+   'decision','return','parecer','Correção no ensaio isolado','resposta_ids',jsonb_build_array(em_fixture.id(1460+office))),
+   'transition_stage_approval',jsonb_build_object('aprovacao_etapa_id',s.id,'expected_updated_at',s.updated_at,
+   'expected_cell_updated_at',a.updated_at,'acao','liberar','observacao','Decisão no ensaio isolado')) into changes
+   from public.rm_registros_formulario r,public.rm_aprovacoes_etapas s,public.rm_celulas_projeto a
+   where r.id=registration and s.id=stage and a.id=allocation;
+  foreach operation in array array['review_form','transition_stage_approval'] loop
+   params:=changes->operation;
+   submission:=gen_random_uuid();
+   begin
+    perform pg_temp.workshop_restore_decide(office,submission,operation,params,false);
+    raise exception 'Uma autorização antiga permitiu decidir sem confirmar a oficina.';
+   exception when insufficient_privilege then null;
+   end;
+   for foreign_office in 1..4 loop
+    if office=foreign_office then continue;end if;
+    begin
+     perform pg_temp.workshop_restore_decide(foreign_office,submission,operation,params);
+     raise exception 'A sessão de outra oficina conseguiu registrar uma decisão.';
+    exception when insufficient_privilege then null;
+    end;
+   end loop;
+   output:=pg_temp.workshop_restore_decide(office,submission,operation,params);
+   if (case operation when 'review_form' then output->'record'->>'status' else output->'snapshot'->'stage'->>'status' end)
+       is distinct from (case operation when 'review_form' then 'direcionado' else 'aprovado' end)
+    or pg_temp.workshop_restore_decide(office,submission,operation,params)->>'idempotent_replay' is distinct from 'true' then
+    raise exception 'A decisão autorizada ou sua retentativa não preservou o protocolo.';
+   end if;
+  end loop;
+  if (select count(*) from public.rm_aprovacoes_registro a where a.registro_formulario_id=registration)<>1
+   or (select count(*) from public.rm_web_stage_decisions d where d.aprovacao_etapa_id=stage)<>1 then
+   raise exception 'A retentativa duplicou o histórico de decisão.';
+  end if;
+ end loop;
+end
+$review_cutover$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1317,3 +1421,4 @@ select 'PASS: restored pristine receiving protocols retain their original revisi
 select 'PASS: exact legacy receiving receipts become visible only in the verified workshop inbox in four offices' result;
 select 'PASS: restored archive copies authorize photos, form answers and invoices only in the original workshop' result;
 select 'PASS: archived Word attachments use the same private read and reject a foreign workshop' result;
+select 'PASS: review cutover preserves legacy actions and rejects foreign decisions in four workshops before the general root cutover' result;

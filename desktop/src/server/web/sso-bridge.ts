@@ -12,7 +12,7 @@ import { createCatalogWorkshopAuthorizer, isScopedEngineeringWrite, isScopedPlan
 import { workshopReadResult, workshopRosterRequired, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
 import { AllocationExportError } from './allocation-export-data';
-import { workshopFormReviewWritesEnabled, workshopOperationReadsEnabled } from './workshop-operation-reader';
+import { workshopOperationReadsEnabled } from './workshop-operation-reader';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -39,7 +39,7 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   return data;
 }
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: true,
-  enableRootEdits: workshopOperationReadsEnabled(), enableFormReviewWrites: workshopFormReviewWritesEnabled(), mint: async value => {
+  enableRootEdits: workshopOperationReadsEnabled(), enableFormReviewWrites: true, mint: async value => {
   const issuer = rootWriteCapability(value.operation, value.payload, workshopOperationReadsEnabled()) ? 'rm_sso_root_creation_permit_v1'
     : isScopedEngineeringWrite(value.operation) ? 'rm_sso_engineering_workshop_permit_v1'
     : requiresPlanningWorkshop(value.operation) || isScopedPlanningWrite(value.operation) ? 'rm_sso_gantt_workshop_permit_v1'

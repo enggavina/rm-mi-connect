@@ -9,10 +9,6 @@ export function workshopOperationReadsEnabled() {
   return process.env.EM_WORKSHOP_OPERATION_READS === 'true';
 }
 
-export function workshopFormReviewWritesEnabled() {
-  return workshopOperationReadsEnabled() && process.env.EM_WORKSHOP_FORM_REVIEW_WRITES === 'true';
-}
-
 export async function readWorkshopOperations(access: WorkshopSession, mode: 'rollout' | 'sso' = 'rollout'): Promise<WorkshopRead | undefined> {
   if (!workshopOperationReadsEnabled() && !(mode === 'sso' && access.sso)) return undefined;
   if (!access.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');

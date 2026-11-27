@@ -4,7 +4,7 @@ import { createWebData, listProjects } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
 import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
-import { readWorkshopOperations, workshopFormReviewWritesEnabled } from '@/server/web/workshop-operation-reader';
+import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { editorChoices } from '@/server/web/choices';
 import { createProjectScheduleData } from '@/server/web/project-schedule-data';
 import { getOperationalPhotos } from '@/server/web/operational-photo-data';
@@ -86,10 +86,12 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const canEditProject = manager && hasWebCapability(session, 'em.projects.manage');
   const closed = !!project.data_real_de_entrega || ['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
   const choices = canPlan && !closed && (!current || currentWritable) ? await editorChoices('planning') : null;
-  const reader = createProjectScheduleData(session.client, session.sso?.capabilities, operations, workshopFormReviewWritesEnabled());
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
-  const stages = current && tab === 'etapas' ? await reader.stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined) : null;
+  const stages = current && tab === 'etapas'
+    ? await createProjectScheduleData(session.client, session.sso?.capabilities, operations ?? await readWorkshopOperations(session, 'sso'), true)
+      .stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined)
+    : null;
   const stageRules = current && tab === 'etapas' ? await getOperationalStageRules(projectId, current.id) : null;
   const activeStageRules = stageRules?.rules.filter(rule => rule.ativo) ?? [];
   const stageRulesCurrent = !!stageRules && !!stages && stageRules.complete && stageRules.allocations_complete
