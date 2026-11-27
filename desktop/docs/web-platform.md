@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — upload privado dos registros em fila
+
+A migração **085** e o Railway **`a3774ddc-c530-4077-b20b-9621241dd75c`** publicaram `/api/mobile/midia/envio`. O serviço associa o arquivo ao projeto, ao operador, à oficina e ao protocolo antes de gravar. O reenvio valida tamanho e SHA-256. O endereço de armazenamento usa um prefixo privado que exige autorização do portal ou do Android para leitura.
+
+Passaram 158 testes mobile, o CI, a regressão SQL e 51 verificações em produção. A gravação positiva, a retentativa e a recusa cruzada foram testadas em banco isolado. O APK **1.2.19/código 22** está instalado no Moto G84. Os 29 vínculos de célula foram verificados com e sem conexão. Rascunhos antes da abertura e envios legados preservam o fluxo de compatibilidade. Um upload real no piloto segue no aceite. SHA-256 `206d00ae2c16bfeed133cb17a464bcf3f8ec898bb116a229967a24c7975c97ff`. [CI do serviço](https://github.com/enggavina/rm-mi-connect/actions/runs/45933018277) · [CI do app](https://github.com/enggavina/rm-mi-connect/actions/runs/45933487785).
+
 ## P0.4 — oficina de origem na fila do Android
 
 O Railway **`3ac1cab8-2bc5-4f07-896d-e730e0fd15cd`** publicou a verificação da oficina de origem na abertura e conclusão do recebimento e no envio de outros registros. O APK **1.2.18/código 21** grava a oficina junto ao novo protocolo, em uma transação SQLite. A atualização preserva as filas anteriores, inclusive a ausência de origem quando ela ainda não havia sido registrada.

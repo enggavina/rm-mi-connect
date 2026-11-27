@@ -256,11 +256,17 @@ try {
     $checksums = @{}
     $pixel = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+pZJcAAAAASUVORK5CYII=')
     foreach ($office in 1..4) {
-      $directory = Join-Path $mediaSource "$office"
-      New-Item -ItemType Directory -Force -Path $directory | Out-Null
-      $file = Join-Path $directory 'equipamento.png'
-      [IO.File]::WriteAllBytes($file, [byte[]]($pixel + [byte]$office))
-      $checksums[$office] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+      $workshop = '07610000-0000-4000-8000-{0:D12}' -f $office
+      $protocol = '07610000-0000-4000-8000-{0:D12}' -f (760 + $office)
+      $asset = '07610000-0000-4000-8000-{0:D12}' -f (750 + $office)
+      $specimens = @(@{ path = "$office/equipamento.png"; marker = $office },
+        @{ path = "mobile-oficina/$workshop/$protocol/$asset.png"; marker = 4 + $office })
+      foreach ($specimen in $specimens) {
+        $file = Join-Path $mediaSource $specimen.path
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
+        [IO.File]::WriteAllBytes($file, [byte[]]($pixel + [byte]$specimen.marker))
+        $checksums[$specimen.path] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+      }
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_test -v seed=true -f $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas antes do backup.' }
@@ -272,11 +278,18 @@ try {
     & pg_restore -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore --exit-on-error --single-transaction $databaseArchive
     if ($LASTEXITCODE -ne 0) { throw 'Falha na restauração lógica isolada.' }
     Expand-Archive -LiteralPath $mediaArchive -DestinationPath $mediaRestored
-    foreach ($office in 1..4) {
-      $file = Join-Path $mediaRestored "media-source\$office\equipamento.png"
-      if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $checksums[$office]) {
-        throw "Mídia local da oficina $office divergiu após a restauração."
+    foreach ($relative in $checksums.Keys) {
+      $file = Join-Path (Join-Path $mediaRestored 'media-source') $relative
+      if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $checksums[$relative]) {
+        throw "Mídia local recuperada divergiu: $relative"
       }
+    }
+    $manifest = & psql -X -A -t -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v ON_ERROR_STOP=1 `
+      -c 'SELECT jsonb_object_agg(object_path,upper(content_sha256)) FROM rm_private.mobile_workshop_uploads WHERE stored_at IS NOT NULL'
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao ler o manifesto recuperado de mídias.' }
+    $files = ($manifest | ConvertFrom-Json).PSObject.Properties
+    if (@($files).Count -ne 4 -or @($files | Where-Object { $checksums[$_.Name] -cne $_.Value }).Count) {
+      throw 'O banco recuperado não corresponde às quatro mídias privadas restauradas.'
     }
     & psql -X -q -h 127.0.0.1 -p $Port -U postgres -d rmmi_restore -v seed=false -f $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Falha na matriz de oficinas após a restauração.' }
