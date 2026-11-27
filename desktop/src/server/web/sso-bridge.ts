@@ -53,15 +53,17 @@ const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: wo
 } });
 export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof localSsoClient>): WorkshopRead {
   return async (resource, args) => {
-    const requestId = randomUUID(), office = await catalogWorkshops.authorizeRead(context, requestId, resource, args);
-    const response = await client.rpc('rm_web_workshop_read_v1', { p_read_id: requestId, p_resource: resource, p_args: args });
+    const requestId = randomUUID();
+    const confirmed = resource === 'workshop_team' ? await catalogWorkshops.authorizeTeamRead(context, requestId, args)
+      : { office: await catalogWorkshops.authorizeRead(context, requestId, resource, args), args };
+    const response = await client.rpc('rm_web_workshop_read_v1', { p_read_id: requestId, p_resource: resource, p_args: confirmed.args });
     if (resource === 'gantt_snapshot' && response.error?.code === 'PT413') {
       throw new Error('O Gantt excede o limite desta consulta. Selecione um projeto ou uma célula.');
     }
     if (resource === 'planning_export' && response.error?.code === 'PT413') throw new AllocationExportError('limit');
     if (response.error?.code === '42501') throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
     if (response.error) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
-    try { return workshopReadResult(response.data, { requestId, resource, workshopId: office }); }
+    try { return workshopReadResult(response.data, { requestId, resource, workshopId: confirmed.office }); }
     catch { throw new WorkshopContextError('WORKSHOP_UNAVAILABLE'); }
   };
 }

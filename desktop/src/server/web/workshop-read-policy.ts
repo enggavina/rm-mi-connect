@@ -6,13 +6,13 @@ export const WORKSHOP_READ_RESOURCES = [
   'project_qr', 'document_link', 'form_record_project', 'form_record_list', 'workshop_twin', 'planning_export', 'media_reference', 'overview',
   'approval_list', 'approval_entry', 'approval_choices', 'approval_allocation', 'capacity_snapshot', 'cell_availability',
   'cell_queue', 'planning_load', 'execution_snapshot',
-  'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry',
+  'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry', 'workshop_team',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
 export function workshopReadCapabilities(resource: WorkshopReadResource, filters: Record<string, unknown> = {}): readonly CorporateCapability[] {
   switch (resource) {
-    case 'catalog_list': return ['em.portal.read', 'em.catalogs.read'];
+    case 'catalog_list': case 'workshop_team': return ['em.portal.read', 'em.catalogs.read'];
     case 'catalog_entry': return ['em.portal.read', 'em.catalogs.read', 'em.catalogs.manage'];
     case 'template_list': case 'template_draft': case 'template_form': case 'template_choices': return ['em.portal.read', 'em.form_templates.read'];
     case 'project_list': return filters.planning === true || filters.cell != null

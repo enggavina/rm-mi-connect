@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { CORPORATE_ISSUER, validateCorporateDecision, type VerifiedCorporateSession } from './sso-policy';
+import { CORPORATE_ISSUER, CORPORATE_SUPABASE_URL, corporateSettings, validateCorporateDecision, type VerifiedCorporateSession } from './sso-policy';
 
 export const WORKSHOP_CONTEXT_URL = 'https://acessos.miconnect.app.br/authorization/v2/me/em/workshop-context';
 export const MOBILE_WORKSHOP_CONTEXT_URL = 'https://acessos.miconnect.app.br/authorization/v2/services/em/workshop-context';
+export const WORKSHOP_TEAM_URL = `${CORPORATE_SUPABASE_URL}/rest/v1/rpc/cp_my_em_workshop_team_v1`;
 export const EM_IDENTITY_ISSUER = 'https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1';
 const MAX_BYTES = 64 * 1024;
 const TIMEOUT_MS = 10_000;
@@ -18,6 +19,9 @@ const contextSchema = z.object({
   principals: z.array(principal).min(1).max(2), issued_at: timestamp, expires_at: timestamp,
 }).strict();
 export type WorkshopContext = z.infer<typeof contextSchema>;
+const teamSchema = z.object({ context: contextSchema,
+  members: z.array(z.object({ kind: z.enum(['corporate', 'operator']), subject: uuid }).strict()).min(1).max(768) }).strict();
+export type WorkshopTeam = z.infer<typeof teamSchema>;
 export type ExpectedWorkshopIdentity = { channel: 'web'; subject: string } | { channel: 'mobile'; deviceSubject: string; operatorSubject: string };
 export class WorkshopContextError extends Error {
   readonly status: 401 | 403 | 503;
@@ -52,11 +56,24 @@ export function validateWorkshopContext(value: unknown, expected: ExpectedWorksh
   return context;
 }
 
+export function validateWorkshopTeam(value: unknown, subject: string, now = Date.now()): WorkshopTeam {
+  const parsed = teamSchema.safeParse(value);
+  if (!parsed.success) throw unavailable();
+  const { context, members } = parsed.data;
+  validateWorkshopContext(context, { channel: 'web', subject }, now);
+  if (Date.parse(context.expires_at) - Date.parse(context.issued_at) > 20_000
+    || !members.some(member => member.kind === 'corporate' && member.subject === subject)
+    || new Set(members.map(member => `${member.kind}:${member.subject}`)).size !== members.length) throw unavailable();
+  return parsed.data;
+}
+
 /** O09/O10 writes and O11 selected portal reads use this reader.
  * Call only AFTER current corporate SSO/MFA and capabilities have been verified.
  * This targeted guard does not activate read, Storage or offline isolation. */
-export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }: { fetcher?: typeof fetch; now?: () => number } = {}) {
-  async function readContext(url: string, request: RequestInit, expected: ExpectedWorkshopIdentity, expiresAt: number) {
+export function createWorkshopContextReader({ fetcher = fetch, now = Date.now, teamKey = () => corporateSettings()?.publishableKey }:
+  { fetcher?: typeof fetch; now?: () => number; teamKey?: () => string | undefined } = {}) {
+  async function readAuthority<T>(url: string, request: RequestInit, channel: 'web' | 'mobile', expiresAt: number,
+    parse: (value: unknown, at: number) => T): Promise<T> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -65,7 +82,7 @@ export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }:
     });
     try {
       const response = await Promise.race([fetcher(url, { ...request, cache: 'no-store', redirect: 'error', signal: controller.signal }), deadline]);
-      if (response.status === 401) throw new WorkshopContextError(expected.channel === 'web' ? 'WORKSHOP_UNAUTHORIZED' : 'WORKSHOP_UNAVAILABLE');
+      if (response.status === 401) throw new WorkshopContextError(channel === 'web' ? 'WORKSHOP_UNAUTHORIZED' : 'WORKSHOP_UNAVAILABLE');
       if (response.status === 403) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
       const length = response.headers.get('content-length');
       if (response.status !== 200 || response.redirected
@@ -83,7 +100,7 @@ export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }:
         chunks.push(chunk.value);
       }
       if (expiresAt <= now()) throw new WorkshopContextError('WORKSHOP_UNAUTHORIZED');
-      return validateWorkshopContext(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))), expected, now());
+      return parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))), now());
     } catch (error) {
       throw error instanceof WorkshopContextError ? error : unavailable();
     } finally {
@@ -93,28 +110,41 @@ export function createWorkshopContextReader({ fetcher = fetch, now = Date.now }:
       if (reader) { void reader.cancel().catch(() => {}); reader.releaseLock(); }
     }
   }
+  function verifiedWebSubject(session: VerifiedCorporateSession) {
+    const subject = session?.user?.id;
+    if (!uuid.safeParse(subject).success || !Number.isFinite(session?.expiresAt) || session.expiresAt <= now()
+      || typeof session?.accessToken !== 'string' || session.accessToken.length > 16384
+      || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.accessToken)) {
+      throw new WorkshopContextError('WORKSHOP_UNAUTHORIZED');
+    }
+    try { validateCorporateDecision(session.decision, subject); }
+    catch { throw new WorkshopContextError('WORKSHOP_FORBIDDEN'); }
+    return subject;
+  }
   return {
     async readWeb(session: VerifiedCorporateSession): Promise<WorkshopContext> {
-      const subject = session?.user?.id;
-      if (!uuid.safeParse(subject).success || !Number.isFinite(session?.expiresAt) || session.expiresAt <= now()
-        || typeof session?.accessToken !== 'string' || session.accessToken.length > 16384
-        || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.accessToken)) {
-        throw new WorkshopContextError('WORKSHOP_UNAUTHORIZED');
-      }
-      try { validateCorporateDecision(session.decision, subject); }
-      catch { throw new WorkshopContextError('WORKSHOP_FORBIDDEN'); }
-      return readContext(WORKSHOP_CONTEXT_URL, {
+      const subject = verifiedWebSubject(session);
+      return readAuthority(WORKSHOP_CONTEXT_URL, {
         method: 'GET', headers: { Authorization: `Bearer ${session.accessToken}`, Accept: 'application/json' },
-      }, { channel: 'web', subject }, session.expiresAt);
+      }, 'web', session.expiresAt, (value, at) => validateWorkshopContext(value, { channel: 'web', subject }, at));
+    },
+    async readTeam(session: VerifiedCorporateSession): Promise<WorkshopTeam> {
+      const subject = verifiedWebSubject(session);
+      if (!session.decision.capabilities.includes('em.catalogs.read')) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+      const key = teamKey();
+      if (!key || !/^sb_publishable_[A-Za-z0-9_-]{8,}$/.test(key)) throw unavailable();
+      return readAuthority(WORKSHOP_TEAM_URL, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${session.accessToken}`,
+        Accept: 'application/json', 'Content-Type': 'application/json' }, body: '{}' }, 'web', session.expiresAt,
+      (value, at) => validateWorkshopTeam(value, subject, at));
     },
     async readMobile(expected: Extract<ExpectedWorkshopIdentity, { channel: 'mobile' }>, expiresAt: number, key: string): Promise<WorkshopContext> {
       if (!uuid.safeParse(expected?.deviceSubject).success || !uuid.safeParse(expected?.operatorSubject).success
         || !Number.isFinite(expiresAt) || expiresAt <= now()) throw new WorkshopContextError('WORKSHOP_UNAUTHORIZED');
       if (!/^[A-Za-z0-9_-]{43,128}$/.test(key)) throw unavailable();
-      return readContext(MOBILE_WORKSHOP_CONTEXT_URL, {
+      return readAuthority(MOBILE_WORKSHOP_CONTEXT_URL, {
         method: 'POST', headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_subject: expected.deviceSubject, operator_subject: expected.operatorSubject }),
-      }, expected, expiresAt);
+      }, 'mobile', expiresAt, (value, at) => validateWorkshopContext(value, expected, at));
     },
   };
 }

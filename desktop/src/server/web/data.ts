@@ -311,9 +311,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   async function getCatalogs(filters: { kind?: string; q?: string; page?: number | string } = {}) {
     requireCapability('em.catalogs.read');
     const kind: CatalogKind = catalogKinds.includes(filters.kind as CatalogKind) ? filters.kind as CatalogKind : 'clients';
-    if (workshopRead && ['clients', 'types', 'forms'].includes(kind)) {
+    if (workshopRead && ['clients', 'types', 'forms', 'users'].includes(kind)) {
       const current = pageNumber(filters.page);
-      const result = checkedWorkshopPage(await workshopRead('catalog_list', { kind, q: searchTerm(filters.q), page: current }), current, 50) as WebPage;
+      const query = { q: searchTerm(filters.q), page: current };
+      const raw = kind === 'users' ? await workshopRead('workshop_team', query) : await workshopRead('catalog_list', { ...query, kind });
+      const result = checkedWorkshopPage(raw, current, 50) as WebPage;
       return { ...result, kind, kinds: catalogKinds };
     }
     const catalog = catalogs[kind];

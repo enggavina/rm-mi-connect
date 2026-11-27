@@ -687,6 +687,54 @@ begin
  end loop;
 end
 $workshop_engineering$;
+
+do $workshop_team$
+declare params jsonb; roster jsonb; result jsonb; other_params jsonb; context jsonb; request_id uuid;
+begin
+ for office in 1..4 loop
+  roster:=jsonb_build_array(jsonb_build_object('kind','corporate','subject',em_fixture.id(50+office)),
+   jsonb_build_object('kind','operator','subject',em_fixture.id(740+office)));
+  params:=jsonb_build_object('q','','page',1,'members',roster);
+  result:=pg_temp.workshop_restore_read(office,'workshop_team',params);
+  if result->>'total' is distinct from '2' or not (result->'rows' @> jsonb_build_array(
+   jsonb_build_object('id',em_fixture.id(30+office)),jsonb_build_object('id',em_fixture.id(740+office))))
+   or exists(select 1 from jsonb_array_elements(result->'rows') row where row ?| array['auth_user_id','email','foto_url','subject']) then
+   raise exception 'A equipe perdeu o vínculo corporativo ou operacional ou retornou dados internos.';
+  end if;
+  for other in 1..4 loop
+   if other=office then continue;end if;
+   if pg_temp.workshop_restore_read(office,'workshop_team',params||jsonb_build_object('q','Operador local '||other))->>'total' is distinct from '0' then
+    raise exception 'A busca contou operador de outra oficina.';
+   end if;
+  end loop;
+  result:=pg_temp.workshop_restore_read(office,'workshop_team',params||'{"page":2}');
+  if result->>'total' is distinct from '2' or result->'rows' is distinct from '[]'::jsonb then
+   raise exception 'A paginação da equipe perdeu os totais filtrados.';
+  end if;
+  context:=pg_temp.workshop_restore_sso(office);
+  request_id:=gen_random_uuid();
+  perform public.rm_sso_workshop_read_permit_v1(repeat(office::text,64),request_id,'workshop_team',params,context);
+  other_params:=params||jsonb_build_object('members',roster||jsonb_build_array(
+   jsonb_build_object('kind','operator','subject',em_fixture.id(740+(office % 4)+1))));
+  begin
+   set local role authenticated;
+   perform public.rm_web_workshop_read_v1(request_id,'workshop_team',other_params);
+   raise exception 'A lista de pessoas foi alterada depois da verificação.';
+  exception when insufficient_privilege then reset role;
+  end;
+  set local role authenticated;
+  result:=public.rm_web_workshop_read_v1(request_id,'workshop_team',params);
+  reset role;
+  if result->'data'->>'total' is distinct from '2' then raise exception 'O protocolo íntegro não foi aceito.';end if;
+  result:=pg_temp.workshop_restore_read(office,'workshop_team',params||jsonb_build_object('members',roster-1));
+  if result->>'total' is distinct from '1' or not exists(select 1 from public.rm_tablet_celula_users
+   where identidade_id=em_fixture.id(740+office) and celula_id=em_fixture.id(200+office)) then
+   raise exception 'O vínculo revogado continuou na equipe ou alterou a permissão histórica da célula.';
+  end if;
+ end loop;
+end
+$workshop_team$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
+select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;

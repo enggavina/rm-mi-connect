@@ -26,6 +26,38 @@ test('catalog list and entry use scoped RPC results without raw table/version re
   assert.equal(await data.getCatalogEntry('types','bad'),null);
   assert.deepEqual(calls,[['catalog_list',{kind:'clients',q:'LOCAL',page:2}],['catalog_entry',{kind:'types',id:id(1)}]]);
 });
+test('Equipe uses a separate exact request and refreshes membership for each search', async () => {
+  const viewer = id(1), current: SsoContext = { subject: viewer, bindingId: id(2), sessionHash: 'LOCAL', capabilities: caps };
+  const corporate: VerifiedCorporateSession = { accessToken: 'synthetic.jwt.signature', user: { id: viewer, email: 'qa@example.invalid' },
+    expiresAt: Date.now() + 60_000, decision: { application: 'em', issuer: CORPORATE_ISSUER, subject: viewer, app_access: true,
+      capabilities: caps, all_employees: false, fields: [], export_allowed: false } };
+  const context: WorkshopContext = { version: 2, application: 'em', channel: 'web', authority: CORPORATE_ISSUER,
+    workshop: { id: id(3), code: 'BMA', name: 'BMA', active: true, revision: 1, updated_at: version },
+    principals: [{ kind: 'corporate', issuer: CORPORATE_ISSUER, subject: viewer, revision: 1 }], issued_at: version, expires_at: version };
+  let hasOperator = true;
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: {
+    async readWeb() { assert.fail('Unscoped roster fallback'); },
+    async readTeam(s) {
+      assert.equal(s, corporate);
+      return { context, members: [{ kind: 'corporate', subject: viewer }, ...(hasOperator ? [{ kind: 'operator' as const, subject: id(4) }] : [])] };
+    },
+  }, async mint() { assert.fail('No writes'); }, async mintRead(value) {
+    assert.equal(value.resource, 'workshop_team'); assert.equal(value.context, context);
+  } });
+  authorizer.remember(current, corporate);
+  const first = await authorizer.authorizeTeamRead(current, id(10), { q: 'operador', page: 1, members: [{ kind: 'operator', subject: id(5) }] });
+  assert.deepEqual(first, { office: id(3), args: { q: 'operador', page: 1,
+    members: [{ kind: 'corporate', subject: viewer }, { kind: 'operator', subject: id(4) }] } });
+  hasOperator = false;
+  const data = createWebData(legacyForbidden, caps, async (resource, args) => {
+    assert.equal(resource, 'workshop_team'); assert.deepEqual(args, { q: 'operador', page: 1 });
+    const roster = await authorizer.authorizeTeamRead(current, id(11), args);
+    assert.deepEqual(roster.args.members, [{ kind: 'corporate', subject: viewer }]);
+    return { rows: [], total: 0, page: 1, pageSize: 50 };
+  });
+  assert.equal((await data.getCatalogs({ kind: 'users', q: 'operador' })).total, 0);
+  await assert.rejects(authorizer.authorizeRead(current, id(9), 'workshop_team', {}), CorporateAuthError);
+});
 test('model lists and snapshots retain versions while reducing source metadata', async () => {
   const calls: unknown[]=[];
   const read: WorkshopRead = async(resource,args)=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkshopContextReader, EM_IDENTITY_ISSUER, MOBILE_WORKSHOP_CONTEXT_URL, validateWorkshopContext, WORKSHOP_CONTEXT_URL, WorkshopContextError } from '../src/server/web/workshop-context';
+import { createWorkshopContextReader, EM_IDENTITY_ISSUER, MOBILE_WORKSHOP_CONTEXT_URL, validateWorkshopContext, validateWorkshopTeam, WORKSHOP_CONTEXT_URL, WORKSHOP_TEAM_URL, WorkshopContextError } from '../src/server/web/workshop-context';
 import { CORPORATE_ISSUER, type VerifiedCorporateSession } from '../src/server/web/sso-policy';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -21,6 +21,29 @@ test('v2 preserves exact authority identity and revisions without granting data 
   assert.equal(result.workshop.code, 'BMA'); assert.equal(result.principals[0].revision, 1);
   assert.equal(JSON.stringify(value), before); assert.notEqual(result, value);
   assert.equal('capabilities' in result, false);
+});
+
+test('team consultation uses the corporate JWT and an empty request, and validates the expiring membership snapshot', async () => {
+  const corporate = session(); corporate.decision.capabilities.push('em.catalogs.read');
+  const current = { context: { ...context(), expires_at: '2026-11-17T12:00:10Z' },
+    members: [{ kind: 'corporate', subject: id(2) }, { kind: 'operator', subject: id(4) }] };
+  const reader = createWorkshopContextReader({ now: () => now, teamKey: () => 'sb_publishable_local_test', fetcher: async (url, opts) => {
+    assert.equal(url, WORKSHOP_TEAM_URL);
+    assert.equal(opts?.body, '{}'); assert.equal(opts?.cache, 'no-store'); assert.equal(opts?.redirect, 'error');
+    const headers = new Headers(opts?.headers);
+    assert.equal(headers.get('authorization'), `Bearer ${corporate.accessToken}`);
+    assert.equal(headers.get('apikey'), 'sb_publishable_local_test');
+    return Response.json(current);
+  } });
+  assert.deepEqual(await reader.readTeam(corporate), current);
+  await assert.rejects(reader.readTeam(session()), (error: unknown) => error instanceof WorkshopContextError && error.status === 403);
+  for (const members of [[current.members[1]], [...current.members, current.members[1]],
+    [...current.members, { kind: 'device', subject: id(5) }], [{ kind: 'corporate', subject: id(2), label: 'extra' }]]) {
+    assert.throws(() => validateWorkshopTeam({ ...current, members }, id(2), now), rejected);
+  }
+  assert.throws(() => validateWorkshopTeam(current, id(5), now), rejected);
+  assert.throws(() => validateWorkshopTeam(current, id(2), now + 11_000), rejected);
+  assert.throws(() => validateWorkshopTeam({ ...current, context: context() }, id(2), now), rejected);
 });
 
 test('unknown top-level, office and identity fields cannot be silently discarded', () => {

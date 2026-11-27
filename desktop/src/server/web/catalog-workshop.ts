@@ -48,7 +48,8 @@ export function workshopReviewCapability(operation: string): CorporateCapability
  * There is no cross-request positive decision cache or new browser credential. */
 export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContextReader(), mint, mintRead, enableGanttWrites = false,
   enableRootEdits = false, enableFormReviewWrites = false }: {
-  reader?: Pick<ReturnType<typeof createWorkshopContextReader>, 'readWeb'>;
+  reader?: Pick<ReturnType<typeof createWorkshopContextReader>, 'readWeb'>
+    & Partial<Pick<ReturnType<typeof createWorkshopContextReader>, 'readTeam'>>;
   mint: (args: { sessionHash: string; submissionId: string; operation: string; payload: Record<string, unknown>; context: WorkshopContext }) => Promise<void>;
   mintRead?: (args: { sessionHash: string; requestId: string; resource: WorkshopReadResource; filters: Record<string, unknown>; context: WorkshopContext }) => Promise<void>;
   enableGanttWrites?: boolean;
@@ -62,7 +63,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
       verified.set(context, corporate);
     },
     async authorizeRead(context: SsoContext, requestId: string, resource: WorkshopReadResource, filters: Record<string, unknown>) {
-      if (!workshopReadCapabilities(resource, filters).every(capability => context.capabilities.includes(capability))
+      if (resource === 'workshop_team' || !workshopReadCapabilities(resource, filters).every(capability => context.capabilities.includes(capability))
         || resource === 'project_entry' && filters.cells === true
           && !context.capabilities.some(capability => capability === 'em.planning.read' || capability === 'em.history.read')) throw new CorporateAuthError('CORP_FORBIDDEN');
       const corporate = verified.get(context);
@@ -70,6 +71,18 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
       const workshop = await reader.readWeb(corporate);
       await mintRead({ sessionHash: context.sessionHash, requestId, resource, filters, context: workshop });
       return workshop.workshop.id;
+    },
+    async authorizeTeamRead(context: SsoContext, requestId: string, filters: Record<string, unknown>) {
+      const resource = 'workshop_team';
+      if (!workshopReadCapabilities(resource).every(capability => context.capabilities.includes(capability))) {
+        throw new CorporateAuthError('CORP_FORBIDDEN');
+      }
+      const corporate = verified.get(context);
+      if (!mintRead || !reader.readTeam || !corporate || corporate.user.id !== context.subject) throw new CorporateAuthError('CORP_UNAUTHORIZED');
+      const team = await reader.readTeam(corporate);
+      const args = { q: filters.q, page: filters.page, members: team.members };
+      await mintRead({ sessionHash: context.sessionHash, requestId, resource, filters: args, context: team.context });
+      return { args, office: team.context.workshop.id };
     },
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
