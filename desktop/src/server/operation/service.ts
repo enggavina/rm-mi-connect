@@ -190,7 +190,7 @@ export function createOperationService(deps: OperationDeps) {
           ? new WorkshopContextError('WORKSHOP_FORBIDDEN') : identityError(reply.error.code);
         const data = operationData(reply.data, query);
         if (!data) return { status: 'missing' };
-        const submissionProof = data.kind === 'form' && data.edition && workshop.workshop.code === 'BMA'
+        const submissionProof = data.kind === 'form' && data.edition
           ? sealSso(formScope.parse({ device: claims.authUserId, operator: access.operator, office: workshop.workshop.id,
             cell: data.cell.id, project: data.project.id, form: data.form.id, version: data.edition.version, protocol: randomUUID() }),
           'operation-form', deps.cookieKey)
@@ -223,7 +223,7 @@ export function createOperationService(deps: OperationDeps) {
         const claims = await verifiedClaims(saved.token);
         const access = await authority(claims, saved.operatorToken, saved.expiresAt);
         if (scope.device !== claims.authUserId || scope.operator !== access.operator
-          || scope.office !== access.workshop.workshop.id || access.workshop.workshop.code !== 'BMA') return { status: 'forbidden' };
+          || scope.office !== access.workshop.workshop.id) return { status: 'forbidden' };
         const result = await deps.writeForm({ ...access.args, p_workshop_context: access.workshop, p_cell_id: scope.cell,
           p_project_id: scope.project, p_form_id: scope.form, p_protocol: scope.protocol, p_version: scope.version, p_answers: input.answers });
         if (!result.error) return { status: 'ok', code: receipt.parse(result.data).codigo_text };

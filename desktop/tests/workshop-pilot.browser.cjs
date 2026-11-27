@@ -56,7 +56,8 @@ function receiptChecks(receipt, ownOffice) {
       const filters = new URLSearchParams({ view: 'gantt', scope, start: receipt.start, ...extra });
       if (scope !== 'project' && receipt.includeClosed) filters.set('closed', 'yes');
       steps.push({ path: `/cronograma?${filters}`, heading: 'Cronograma',
-        selector: `[data-gantt-row="${receipt.allocationId}"]`, scope });
+        selector: `[data-gantt-row="${receipt.allocationId}"]`, scope,
+        previewAllocation: receipt.preview === true && scope === 'project' ? receipt.allocationId : undefined });
     }
   }
   if (ownOffice) return steps;
@@ -64,6 +65,35 @@ function receiptChecks(receipt, ownOffice) {
     const direct = scope === 'project' || scope === 'cell';
     return { path, heading: direct ? '404' : heading, absentSelector: selector, searchOnly: !direct };
   })];
+}
+
+async function verifyGanttPreview(page, allocation) {
+  const sameOrigin = url => url.origin === origin.origin;
+  let blockedWrites = 0;
+  const preventWrite = route => {
+    if (route.request().method() === 'GET') return route.continue();
+    blockedWrites++;
+    return route.abort();
+  };
+  await page.route(sameOrigin, preventWrite);
+  try {
+    await page.locator(`[data-gantt-row-title="${allocation}"]`).click();
+    const details = page.getByRole('complementary', { name: 'Planejamento da etapa selecionada' });
+    const start = details.getByLabel('Início previsto da etapa', { exact: true });
+    const due = details.getByLabel('Prazo da etapa', { exact: true });
+    const original = [await start.inputValue(), await due.inputValue()];
+    assert.ok(original.every(date => /^\d{4}-\d{2}-\d{2}$/.test(date)));
+    await details.getByRole('button', { name: 'Adiar 1 dia', exact: true }).click();
+    const review = page.getByRole('region', { name: 'Revisão das alterações do Gantt' });
+    await review.waitFor();
+    assert.notDeepEqual([await start.inputValue(), await due.inputValue()], original);
+    await review.getByRole('button', { name: 'Descartar prévia', exact: true }).click();
+    await review.waitFor({ state: 'hidden' });
+    assert.deepEqual([await start.inputValue(), await due.inputValue()], original);
+    assert.equal(blockedWrites, 0);
+  } finally {
+    await page.unroute(sameOrigin, preventWrite);
+  }
 }
 
 async function authenticate(page, office) {
@@ -94,12 +124,17 @@ async function main() {
           assert.equal(page.url(), expected, 'A navegação foi redirecionada.');
           assert.equal(response?.status(), 200);
           await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
-          if (step.selector) await page.locator(step.selector).first().waitFor();
+          if (step.selector) {
+            const state = step.selectorState ?? 'visible';
+            assert.ok(['visible', 'attached'].includes(state));
+            await page.locator(step.selector).first().waitFor({ state });
+          }
           if (step.scope) {
             await page.locator(step.selector).getByRole('button', { name: /Abrir datas/ }).waitFor();
             await page.getByRole('navigation', { name: 'Escopo do Gantt' })
               .locator(`a[href$="scope=${step.scope}"][aria-current="page"]`).waitFor();
           }
+          if (step.previewAllocation) await verifyGanttPreview(page, step.previewAllocation);
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
           if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
           if (step.image) {

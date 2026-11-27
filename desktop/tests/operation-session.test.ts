@@ -291,6 +291,13 @@ test('a form intent binds protocol, model, office and operator across exact retr
   assert.equal(writes[0].p_version, version);
   assert.equal(writes[0].p_form_id, formId);
   assert.deepEqual(writes[0].p_answers, input.answers);
+
+  workshop = { ...originalWorkshop, workshop: { ...originalWorkshop.workshop, id: deviceId, code: 'BRJ' } };
+  const transferred = await service.load(envelope, selection);
+  if (transferred.status !== 'ok' || !transferred.submissionProof) return assert.fail('Missing intent in another active workshop');
+  assert.deepEqual(await service.submitForm(envelope, selection, { ...input, proof: transferred.submissionProof }), { status: 'ok', code: '0039' });
+  assert.equal(writes[2].p_workshop_context.workshop.id, deviceId);
+  assert.notEqual(writes[2].p_protocol, writes[0].p_protocol);
 });
 
 test('online submissions accept bounded answer values without authors, metadata or media URLs', () => {

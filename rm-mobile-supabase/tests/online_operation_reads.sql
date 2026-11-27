@@ -235,15 +235,13 @@ insert into public.rm_respostas_temp(id,projeto_id,form_id,questao_id,operador_u
 do $web_form$
 declare
   selected jsonb; version text; retry jsonb; reply jsonb; payload jsonb; inspection_id uuid; current_version text;
+  office integer; office_version text; office_payload jsonb;
 begin
   selected := public.rm_online_operation_form_entry_v1(pg_temp.online_id(11),pg_temp.online_id(21),repeat('1',64),pg_temp.online_context(1),
     pg_temp.online_id(101),pg_temp.online_id(201),pg_temp.online_id(401));
   version := selected->'edition'->>'version';
   perform pg_temp.online_check(version ~ '^[0-9a-f]{64}$' and selected->'edition'->'dateIntervals'=jsonb_build_array(pg_temp.online_id(823)),
     'editable BMA form carries a version and exact interval metadata');
-  perform pg_temp.online_check(not (public.rm_online_operation_form_entry_v1(pg_temp.online_id(12),pg_temp.online_id(22),repeat('2',64),
-    pg_temp.online_context(2),pg_temp.online_id(102),pg_temp.online_id(202),pg_temp.online_id(405)) ? 'edition'),
-    'reader still works in other offices and never offers pilot submit there');
   payload := jsonb_build_object(pg_temp.online_id(801)::text,jsonb_build_array(pg_temp.online_id(812)),
     pg_temp.online_id(820)::text,'Inspeção concluída',pg_temp.online_id(821)::text,'25,5',
     pg_temp.online_id(822)::text,jsonb_build_object('inicio','2026-11-24'),
@@ -253,8 +251,6 @@ begin
   perform pg_temp.online_write_error(1,102,202,405,830,version,payload,'42501');
   perform pg_temp.online_write_error(1,101,201,405,830,version,payload,'42501');
   perform pg_temp.online_write_error(1,101,207,401,830,version,payload,'42501');
-  perform pg_temp.online_write_error(2,102,202,405,830,version,payload,'42501');
-  perform pg_temp.online_write_error(3,103,203,406,830,version,payload,'42501');
   perform pg_temp.online_write_error(1,101,201,401,830,repeat('0',64),payload,'PT412');
   perform pg_temp.online_write_error(1,101,201,401,830,version,payload-pg_temp.online_id(820)::text,'22023');
   perform pg_temp.online_write_error(1,101,201,401,830,version,
@@ -299,6 +295,29 @@ begin
     where entity_id=inspection_id and source='web' and action='form_submitted' and actor_id=pg_temp.online_id(41)),
     'project activity records the operator and web origin');
 
+  for office in 2..3 loop
+    selected := public.rm_online_operation_form_entry_v1(pg_temp.online_id(10+office),pg_temp.online_id(20+office),repeat(office::text,64),
+      pg_temp.online_context(office),pg_temp.online_id(100+office),pg_temp.online_id(200+office),pg_temp.online_id(403+office));
+    office_version := selected->'edition'->>'version';
+    office_payload := jsonb_build_object(pg_temp.online_id(801+office)::text,'Inspeção da própria oficina');
+    perform pg_temp.online_check(office_version ~ '^[0-9a-f]{64}$', 'each active office receives its own editable model');
+    perform pg_temp.online_write_error(office,101,201,401,831,version,payload,'42501');
+    perform pg_temp.online_write_error(1,100+office,200+office,403+office,831,office_version,office_payload,'42501');
+    perform pg_temp.online_write_error(office,100+office,200+office,403+office,830,office_version,office_payload,'PT409');
+    reply := pg_temp.online_submit(office,100+office,200+office,403+office,830+office,office_version,office_payload);
+    inspection_id := (reply->>'registro_formulario_id')::uuid;
+    perform pg_temp.online_check(pg_temp.online_submit(office,100+office,200+office,403+office,830+office,office_version,office_payload)
+      =reply||'{"idempotent_replay":true}'::jsonb and exists(
+      select 1 from public.rm_registros_formulario r join rm_private.mobile_mutation_receipts m on m.client_submission_id=r.client_submission_id
+      where r.id=inspection_id and r.projeto_id=pg_temp.online_id(200+office) and r.celula_id=pg_temp.online_id(100+office)
+        and r.form_id=pg_temp.online_id(403+office) and r.identidade_user_id=pg_temp.online_id(40+office) and r.status='em_an_lise'
+        and m.params->>'workshop_id'=pg_temp.online_id(office)::text and m.result->'origem_operacional_web'='true'::jsonb
+        and rm_private.workshop_form_record_owned_v1(r.projeto_id,r.celula_id,r.form_id,pg_temp.online_id(office))
+        and not rm_private.workshop_form_record_owned_v1(r.projeto_id,r.celula_id,r.form_id,pg_temp.online_id(1)))
+      and not exists(select 1 from public.rm_sync_outbox where record_id=inspection_id and target_system='bubble_data_api'),
+      'each workshop receives one attributed inspection and receipt for its scoped review queue');
+  end loop;
+
   update public.rm_questoes set enunciado='Observação revisada' where id=pg_temp.online_id(820);
   perform pg_temp.online_write_error(1,101,201,401,831,version,payload,'PT412');
   perform pg_temp.online_check(pg_temp.online_submit(1,101,201,401,830,version,payload)=retry,
@@ -308,6 +327,8 @@ begin
     pg_temp.online_id(101),pg_temp.online_id(201),pg_temp.online_id(401))->'edition'->>'version';
   perform pg_temp.online_write_error(1,101,201,401,831,current_version,payload,'PT422');
 end;$web_form$;
+
+select 'PASS: online form submission and review ownership work in BMA, BRJ and BBH with exact retries and denied crossed scopes' result;
 
 insert into auth.users(id) values(pg_temp.online_id(14));
 insert into auth.sessions(id,user_id) values(pg_temp.online_id(24),pg_temp.online_id(14));

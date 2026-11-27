@@ -224,6 +224,18 @@ $seed_recovered_drafts$;
 commit;
 \endif
 
+create function pg_temp.workshop_restore_native_context(office integer,actor_office integer) returns jsonb language plpgsql as $$
+declare context jsonb; stamp timestamptz:=clock_timestamp();
+begin
+ select jsonb_build_object('version',2,'application','em','channel','mobile','authority',authority,
+   'workshop',jsonb_build_object('id',id,'code',code,'name',code,'active',true,'revision',1,'updated_at',stamp),
+   'principals',jsonb_build_array(jsonb_build_object('kind','device','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
+    'subject',em_fixture.id(710+actor_office),'revision',1),jsonb_build_object('kind','operator','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
+    'subject',em_fixture.id(740+actor_office),'revision',1)), 'issued_at',stamp,'expires_at',stamp+interval '5 minutes') into strict context
+  from rm_private.workshop_references where id=em_fixture.id(office);
+ return context;
+end$$;
+
 begin;
 create function pg_temp.workshop_restore_sso(office integer) returns jsonb language plpgsql as $$
 declare context jsonb; stamp timestamptz:=clock_timestamp();
@@ -299,18 +311,6 @@ language sql as $$
     order by case when apply_order then -n else n end)
    from jsonb_array_elements(snapshot->'items') with ordinality q(item,n)));
 $$;
-
-create function pg_temp.workshop_restore_native_context(office integer,actor_office integer) returns jsonb language plpgsql as $$
-declare context jsonb; stamp timestamptz:=clock_timestamp();
-begin
- select jsonb_build_object('version',2,'application','em','channel','mobile','authority',authority,
-   'workshop',jsonb_build_object('id',id,'code',code,'name',code,'active',true,'revision',1,'updated_at',stamp),
-   'principals',jsonb_build_array(jsonb_build_object('kind','device','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
-    'subject',em_fixture.id(710+actor_office),'revision',1),jsonb_build_object('kind','operator','issuer','https://ellpxfbsrbhblyizvbbk.supabase.co/auth/v1',
-    'subject',em_fixture.id(740+actor_office),'revision',1)), 'issued_at',stamp,'expires_at',stamp+interval '5 minutes') into strict context
-  from rm_private.workshop_references where id=em_fixture.id(office);
- return context;
-end$$;
 
 create function pg_temp.workshop_restore_native(office integer,urls text[],reachable boolean default true) returns jsonb language sql as $$
  select public.rm_mobile_workshop_media_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
@@ -3067,6 +3067,73 @@ begin
 end
 $retired_direct_tables$;
 rollback;
+
+begin;
+do $online_forms_by_workshop$
+declare
+ office integer;
+ other integer;
+ context jsonb;
+ model uuid;
+ project uuid;
+ cell uuid;
+ question uuid;
+ protocol uuid;
+ version text;
+ answers jsonb;
+ saved jsonb;
+ replay jsonb;
+ record_id uuid;
+ filters constant jsonb:='{"page":1,"project_details":true,"q":"QA-MESMA-OS","status":"em_an_lise"}';
+begin
+ for office in 1..4 loop
+  context:=pg_temp.workshop_restore_native_context(office,office);
+  model:=em_fixture.id(400+office);
+  project:=em_fixture.id(100+office);
+  cell:=em_fixture.id(200+office);
+  question:=em_fixture.id(2900+office);
+  protocol:=em_fixture.id(2910+office);
+  update public.rm_celulas_projeto set forms_ids=array[model],status='em_dia' where id=em_fixture.id(300+office);
+  insert into public.rm_questoes(id,form_id,enunciado,tipo,obrigatorio) values(question,model,'Conferência local','texto_curto',true);
+  answers:=jsonb_build_object(question::text,'Conferido pela própria oficina');
+  set local role service_role;
+  version:=public.rm_online_operation_form_entry_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   context,cell,project,model)->'edition'->>'version';
+  saved:=public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   context,cell,project,model,protocol,version,answers);
+  replay:=public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+   context,cell,project,model,protocol,version,answers);
+  for other in 1..4 loop
+   if other=office then continue;end if;
+   begin
+    perform public.rm_online_operation_submit_form_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
+     context,em_fixture.id(200+other),em_fixture.id(100+other),em_fixture.id(400+other),protocol,version,answers);
+    raise exception 'Formulário de outra oficina aceitou protocolo.';
+   exception when insufficient_privilege then null;
+   end;
+  end loop;
+  reset role;
+  record_id:=(saved->>'registro_formulario_id')::uuid;
+  if replay is distinct from saved||'{"idempotent_replay":true}'::jsonb
+   or (select count(*) from public.rm_registros_formulario where client_submission_id=protocol)<>1
+   or not exists(select 1 from public.rm_respostas where registro_formulario_id=record_id and questao_id=question)
+   or not (rm_private.workshop_form_record_read_v1('form_record_list',filters,em_fixture.id(office))->'rows')
+    @> jsonb_build_array(jsonb_build_object('id',record_id)) then
+   raise exception 'A revisão da oficina não recebeu o único envio operacional.';
+  end if;
+  for other in 1..4 loop
+   if other=office then continue;end if;
+   if (rm_private.workshop_form_record_read_v1('form_record_list',filters,em_fixture.id(other))->'rows')
+    @> jsonb_build_array(jsonb_build_object('id',record_id)) then
+    raise exception 'A lista de revisão devolveu o formulário de outra oficina.';
+   end if;
+  end loop;
+ end loop;
+end
+$online_forms_by_workshop$;
+rollback;
+select 'PASS: each of four workshops files and reviews one form by its own online protocol, while 12 crossed writes and 12 crossed review reads are denied' result;
+
 select 'PASS: scoped legacy operational reads retain original receiving proofs, hide foreign and unverified rows, and preserve mobile gateways' result;
 select 'PASS: legacy direct catalogs keep BMA data on its verified tablet, deny other tablets and revoke after a verified transfer' result;
 select 'PASS: historical form options resolve through the authorized question, replay after the native cursor and reject mismatched forms in four workshops' result;
