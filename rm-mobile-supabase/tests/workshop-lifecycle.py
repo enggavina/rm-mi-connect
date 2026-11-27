@@ -269,6 +269,35 @@ def exercise(source, central_dsn, _metadata):
         assert snapshot(dsn) == preserved
         checks.append('Fresh reactivation replays the original offline acknowledgement exactly once')
 
+        original_code = str(uuid4())
+        text = 'Registro local de ida e volta entre oficinas'
+        bma_grant = context(client, bma, 'mobile').json()
+        original = send_comment(dsn, bma, bma_grant, original_code, text)
+        before_transfer = snapshot(dsn)
+        change_binding(client, brj, 'device', bma['device'], True, 1)
+        assert context(client, bma, 'mobile').status_code == 403
+        change_binding(client, brj, 'operator', bma['operator'], True, 1)
+        moved = context(client, bma, 'mobile')
+        assert moved.status_code == 200 and moved.json()['workshop']['id'] == brj['office']
+        try:
+            send_comment(dsn, bma, moved.json(), original_code, text)
+        except psycopg.Error as exc:
+            assert exc.sqlstate in ('42501', 'PT404'), exc.sqlstate
+        else:
+            raise AssertionError('The transferred pair could replay a protocol still owned by BMA')
+        assert snapshot(dsn) == before_transfer
+        checks.append('A physically transferred device and operator cannot replay the original workshop protocol')
+
+        change_binding(client, bma, 'device', bma['device'], True, 2)
+        assert context(client, bma, 'mobile').status_code == 403
+        change_binding(client, bma, 'operator', bma['operator'], True, 2)
+        returned = context(client, bma, 'mobile')
+        assert returned.status_code == 200 and returned.json()['workshop']['id'] == bma['office']
+        again = send_comment(dsn, bma, returned.json(), original_code, text)
+        assert again['comentario_id'] == original['comentario_id'] and again['idempotent_replay'] is True
+        assert snapshot(dsn) == before_transfer
+        checks.append('Returning the original pair to its own workshop preserves the exact business receipt')
+
     with psycopg.connect(central_dsn) as db:
         history = db.execute("select (after_state->>'active')::boolean,actor from permission_private.em_workshop_audit "
                              "where workshop_id=%s and action in('workshop.create','workshop.update') order by id", (brj['office'],)).fetchall()

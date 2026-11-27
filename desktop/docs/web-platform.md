@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 e P0.6 — Armazenamento Android após transferência de oficina
+
+O Android **1.2.26/código 29** mantém um banco SQLite por oficina após a primeira transferência confirmada. Uma confirmação em segundo plano suspende a oficina anterior. A identificação online do par dispositivo e operador permite preparar o novo vínculo. O botão **Reabrir aplicativo** abre o banco correspondente em uma nova sessão do app. O banco instalado antes da transferência pertence à primeira oficina confirmada. Retornar a essa unidade reabre o catálogo, os rascunhos e a fila originais. [Procedimento de transferência](sso.md#transferência-de-um-dispositivo-android).
+
+O ensaio local do serviço Android usou três bancos SQLite. Conferiu a recusa offline e durante uma negativa da autoridade, a suspensão antes de reabrir, a ausência dos dados anteriores no destino e o acesso aos protocolos originais ao retornar à primeira e à segunda oficinas. O teste isolado da interface confirmou o botão e a alternativa de reabertura manual. Passaram 169 testes mobile e o CI web e mobile. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46079577343).
+
+Passaram também sete verificações com a Central e o EM em bancos PostgreSQL isolados. A Central recusou o contexto enquanto dispositivo e operador estavam em oficinas diferentes. O EM recusou o protocolo da unidade anterior na nova oficina. Ao restabelecer os dois vínculos na origem, o mesmo protocolo devolveu o registro original. [Ensaio de ativação, transferência e retomada](../../rm-mobile-supabase/tests/workshop-lifecycle.py).
+
+O instalador **1.2.26/código 29**, do commit `3cf05d7`, foi aplicado sobre a versão 1.2.25 no emulador e o Supabase registrou a versão na BMA. A comparação do SQLite confirmou a preservação dos dois rascunhos. O APK abriu o catálogo e consultou o formulário e o rascunho existente com e sem rede. A reabertura do recebimento após reconectar também passou. O instalador do piloto está em `artifacts/em-mi-electric-brasil-1.2.26-piloto-bma.apk`, SHA-256 `bd6e74f52210b2546ff772539724d0293ce11212f9531e24517d2c68303bd3a1`. A transferência entre oficinas reais segue no aceite do piloto. [EM em produção](https://em-web-production.up.railway.app).
+
 ## P0.4 e P0.5 — Protocolos pendentes no Android
 
 Depois de recuperar a conexão, **Ver pendências** aparece no aviso de sincronização enquanto houver arquivos ou registros aguardando envio. A lista usa a fila que o aplicativo já restringe ao operador e à oficina confirmada. Ela mostra a operação, o estado e o protocolo original. **Sincronizar agora** usa a fila existente e mantém o código do registro, inclusive para um envio ainda pendente de uma versão anterior. O aviso desaparece quando a fila autorizada fica vazia. [Consulta do protocolo no portal](https://em-web-production.up.railway.app/projetos/protocolo).

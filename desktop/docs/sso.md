@@ -7,6 +7,12 @@
 3. Para suspender, desmarque **Oficina ativa** na unidade. Confira na auditoria de Acessos a revisão, a oficina e o responsável. Um novo pedido de contexto dessa unidade deve ser recusado nos dois canais. Confira que a BMA continua consultando suas células e seu planejamento. Uma operação já autorizada pode terminar dentro da validade da autorização emitida.
 4. Para retomar, marque **Oficina ativa** na mesma unidade usando a revisão atual. Confira os vínculos existentes. No Android, identifique o mesmo operador e retome a sincronização com o protocolo original. Confira a confirmação e a gravação única no EM. Preserve o aparelho, a conta, os arquivos locais e a fila durante a suspensão.
 
+### Transferência de um dispositivo Android
+
+No Android 1.2.26, uma transferência confirmada em Acessos utiliza um banco local separado por oficina. Confira o vínculo do dispositivo e o do operador na unidade de destino. Quando os dois vínculos autorizarem a mesma oficina, identifique-se com conexão e use **Reabrir aplicativo**. Após reabrir, identifique-se de novo com conexão para validar a oficina e sincronizar seus cadastros. Os dados e protocolos anteriores ficam no banco da oficina de origem.
+
+Para retomar os trabalhos anteriores no mesmo dispositivo, confirme novamente os vínculos do dispositivo e do operador na oficina original. O app volta a abrir o banco original após a confirmação e a reabertura. Confira rascunhos, anexos e protocolos na origem e use a sincronização normal do aplicativo. O acesso à oficina vem de Acessos durante toda a transferência.
+
 O ensaio de ativação e retomada restaura somente metadados da Central em um PostgreSQL descartável. Executa as rotas administrativas e de contexto da Central e, em um segundo banco local, as migrações do EM e as consultas e gravações autorizadas. Use o checkout do produtor que contém `scripts/test_em_workshops_sql_local.py` e a captura de metadados revisada, com `business_rows_copied: false`. O relatório de saída registra os cenários executados. [Executor de ensaio](../../rm-mobile-supabase/tests/workshop-lifecycle.py).
 
 ```powershell
