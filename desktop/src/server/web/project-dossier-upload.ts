@@ -25,8 +25,7 @@ export function attachmentReservationId(submissionId: string) {
 }
 export class AttachmentBodyTooLarge extends Error {}
 const BodyTooLarge = AttachmentBodyTooLarge;
-export async function boundedAttachmentForm(request: Request): Promise<FormData> {
-  const maximum = MAX_PROJECT_ATTACHMENT_BYTES + 64 * 1024;
+export async function boundedAttachmentForm(request: Request, maximum = MAX_PROJECT_ATTACHMENT_BYTES + 64 * 1024): Promise<FormData> {
   const contentLength = request.headers.get('content-length');
   if (contentLength && (!/^\d+$/.test(contentLength) || Number(contentLength) > maximum)) throw new BodyTooLarge();
   if (!request.body) throw new Error('Missing upload');

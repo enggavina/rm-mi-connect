@@ -4,6 +4,9 @@ import { documentSource, documentTarget, uuid } from '@/server/web/policy';
 import { CorporateAuthError } from '@/server/web/sso-policy';
 import { WorkshopContextError } from '@/server/web/workshop-context';
 import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
+import { isNativeWorkshopMediaPath, resolveWorkshopMedia } from '@/server/web/workshop-media';
+import { ssoWorkshopRead } from '@/server/web/sso-bridge';
+import { signNativeWorkshopDocument } from '@/server/web/project-dossier-storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,10 +35,21 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       data = lookup.data as { id: string; file: unknown } | null;
     }
     if (!data) return Response.json({ error: 'Documento não encontrado.' }, { status: 404, headers });
-    const target = documentTarget(data.file, process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '');
+    const storageOrigin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const target = documentTarget(data.file, storageOrigin);
     if (!target) return Response.json({ error: 'Este documento ainda não possui um arquivo disponível para leitura.' }, { status: 404, headers });
     let destination: string;
-    if (target.kind === 'private') {
+    if (target.kind === 'private' && isNativeWorkshopMediaPath(target.path)) {
+      if (!read) {
+        if (!current.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+        const scoped = await ssoWorkshopRead(current.sso, current.client);
+        const confirmed = await scoped('document_link', { id, source: kind ?? 'documentos' });
+        if (!confirmed || confirmed.id !== id.toLowerCase() || confirmed.file !== data.file) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+      }
+      const signed = typeof data.file === 'string' && await resolveWorkshopMedia(data.file, storageOrigin, 'document', (_bucket, path) => signNativeWorkshopDocument(path));
+      if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
+      destination = signed;
+    } else if (target.kind === 'private') {
       const signed = await current.client.storage.from(target.bucket).createSignedUrl(target.path, 60);
       if (signed.error || !signed.data?.signedUrl) return Response.json({ error: 'Não foi possível autorizar o download.' }, { status: 403, headers });
       destination = signed.data.signedUrl;

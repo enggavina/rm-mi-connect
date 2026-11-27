@@ -2,10 +2,11 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { required } from '../config';
-import { createWorkshopContextReader, EM_IDENTITY_ISSUER } from '../web/workshop-context';
+import { createWorkshopContextReader, EM_IDENTITY_ISSUER, WorkshopContextError } from '../web/workshop-context';
 import { resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
 import { OPERATION_COOKIE, type OperationSelection } from './policy';
 import { createOperationService } from './service';
+import type { NativeMediaUpload } from './media-upload-policy';
 
 function operationClient(privileged = false, token?: string) {
   const url = required('SUPABASE_URL');
@@ -115,4 +116,12 @@ export async function loadNativeWorkshopMedia(token: string, operatorToken: stri
     return null;
   }));
   return { data: { workshop_id: checked.data.workshop_id, files: files.filter(file => file !== null) }, error: null };
+}
+
+export async function authorizeWorkshopMediaUpload(scope: Awaited<ReturnType<typeof operationService.authorizeNativeOperation>>,
+  input: NativeMediaUpload, stored: boolean) {
+  if (scope.p_workshop_context.workshop.id !== input.workshopOrigin) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+  return await operationClient(true).rpc('rm_mobile_workshop_upload_v1', { ...scope, p_workshop_origin: input.workshopOrigin,
+    p_submission: input.submission, p_operation: input.operation, p_payload: input.payload, p_asset: input.asset, p_kind: input.kind,
+    p_reference: input.reference, p_mime: input.mime, p_size: input.size, p_sha256: input.sha256, p_mark_stored: stored });
 }

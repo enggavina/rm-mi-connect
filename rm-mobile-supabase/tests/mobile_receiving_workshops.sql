@@ -246,4 +246,43 @@ begin
  reset role;
 end$$;
 select 'PASS: native media references and cell revocation before credentials for files' result;
+
+create function pg_temp.rx_upload(office int,asset uuid,payload jsonb,ref text,stored boolean default false,checksum text default repeat('a',64))
+returns jsonb language sql as $$
+ select public.rm_mobile_workshop_upload_v1(pg_temp.rx_id(11),pg_temp.rx_id(12),repeat('6',64),pg_temp.rx_context(office),
+  pg_temp.rx_id(office),pg_temp.rx_id(31),'rm_submit_recebimento_v1',payload,asset,'document',ref,'application/pdf',24,checksum,stored)
+$$;
+do $$
+declare asset uuid:=pg_temp.rx_id(911); p jsonb; ref text; result jsonb; object_name text; url text; proj uuid;
+begin
+ ref:='file:///storage/rm-media/'||asset||'.pdf';
+ p:=jsonb_set(pg_temp.rx_payload(pg_temp.rx_id(31),'complete'),'{p_arquivo_nota_fiscal_url}',to_jsonb(ref));
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(2,%L,%L,%L)',asset,p,ref),'42501');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(1,%L,%L,%L)',asset,p,'file:///other.pdf'),'22023');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(1,%L,%L,%L,true)',asset,p,ref),'42501');
+ result:=pg_temp.rx_upload(1,asset,p,ref);
+ object_name:=result->>'path';
+ url:='https://ellpxfbsrbhblyizvbbk.supabase.co/storage/v1/object/authenticated/rm-documentos/'||object_name;
+ perform pg_temp.rx_check(result->>'stored'='false' and object_name='mobile-oficina/'||pg_temp.rx_id(1)||'/'||pg_temp.rx_id(31)||'/'||asset||'.pdf'
+  and pg_temp.rx_upload(1,asset,p,ref)=result,'native upload reserves one immutable canonical path for the original project and operator');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(1,%L,%L,%L,false,%L)',asset,p,ref,repeat('b',64)),'PT409');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(1,%L,%L,%L,true)',asset,p,ref),'PT409');
+ perform pg_temp.rx_check(not rm_private.workshop_stored_media_owned_v1(url,pg_temp.rx_id(1),'document'),'pending objects cannot be signed');
+ insert into storage.objects(bucket_id,name,metadata,user_metadata) values
+  ('rm-documentos',object_name,jsonb_build_object('size',24,'mimetype','application/pdf'),jsonb_build_object('sha256',repeat('a',64)));
+ perform pg_temp.rx_check((pg_temp.rx_upload(1,asset,p,ref,true)->>'stored')::boolean
+  and (pg_temp.rx_upload(1,asset,p,ref,true)->>'stored')::boolean,'storage receipt is idempotent and only acknowledges the verified bytes');
+ perform pg_temp.rx_check(rm_private.workshop_stored_media_owned_v1(url,pg_temp.rx_id(1),'document')
+  and not rm_private.workshop_stored_media_owned_v1(url,pg_temp.rx_id(2),'document')
+  and not rm_private.workshop_stored_media_owned_v1(url,pg_temp.rx_id(1),'answer_signature'),'signed files require the exact workshop and type');
+ select project_id into proj from rm_private.receiving_openings where client_submission_id=pg_temp.rx_id(31);
+ update public.rm_projetos set arquivo_nota_fiscal_url=url where id=proj;
+ perform pg_temp.rx_check(rm_private.workshop_project_link_v1('document_link',jsonb_build_object('id',proj,'source','invoice'),pg_temp.rx_id(1))->>'file'=url
+  and pg_temp.rx_media(1,array[url])->'files'@>jsonb_build_array(jsonb_build_object('url',url,'source','document')),'established private invoice works through both controlled readers');
+ set local role authenticated;
+ perform pg_temp.rx_check(not exists(select 1 from storage.objects where bucket_id='rm-documentos' and name=object_name),'legacy direct storage reads exclude the new private namespace');
+ perform pg_temp.rx_reject(format('select pg_temp.rx_upload(1,%L,%L,%L)',asset,p,ref),'42501');
+ reset role;
+end$$;
+select 'PASS: mobile media upload watches exact ownership, immutable metadata, and private stored files' result;
 rollback;

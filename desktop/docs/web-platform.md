@@ -1,5 +1,17 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — oficina de origem na fila do Android
+
+O Railway **`3ac1cab8-2bc5-4f07-896d-e730e0fd15cd`** publicou a verificação da oficina de origem na abertura e conclusão do recebimento e no envio de outros registros. O APK **1.2.18/código 21** grava a oficina junto ao novo protocolo, em uma transação SQLite. A atualização preserva as filas anteriores, inclusive a ausência de origem quando ela ainda não havia sido registrada.
+
+Passaram 156 testes mobile, o CI e 48 verificações em produção. As três verificações novas recusaram uma origem divergente antes de gravar. O Moto G84 confirmou as 29 células autorizadas online e offline após a instalação. SHA-256 `6ba53b83ac21a89cbfca857ac6eccb4c8e89c911dafb64d8769a832d684ccaf9`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45931412491).
+
+## P0.3 — consulta de fotos e documentos do Android
+
+A migração **084** e o Railway **`4d4c021f-adf4-49fd-9021-90972a5a3766`** publicaram `/api/mobile/midia`. O Android verifica oficina, operador e acesso à célula ou autoria do recebimento antes de acessar o arquivo. O serviço autoriza links do acervo histórico e gera credenciais de 60 segundos para os objetos do Supabase. O cache fica separado por oficina e operador.
+
+Passaram 155 testes mobile, 679 testes web, a regressão SQL, o CI e 45 verificações da API em produção. A API confirmou 83 arquivos existentes e o APK **1.2.17/código 20** abriu uma foto da BMA no Moto G84 com e sem conexão. O corte dos endereços históricos e a autorização dos novos uploads continuam na P0.3. SHA-256 `08aad27c731e3fb516a7df800b71ae49cc13c9b1e7505c1f7c97929a6e63dea9`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45930814277).
+
 ## P0.4 — envio dos registros pendentes do Android
 
 A migração **083** e o Railway **`694d77ca-2520-48a3-9f99-6f008655bd8d`** publicaram `/api/mobile/registros`. O serviço confirma a oficina e o par dispositivo/operador antes de autorizar fotos, formulários, revisões, comentários, estados da célula, aprovações e apontamentos. A autorização corresponde ao conteúdo e ao protocolo originais. Uma recusa mantém o envio salvo no aparelho, e uma nova tentativa autorizada usa o mesmo protocolo.

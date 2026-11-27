@@ -6,6 +6,7 @@ import { withFormVersionLabels } from './form-version-labels';
 import { projectPhotoFilters, type ProjectPhotoFilters } from './project-photo-policy';
 import { checkedWorkshopPage, type WorkshopRead } from './workshop-read-policy';
 import { workshopMediaUrl } from '@/shared/workshop-media';
+import { isNativeWorkshopMedia } from './workshop-media';
 
 // Only explicit, public operational columns enter these DTOs. In particular,
 // rm_users never uses select('*') or exposes Auth/credential metadata.
@@ -73,6 +74,8 @@ async function page(query: any, number: unknown, pageSize: number): Promise<WebP
 
 /** Injectable RLS client makes pagination and scope testable without Auth secrets. */
 export function createWebData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead, operationRead?: WorkshopRead) {
+  const storageOrigin = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const scopedMedia = (file: unknown) => !!operationRead || isNativeWorkshopMedia(file, storageOrigin);
   const allowed = (capability: CorporateCapability) => capabilities === undefined || capabilities.includes(capability);
   const requireCapability = (capability: CorporateCapability) => {
     if (!allowed('em.portal.read') || !allowed(capability)) throw new Error('Acesso não autorizado a esta área.');
@@ -222,7 +225,7 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     const displayProject: WebRow = { ...project, descricao_equipamento_exibicao: projectEquipmentDisplay(project, equipment) };
     return { project: displayProject, client: customers[0] || null, equipment,
       allocations, hasAllocations, cells, forms: await withFormVersionLabels(client, forms), records, stages, comments, users,
-      photos: operationRead ? pictures.rows.map<WebRow>(photo => ({ ...photo, foto_url: workshopMediaUrl(photo.id, 'project_photo') })) : pictures.rows,
+      photos: pictures.rows.map<WebRow>(photo => scopedMedia(photo.foto_url) ? { ...photo, foto_url: workshopMediaUrl(photo.id, 'project_photo') } : photo),
       photoTotal: pictures.total, photoPage: pictures.page, photoPageSize: pictures.pageSize, documents, attachments };
   }
   async function getRecord(id: string) {
@@ -246,11 +249,11 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     ]);
     const visibleAnswers = answers.map(answer => {
       if (allowed('em.photos.read')) {
-        if (!operationRead) return answer;
         const photos: unknown[] = Array.isArray(answer.fotos_urls) ? answer.fotos_urls : [];
+        if (!operationRead && !photos.some(scopedMedia) && !scopedMedia(answer.assinatura_url)) return answer;
         return { ...answer,
-          fotos_urls: photos.map((file, index) => typeof file === 'string' && file ? workshopMediaUrl(answer.id, 'answer_photo', index) : null),
-          assinatura_url: answer.assinatura_url ? workshopMediaUrl(answer.id, 'answer_signature') : null };
+          fotos_urls: photos.map((file, index) => typeof file === 'string' && file ? scopedMedia(file) ? workshopMediaUrl(answer.id, 'answer_photo', index) : file : null),
+          assinatura_url: answer.assinatura_url && scopedMedia(answer.assinatura_url) ? workshopMediaUrl(answer.id, 'answer_signature') : answer.assinatura_url || null };
       }
       const type = answer.tipo ?? questions.find(question => question.id === answer.questao_id)?.tipo;
       if (MEDIA_ANSWER_TYPES.has(type) || hasMediaReference(answer.resposta) || hasMediaReference(answer.itens)) {
