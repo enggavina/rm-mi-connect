@@ -30,6 +30,8 @@ test('private documents require the configured Storage origin and safe object pa
   for (const url of ['http://127.0.0.1/secret', 'https://evil.test/report.pdf', 'https://project.supabase.co.evil.test/storage/v1/object/authenticated/rm-documentos/a.pdf', `${base}/storage/v1/object/authenticated/rm-documentos/%252e%252e/report.pdf?token=x`, `${base}/storage/v1/object/authenticated/rm-documentos/%2fetc`, `${base}/storage/v1/object/authenticated/rm-documentos/a%5cb.pdf`, `${base}/storage/v1/object/public/rm-documentos/a.pdf`]) assert.equal(documentTarget(url, base), null);
   const legacy = 'https://files.cdn.bubble.io/a.pdf';
   assert.deepEqual(documentTarget(legacy, base), { kind: 'external', url: legacy });
+  assert.equal(documentTarget(legacy, base, false), null);
+  assert.equal(documentTarget(`${base}/storage/v1/object/authenticated/rm-documentos/legacy/${id}.pdf`, base, false)?.kind, 'private');
   assert.equal(documentTarget('https://u:p@files.cdn.bubble.io/a.pdf', base), null);
   assert.equal(documentTarget('https://files.cdn.bubble.io.evil.test/a.pdf', base), null);
   assert.equal(documentTarget(`${base}/storage/v1/object/authenticated/rm-documentos/%252e%252e/report.pdf`, base), null);

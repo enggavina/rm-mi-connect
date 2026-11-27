@@ -40,7 +40,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       if (!signed) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
       return new Response(null, { status: 303, headers: { ...headers, Location: signed } });
     }
-    const target = documentTarget(data.file, storageOrigin);
+    const target = documentTarget(data.file, storageOrigin, !read);
     if (!target) return Response.json({ error: 'Este documento ainda não possui um arquivo disponível para leitura.' }, { status: 404, headers });
     let destination: string;
     if (target.kind === 'private' && isNativeWorkshopMediaPath(target.path)) {

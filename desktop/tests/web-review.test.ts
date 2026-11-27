@@ -62,7 +62,7 @@ test('workshop media accepts exact local references and restricts signing by sto
   const photo = workshopMediaUrl(id, 'answer_photo', 2);
   assert.equal(safeAnswerMedia(photo, base), photo);
   assert.equal(safeAnswerMedia(`${photo}&unexpected=1`, base), null);
-  assert.equal(workshopMediaTarget('https://files.cdn.bubble.io/legacy.jpg', base, 'project_photo')?.kind, 'legacy');
+  assert.equal(workshopMediaTarget('https://files.cdn.bubble.io/legacy.jpg', base, 'project_photo'), null);
   assert.deepEqual(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/title%20view.jpg`, base, 'answer_photo'),
     { kind: 'storage', origin: base, bucket: 'rm-fotos', path: 'owner/title view.jpg' });
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg`, base, 'answer_signature'), null);
@@ -72,7 +72,7 @@ test('workshop media accepts exact local references and restricts signing by sto
   assert.equal(workshopMediaTarget('https://files.cdn.bubble.io.example.org/legacy.jpg', base, 'project_photo'), null);
 });
 
-test('media download signs only the expected object and keeps legacy attachments readable', async () => {
+test('media download signs only the expected object and requires a private archive for external sources', async () => {
   const base = 'https://example.supabase.co';
   const invoice = `${base}/storage/v1/object/authenticated/rm-documentos/device/a%20b.pdf`;
   const signed = `${base}/storage/v1/object/sign/rm-documentos/device/a%20b.pdf?token=opaque`;
@@ -85,7 +85,7 @@ test('media download signs only the expected object and keeps legacy attachments
   assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => signed.replace(base, 'https://unrelated.example')), null);
   assert.equal(await resolveWorkshopMedia(invoice, base, 'document', async () => `${signed}&token=duplicate`), null);
   const legacy = 'https://files.cdn.bubble.io/legacy.jpg';
-  assert.equal(await resolveWorkshopMedia(legacy, base, 'answer_photo', async () => assert.fail('Legacy URL does not sign storage')), legacy);
+  assert.equal(await resolveWorkshopMedia(legacy, base, 'answer_photo', async () => assert.fail('External files require a private archive')), null);
 });
 
 test('the legacy image relay streams approved image formats without forwarding credentials or redirects', async t => {

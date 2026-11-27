@@ -39,10 +39,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
     const target = workshopMediaTarget(value.file, origin, source);
     if (!target) return failure(404);
-    const publicUrl = target.kind === 'legacy' ? target.url
-      : target.bucket !== 'rm-documentos' && value.file.startsWith(`${target.origin}/storage/v1/object/public/${target.bucket}/`)
-        ? `${target.origin}/storage/v1/object/public/${target.bucket}/${target.path.split('/').map(encodeURIComponent).join('/')}`
-        : null;
+    const publicUrl = target.bucket !== 'rm-documentos' && value.file.startsWith(`${target.origin}/storage/v1/object/public/${target.bucket}/`)
+      ? `${target.origin}/storage/v1/object/public/${target.bucket}/${target.path.split('/').map(encodeURIComponent).join('/')}`
+      : null;
     if (publicUrl) {
       const image = await relayLegacyWorkshopImage(publicUrl, request.signal);
       if (!image) return failure(404);

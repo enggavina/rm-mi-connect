@@ -124,20 +124,26 @@ async function main() {
           }
           if (step.document) {
             const doc = typeof step.document === 'string' ? { path: step.document, type: 'docx' } : step.document;
-            const mime = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf' }[doc.type];
-            assert.ok(mime, 'Tipo de documento não suportado na matriz.');
             const link = await context.request.get(location(doc.path), { maxRedirects: 0 });
-            const copy = signedMedia(link);
-            assert.ok(copy.pathname.toLowerCase().endsWith(`.${doc.type}`));
+            if (doc.unavailable) {
+              assert.equal(link.status(), 404);
+              assert.equal(link.headers().location, undefined);
+              assert.equal((await link.json()).error, 'Este documento ainda não possui um arquivo disponível para leitura.');
+            } else {
+              const mime = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf' }[doc.type];
+              assert.ok(mime, 'Tipo de documento não suportado na matriz.');
+              const copy = signedMedia(link);
+              assert.ok(copy.pathname.toLowerCase().endsWith(`.${doc.type}`));
+              const file = await context.request.get(copy.href, { maxRedirects: 0 });
+              assert.equal(file.status(), 200);
+              assert.equal(file.headers()['content-type']?.split(';')[0], mime);
+              const body = await file.body();
+              const magic = doc.type === 'pdf' ? Buffer.from('%PDF-') : Buffer.from('504b0304', 'hex');
+              assert.deepEqual(body.subarray(0, magic.length), magic);
+              if (doc.sha256) assert.equal(createHash('sha256').update(body).digest('hex'), doc.sha256);
+              await file.dispose();
+            }
             await link.dispose();
-            const file = await context.request.get(copy.href, { maxRedirects: 0 });
-            assert.equal(file.status(), 200);
-            assert.equal(file.headers()['content-type']?.split(';')[0], mime);
-            const body = await file.body();
-            const magic = doc.type === 'pdf' ? Buffer.from('%PDF-') : Buffer.from('504b0304', 'hex');
-            assert.deepEqual(body.subarray(0, magic.length), magic);
-            if (doc.sha256) assert.equal(createHash('sha256').update(body).digest('hex'), doc.sha256);
-            await file.dispose();
           }
           if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
           if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);

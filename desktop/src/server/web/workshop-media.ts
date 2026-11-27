@@ -22,7 +22,6 @@ export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return null;
-    if (url.hostname.endsWith('.cdn.bubble.io')) return { kind: 'legacy' as const, url: url.href };
     const origin = new URL(supabaseOrigin);
     if (url.origin !== origin.origin || url.search || raw.includes('\\')
       || /\/(?:\.|%2e){1,2}(?=\/|$)/i.test(raw)) return null;
@@ -48,7 +47,7 @@ export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source
 
 export function isNativeWorkshopMedia(raw: unknown, origin: string) {
   const target = workshopMediaTarget(raw, origin, 'document');
-  return target?.kind === 'storage' && isNativeWorkshopMediaPath(target.path);
+  return target !== null && isNativeWorkshopMediaPath(target.path);
 }
 
 type StorageSigner = (bucket: string, path: string) => Promise<string | undefined>;
@@ -71,8 +70,7 @@ async function signedStorageUrl(target: { origin: string; bucket: string; path: 
 export async function resolveWorkshopMedia(reference: string, origin: string, source: z.infer<typeof workshopMediaMatch>['source'],
   sign: StorageSigner): Promise<string | null> {
   const target = workshopMediaTarget(reference, origin, source);
-  if (!target) return null;
-  return target.kind === 'legacy' ? target.url : signedStorageUrl(target, sign);
+  return target ? signedStorageUrl(target, sign) : null;
 }
 
 /** The archive path is issued by a scoped reader, never taken from a catalog URL. */

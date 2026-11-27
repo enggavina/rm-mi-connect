@@ -99,7 +99,7 @@ export function documentSource(source: string | null): { table: string; column: 
   if (source === 'invoice') return { table: 'rm_projetos', column: 'arquivo_nota_fiscal_url' };
   return null;
 }
-export function documentTarget(raw: unknown, supabaseUrl: string): DocumentTarget | null {
+export function documentTarget(raw: unknown, supabaseUrl: string, allowExternal = true): DocumentTarget | null {
   if (typeof raw !== 'string') return null;
   try {
     const url = new URL(raw), base = new URL(supabaseUrl);
@@ -111,9 +111,7 @@ export function documentTarget(raw: unknown, supabaseUrl: string): DocumentTarge
       if (!path || /[%\\\x00-\x1f]/.test(path) || path.split('/').some(part => !part || part === '.' || part === '..')) return null;
       return { kind: 'private', bucket: 'rm-documentos', path };
     }
-    // Existing attachments were imported from Bubble's CDN. Redirect only;
-    // no arbitrary HTTP fetch, private-network access or service credentials.
-    if (url.hostname.endsWith('.cdn.bubble.io') && !url.port) return { kind: 'external', url: url.toString() };
+    if (allowExternal && url.hostname.endsWith('.cdn.bubble.io') && !url.port) return { kind: 'external', url: url.toString() };
     return null;
   } catch { return null; }
 }
