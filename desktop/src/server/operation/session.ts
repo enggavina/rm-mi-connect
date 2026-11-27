@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { required } from '../config';
 import { createWorkshopContextReader, EM_IDENTITY_ISSUER, WorkshopContextError } from '../web/workshop-context';
 import { resolveWorkshopArchive, resolveWorkshopMedia, workshopMediaMatch } from '../web/workshop-media';
-import { confirmsReceivingResult, OPERATION_COOKIE, type OperationSelection } from './policy';
+import { confirmsMutationResult, confirmsReceivingResult, OPERATION_COOKIE, type OperationSelection } from './policy';
 import { createOperationService } from './service';
 import type { NativeMediaUpload } from './media-upload-policy';
 
@@ -95,7 +95,13 @@ export async function sendNativeWorkshopMutation(token: string, operatorToken: s
   const input = { p_client_submission_id: submission, p_rpc_name: operation, p_params: payload, p_operator_token: operatorToken };
   const permit = await operationClient(true).rpc('rm_authorize_mobile_workshop_mutation_v1', { ...scope, ...input });
   if (permit.error) return permit;
-  return await operationClient(false, token).rpc('rm_mobile_workshop_mutate_v1', input);
+  const receipt = await operationClient(false, token).rpc('rm_mobile_workshop_mutate_v1', input);
+  const { workshop, principals } = scope.p_workshop_context;
+  if (!receipt.error && !confirmsMutationResult(receipt.data, { submission, operation, workshop: workshop.id,
+    device: scope.p_auth_user_id, operator: principals.find(principal => principal.kind === 'operator')?.subject })) {
+    return { data: null, error: { code: 'PT503' } };
+  }
+  return receipt;
 }
 
 export async function loadNativeCatalogPage(token: string, operatorToken: string, table: string,

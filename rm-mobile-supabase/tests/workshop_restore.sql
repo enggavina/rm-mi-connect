@@ -3210,6 +3210,85 @@ $online_forms_by_workshop$;
 rollback;
 select 'PASS: each of four workshops files and reviews one form by its own online protocol, while 12 crossed writes and 12 crossed review reads are denied' result;
 
+begin;
+do $offline_confirmations$
+declare
+ office int; other int; attempt int; action text; payload jsonb; protocol uuid; answer jsonb;
+ device uuid; device_session uuid; actor uuid; token text; project uuid; cell uuid; allocation uuid;
+ model uuid; question uuid; registration uuid; stage uuid; destination uuid;
+ ack jsonb; original_ack jsonb; expected jsonb;
+begin
+ for office in 1..4 loop
+  device:=em_fixture.id(710+office); device_session:=em_fixture.id(720+office); actor:=em_fixture.id(740+office);
+  token:=repeat(chr(96+office),64); project:=em_fixture.id(100+office); cell:=em_fixture.id(200+office);
+  allocation:=em_fixture.id(300+office); model:=em_fixture.id(400+office); question:=em_fixture.id(2920+office);
+  stage:=em_fixture.id(2930+office); destination:=em_fixture.id(2940+office);
+  insert into public.rm_celulas(id,nome) values(destination,'Destino local '||office);
+  insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(destination,em_fixture.id(office));
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade)
+   values(em_fixture.id(2950+office),project,destination,'pendente',false);
+  insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,celula_destino_id,celula_projeto_id,status_cel_proj,aprovador_id)
+   values(stage,project,cell,destination,allocation,'em_dia',actor);
+  update public.rm_celulas_projeto set forms_ids=array[model],status='em_dia' where id=allocation;
+  insert into public.rm_questoes(id,form_id,enunciado,tipo,obrigatorio) values(question,model,'Conferência local','texto_curto',true);
+  perform set_config('request.jwt.claim.sub',device::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+
+  foreach action in array array['rm_submit_form_inspection_v1','rm_submit_form_revision_v1','rm_record_cell_photo_v1',
+   'rm_add_cell_comment_v1','rm_update_cell_status_v1','rm_record_execution_event_v1','rm_transition_stage_approval_v1'] loop
+   protocol:=gen_random_uuid();
+   answer:=jsonb_build_object('questao_id',question,'resposta','Conferência da fila');
+   payload:=case action
+    when 'rm_submit_form_inspection_v1' then jsonb_build_object('p_projeto_id',project,'p_celula_id',cell,
+     'p_form_id',model,'p_respostas',jsonb_build_array(answer))
+    when 'rm_submit_form_revision_v1' then jsonb_build_object('p_registro_formulario_id',registration,
+     'p_respostas_corrigidas',jsonb_build_array(answer||'{"resposta":"Corrigido na fila"}'))
+    when 'rm_record_cell_photo_v1' then jsonb_build_object('p_projeto_id',project,'p_celula_id',cell,'p_celula_projeto_id',allocation,
+     'p_foto_url','https://fixture.invalid/queued.jpg','p_titulo','Conferência da fila','p_categoria_foto','complementar')
+    when 'rm_add_cell_comment_v1' then jsonb_build_object('p_celula_projeto_id',allocation,'p_comentario','Comentário da fila')
+    when 'rm_update_cell_status_v1' then jsonb_build_object('p_celula_projeto_id',allocation,'p_status','em_dia')
+    when 'rm_record_execution_event_v1' then jsonb_build_object('p_session_id',em_fixture.id(970+office),'p_allocation_id',allocation,
+     'p_operador_id',actor,'p_previous_event_id',em_fixture.id(980+office),'p_kind','pause','p_occurred_at',clock_timestamp(),
+     'p_pause_reason','material','p_note',null,'p_effort_minutes',null)
+    when 'rm_transition_stage_approval_v1' then jsonb_build_object('p_aprovacao_etapa_id',stage,'p_acao','liberar') end;
+   expected:=jsonb_build_object('protocolo',protocol,'operacao',action,'dispositivo_id',device,'operador_id',actor,
+    'oficina_id',em_fixture.id(office),'projeto_id',project);
+   for other in 1..4 loop
+    if other=office then continue;end if;
+    begin
+     perform public.rm_authorize_mobile_workshop_mutation_v1(device,device_session,token,
+      pg_temp.workshop_restore_native_context(other,office),protocol,action,payload);
+     raise exception 'A fila obteve autorização cruzada para %.',action;
+    exception when insufficient_privilege then null;end;
+   end loop;
+   for attempt in 1..2 loop
+    perform public.rm_authorize_mobile_workshop_mutation_v1(device,device_session,token,
+     pg_temp.workshop_restore_native_context(office,office),protocol,action,payload);
+    set local role authenticated;
+    ack:=public.rm_mobile_workshop_mutate_v1(protocol,action,payload,token);
+    reset role;
+    if ack->'confirmacao' is distinct from expected or (attempt=2 and ack is distinct from original_ack||'{"idempotent_replay":true}'::jsonb) then
+     raise exception 'Confirmação divergente da fila para % na oficina %.',action,office;
+    end if;
+    original_ack:=ack;
+   end loop;
+   if not exists(select 1 from rm_private.mobile_mutation_receipts r where r.client_submission_id=protocol
+    and r.auth_user_id=device and r.operator_id=actor and r.rpc_name=action
+    and r.result-'idempotent_replay'=ack-'idempotent_replay'-'confirmacao') then
+    raise exception 'A fila perdeu o recibo original de %.',action;
+   end if;
+   if action='rm_submit_form_inspection_v1' then
+    registration:=(ack->>'registro_formulario_id')::uuid;
+    update public.rm_registros_formulario set status='direcionado' where id=registration;
+    update public.rm_respostas set revisar=true where registro_formulario_id=registration and questao_id=question;
+   end if;
+  end loop;
+ end loop;
+end
+$offline_confirmations$;
+rollback;
+select 'PASS: seven offline operations confirm and replay the original receipt in each of four workshops' result;
+
 select 'PASS: scoped legacy operational reads retain original receiving proofs, hide foreign and unverified rows, and preserve mobile gateways' result;
 select 'PASS: legacy direct catalogs keep BMA data on its verified tablet, deny other tablets and revoke after a verified transfer' result;
 select 'PASS: historical form options resolve through the authorized question, replay after the native cursor and reject mismatched forms in four workshops' result;

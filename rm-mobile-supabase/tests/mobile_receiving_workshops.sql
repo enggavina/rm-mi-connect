@@ -206,7 +206,7 @@ insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
  values(pg_temp.rx_id(812),pg_temp.rx_id(779),pg_temp.rx_id(802),true);
 do $$
-declare rid uuid:=gen_random_uuid(); op text:='rm_add_cell_comment_v1'; p jsonb; result jsonb;
+declare rid uuid:=gen_random_uuid(); op text:='rm_add_cell_comment_v1'; p jsonb; ack jsonb; expected jsonb;
 begin
  p:=jsonb_build_object('p_celula_projeto_id',pg_temp.rx_id(811),'p_comentario','LOCAL authorized offline comment',
   'p_operador_id',pg_temp.rx_id(14));
@@ -217,10 +217,19 @@ begin
  perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L,1,%L)',rid,op,p,jsonb_set(p,'{p_comentario}','"LOCAL changed"')),'42501');
  perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L,1)',gen_random_uuid(),op,
   jsonb_set(p,'{p_celula_projeto_id}',to_jsonb(pg_temp.rx_id(812)))),'42501');
- result:=pg_temp.rx_mutation(rid,op,p);
- perform pg_temp.rx_check(result is not null and (pg_temp.rx_mutation(rid,op,p)->>'idempotent_replay')::boolean
+ ack:=pg_temp.rx_mutation(rid,op,p);
+ expected:=jsonb_build_object('protocolo',rid,'operacao',op,'dispositivo_id',pg_temp.rx_id(11),'operador_id',pg_temp.rx_id(14),
+  'oficina_id',pg_temp.rx_id(1),'projeto_id',ack->'projeto_id');
+ perform pg_temp.rx_check(ack->'confirmacao'=expected and pg_temp.rx_mutation(rid,op,p)=ack||'{"idempotent_replay":true}'::jsonb
   and (select count(*)=1 from public.rm_comentarios where evento='LOCAL authorized offline comment'
    and cadastrado_por_id=pg_temp.rx_id(14)),'offline protocol returns one registered comment with the original author');
+ update rm_private.mobile_mutation_receipts set result='{}'::jsonb where client_submission_id=rid;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L)',rid,op,p),'PT503');
+ update rm_private.mobile_mutation_receipts set result=(ack-'confirmacao')||jsonb_build_object('projeto_id',pg_temp.rx_id(779))
+ where client_submission_id=rid;
+ perform pg_temp.rx_reject(format('select pg_temp.rx_mutation(%L,%L,%L)',rid,op,p),'PT503');
+ update rm_private.mobile_mutation_receipts set result=(ack-'confirmacao') where client_submission_id=rid;
+ perform pg_temp.rx_check(pg_temp.rx_mutation(rid,op,p)->'confirmacao'=expected,'replay returns the same receipt after valid data returns');
 end$$;
 select 'PASS: native queued mutation preserves author, exact payload and retry and refuses another workshop' result;
 

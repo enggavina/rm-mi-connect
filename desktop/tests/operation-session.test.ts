@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOperationService } from '../src/server/operation/service';
-import { confirmsReceivingResult, openDeviceLogin, openOperationSession, operationClaims, operationQuery, readOperationCredentials,
+import { confirmsMutationResult, confirmsReceivingResult, openDeviceLogin, openOperationSession, operationClaims, operationQuery, readOperationCredentials,
   readOperatorCredentials } from '../src/server/operation/policy';
 import { sealSso } from '../src/server/web/sso-crypto';
 import { onlineFormSubmission } from '../src/shared/online-form';
@@ -34,6 +34,22 @@ test('a receiving acknowledgement must identify the exact stored office, protoco
   const opening = { ...result, confirmacao: { ...confirmation, fase: 'open' }, attachments_pending: true, receiving_id: protocol };
   assert.equal(confirmsReceivingResult(opening, protocol, 'open', workshop), true);
   assert.equal(confirmsReceivingResult({ ...opening, receiving_id: other }, protocol, 'open', workshop), false);
+});
+
+test('an offline operation receipt must identify the queued write and its current workshop principals', () => {
+  const expected = { submission: id('a'), operation: 'rm_record_cell_photo_v1', workshop: id('b'), device: userId, operator: operatorId };
+  const confirmacao = { protocolo: expected.submission, operacao: expected.operation, oficina_id: expected.workshop,
+    dispositivo_id: expected.device, operador_id: expected.operator, projeto_id: projectId };
+  const result = { foto_id: id('c'), confirmacao };
+  assert.equal(confirmsMutationResult(result, { ...expected, submission: expected.submission.toUpperCase() }), true);
+  assert.equal(confirmsMutationResult({ ...result, projeto_id: projectId, idempotent_replay: true }, expected), true);
+  for (const field of Object.keys(confirmacao).filter(key => key !== 'projeto_id')) {
+    assert.equal(confirmsMutationResult({ ...result, confirmacao: { ...confirmacao, [field]: id('d') } }, expected), false, field);
+  }
+  assert.equal(confirmsMutationResult({ ...result, confirmacao: undefined }, expected), false);
+  assert.equal(confirmsMutationResult({ ...result, projeto_id: id('d') }, expected), false);
+  assert.equal(confirmsMutationResult({ ...result, confirmacao: { ...confirmacao, projeto_id: null } }, expected), false);
+  assert.equal(confirmsMutationResult(result, { ...expected, operator: undefined }), false);
 });
 const exampleWorkshop: WorkshopContext = {
   version: 2, application: 'em', channel: 'mobile', authority: CORPORATE_ISSUER,

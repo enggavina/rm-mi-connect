@@ -15,6 +15,10 @@ const receivingResult = z.object({
   projeto_id: id, equipamento_id: id, receiving_id: id.optional(), attachments_pending: z.boolean().optional(),
   confirmacao: z.object({ protocolo: id, oficina_id: id, fase: z.enum(['open', 'complete']), projeto_id: id, equipamento_id: id }).strict(),
 });
+const mutationResult = z.object({
+  projeto_id: id.optional(), confirmacao: z.object({ protocolo: id, operacao: z.string(), dispositivo_id: id,
+    operador_id: id, oficina_id: id, projeto_id: id }).strict(),
+});
 const expiry = z.number().int().positive();
 const deviceSession = z.object({ token, expiresAt: expiry }).strict();
 const session = deviceSession.extend({ operatorToken });
@@ -36,6 +40,16 @@ export function confirmsReceivingResult(value: unknown, submission: string, phas
   return confirmation.protocolo === submission.toLowerCase() && confirmation.oficina_id === workshop.toLowerCase()
     && confirmation.fase === phase && confirmation.projeto_id === receipt.projeto_id && confirmation.equipamento_id === receipt.equipamento_id
     && (phase === 'open' ? receipt.receiving_id === confirmation.protocolo : receipt.attachments_pending !== true);
+}
+
+export function confirmsMutationResult(value: unknown, expected: { submission: string; operation: string;
+  device: string; operator?: string; workshop: string }) {
+  const parsed = mutationResult.safeParse(value);
+  if (!parsed.success) return false;
+  const { confirmacao, projeto_id } = parsed.data;
+  return confirmacao.protocolo === expected.submission.toLowerCase() && confirmacao.operacao === expected.operation
+    && confirmacao.oficina_id === expected.workshop && confirmacao.dispositivo_id === expected.device
+    && confirmacao.operador_id === expected.operator && (projeto_id === undefined || confirmacao.projeto_id === projeto_id);
 }
 
 function sealCookie(value: unknown, purpose: SsoPurpose, key?: string) {
