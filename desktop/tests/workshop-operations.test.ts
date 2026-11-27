@@ -57,6 +57,22 @@ test('operational permit capabilities reflect requested fields and filters', () 
   assert.ok(workshopReadCapabilities('planning_list', { project_details: true }).includes('em.projects.read'));
   assert.ok(workshopReadCapabilities('gantt_snapshot', { project_id: project }).includes('em.projects.read'));
   assert.ok(!workshopReadCapabilities('gantt_snapshot', { project_id: null, project_details: false }).includes('em.projects.read'));
+  assert.deepEqual(workshopReadCapabilities('form_record_project'), ['em.portal.read', 'em.forms.read']);
+  assert.ok(workshopReadCapabilities('form_record_list', { project_details: true }).includes('em.projects.read'));
+});
+
+test('form record denies direct foreign IDs and propagates context failures before reading responses', async () => {
+  const formCaps = ['em.portal.read', 'em.forms.read'] as const;
+  const calls: unknown[] = [];
+  const notOwned = createWebData(client, formCaps, undefined, async (resource, args) => { calls.push([resource, args]); return null; });
+  assert.equal(await notOwned.getRecord(project), null);
+  assert.equal(await notOwned.getRecord('invalid'), null);
+  assert.deepEqual(calls, [['form_record_project', { id: project }]]);
+  const outage = new Error('workshop authority unavailable');
+  const unavailable = createWebData(client, formCaps, undefined, async () => { throw outage; });
+  await assert.rejects(unavailable.getRecord(project), error => error === outage);
+  const invalid = createWebData(client, formCaps, undefined, async () => ({ project_id: project, form_id: cell }));
+  await assert.rejects(invalid.getRecord(project), /Não foi possível/);
 });
 
 test('production rollout is opt-in and the enabled reader requires an SSO context', async () => {

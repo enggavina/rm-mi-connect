@@ -68,6 +68,21 @@ insert into public.rm_celulas(id,nome) values
 insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values
  (pg_temp.project_read_id(301),pg_temp.project_read_id(1)),(pg_temp.project_read_id(302),pg_temp.project_read_id(2));
 
+insert into public.rm_forms(id,titulo) values
+ (pg_temp.project_read_id(601),'LOCAL BMA form'),(pg_temp.project_read_id(602),'LOCAL BRJ form'),(pg_temp.project_read_id(603),'LOCAL pending form');
+insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values
+ ('form_model',pg_temp.project_read_id(601),pg_temp.project_read_id(1)),('form_model',pg_temp.project_read_id(602),pg_temp.project_read_id(2));
+-- Model historical inconsistencies that predate the reference guards.
+alter table public.rm_registros_formulario disable trigger workshop_catalog_reference_guard;
+alter table public.rm_registros_formulario disable trigger workshop_direct_reference_guard;
+insert into public.rm_registros_formulario(id,projeto_id,celula_id,form_id,numero_projeto_rm,descricao)
+ select pg_temp.project_read_id(700+n),pg_temp.project_read_id(project_no),pg_temp.project_read_id(cell_no),
+  pg_temp.project_read_id(form_no),'OS 0001','LOCAL review '||n
+ from (values(1,101,301,601),(2,127,302,602),(3,101,302,601),(4,101,301,602),(5,101,null,601),
+  (6,128,301,601),(7,101,301,603),(8,101,303,601)) r(n,project_no,cell_no,form_no);
+alter table public.rm_registros_formulario enable trigger workshop_direct_reference_guard;
+alter table public.rm_registros_formulario enable trigger workshop_catalog_reference_guard;
+
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,numero_projeto,posicao,retirada) values
  (pg_temp.project_read_id(501),pg_temp.project_read_id(101),pg_temp.project_read_id(301),'LOCAL allocation 1',1,false),
  (pg_temp.project_read_id(502),pg_temp.project_read_id(102),pg_temp.project_read_id(301),'LOCAL allocation 2',2,true),
@@ -119,6 +134,23 @@ begin
   perform pg_temp.project_read_check(v->>'file'='https://private.invalid/invoice','own invoice uses the existing file reference');
   perform pg_temp.project_read_check(pg_temp.project_read_call('document_link',jsonb_build_object('id',project_bma,'source','invoice'),brj) is null,
    'direct download of another office has no file location');
+
+  v:=pg_temp.project_read_call('form_record_list','{"q":"OS 0001","status":"em_an_lise","page":1,"project_details":true}',bma);
+  perform pg_temp.project_read_check((v->>'total')::int=2 and jsonb_array_length(v->'rows')=2
+   and (v->'forms'->0->>'id')::uuid=pg_temp.project_read_id(601)
+   and (v->'projects'->0->>'id')::uuid=project_bma and not(v->'rows'->0?'parecer'),
+   'form dashboard scopes search and totals before pagination, retaining historical records without a cell');
+  v:=pg_temp.project_read_call('form_record_list','{"q":"OS 0001","status":null,"page":1,"project_details":false}',brj);
+  perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'rows'->0->>'id')::uuid=pg_temp.project_read_id(702)
+   and v->'projects'='[]'::jsonb,'duplicate OS search returns the BRJ record and omits optional project metadata');
+  v:=pg_temp.project_read_call('form_record_project',jsonb_build_object('id',pg_temp.project_read_id(701)),bma);
+  perform pg_temp.project_read_check((v->>'project_id')::uuid=project_bma and (v->>'form_id')::uuid=pg_temp.project_read_id(601)
+   and (v->>'cell_id')::uuid=pg_temp.project_read_id(301),'own form detail identifies a consistent project, cell and model');
+  perform pg_temp.project_read_check(pg_temp.project_read_call('form_record_project',jsonb_build_object('id',pg_temp.project_read_id(701)),brj) is null
+   and pg_temp.project_read_call('form_record_project',jsonb_build_object('id',pg_temp.project_read_id(703)),bma) is null
+   and pg_temp.project_read_call('form_record_project',jsonb_build_object('id',pg_temp.project_read_id(704)),bma) is null
+   and pg_temp.project_read_call('form_record_project',jsonb_build_object('id',pg_temp.project_read_id(706)),bma) is null,
+   'form URL omits other-office records and rejects inconsistent references');
 
   v:=pg_temp.project_read_call('project_list',list_args,bma);
   perform pg_temp.project_read_check((v->>'total')::int=26 and jsonb_array_length(v->'rows')=25

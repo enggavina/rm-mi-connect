@@ -208,8 +208,16 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function getRecord(id: string) {
     requireCapability('em.forms.read');
+    if (!uuid.safeParse(id).success) return null;
+    const origin = operationRead ? await operationRead('form_record_project', { id }) : undefined;
+    if (operationRead) {
+      if (origin === null) return null;
+      if (!uuid.safeParse(origin?.project_id).success || !uuid.safeParse(origin?.form_id).success
+        || (origin.cell_id !== null && !uuid.safeParse(origin.cell_id).success)) throw queryUnavailable();
+    }
     const record = await one('rm_registros_formulario', RECORD, id);
     if (!record) return null;
+    if (operationRead && (record.projeto_id !== origin.project_id || record.form_id !== origin.form_id || record.celula_id !== origin.cell_id)) return null;
     const [project, form, answers, questions, items, users] = await Promise.all([
       allowed('em.projects.read') ? one('rm_projetos', projectColumns, record.projeto_id) : null, one('rm_forms', FORM, record.form_id),
       all('rm_respostas', answerColumns, q => q.eq('registro_formulario_id', id), 'indice'),
@@ -247,8 +255,21 @@ export function createWebData(client: SupabaseClient, capabilities?: readonly Co
     ]);
     return { ...result, projects, cells, statuses };
   }
-  async function listForms(filters: FormFilters = {}) {
+  async function listForms(filters: FormFilters = {}): Promise<WebPage & { forms: WebRow[]; projects: WebRow[]; statuses: WebRow[] }> {
     requireCapability('em.forms.read');
+    if (operationRead) {
+      const current = pageNumber(filters.page);
+      const showProject = allowed('em.projects.read');
+      const [value, statuses] = await Promise.all([operationRead('form_record_list', {
+        page: current, project_details: showProject, q: searchTerm(filters.q), status: filters.status?.slice(0, 64) || null,
+      }), options('status_registro0')]);
+      const result = checkedWorkshopPage(value, current, 25);
+      if (!rowArray(result.forms) || !rowArray(result.projects) || (!showProject && result.projects.length)) throw queryUnavailable();
+      const formIds = new Set(result.forms.map((row: WebRow) => row.id));
+      const projectIds = new Set(result.projects.map((row: WebRow) => row.id));
+      if (!result.rows.every((row: WebRow) => formIds.has(row.form_id) && (!showProject || projectIds.has(row.projeto_id)))) throw queryUnavailable();
+      return { ...result, forms: await withFormVersionLabels(client, result.forms), statuses };
+    }
     let query: any = client.from('rm_registros_formulario').select(RECORD, { count: 'exact' });
     if (filters.status) query = query.eq('status', filters.status);
     query = applySearch(query, filters.q, ['numero_projeto_rm', 'codigo_text', 'descricao']);
@@ -302,7 +323,7 @@ async function data(capability: CorporateCapability) {
   const { requireWebUser } = await import('./auth'); const session = await requireWebUser(capability);
   const { ssoWorkshopRead } = await import('./sso-bridge');
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
-  const operationRead = capability === 'em.projects.read' || capability === 'em.planning.read' ? await readWorkshopOperations(session) : undefined;
+  const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read'].includes(capability) ? await readWorkshopOperations(session) : undefined;
   return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined, operationRead);
 }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }

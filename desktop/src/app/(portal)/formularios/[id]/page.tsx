@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createWebData } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
+import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
 import { PageHeading, Status, Details, Empty, date } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
 import { RecordReview } from '@/components/web/review';
@@ -11,7 +12,7 @@ import { mayReview, recordSections } from '@/components/web/review-model';
 export default async function RegistroFormulario({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireWebUser('em.forms.read');
-  const data = await createWebData(session.client, session.sso?.capabilities).getRecord(id);
+  const data = await createWebData(session.client, session.sso?.capabilities, undefined, await readWorkshopOperations(session)).getRecord(id);
   if (!data) notFound();
   const { record, project, form, answers, questions, items, users } = data;
   const names = new Map(users.map(user => [user.id, user.nome]));

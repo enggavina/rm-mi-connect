@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 e P0.3 — edição de projetos, células, QR e downloads
+
+As migrações **070–071** e o Railway **`352e3076-4479-48b0-b351-2ae2f67a86ea`** foram publicados com o commit `c1c72d1065e7f8547ac0a2dc30ea123bb997123d`. A edição existente de projetos e células passou a suportar autorização pela oficina da Central. As consultas de QR e downloads diretos exigem a propriedade do projeto quando o recorte por oficina está habilitado. A transição segue com a configuração anterior até a homologação das gravações e filas legadas.
+
+Os testes isolados conferiram as alterações permitidas, as recusas BMA/BRJ e a compatibilidade dos caminhos legados. A aplicação preservou 125 tabelas e as identidades e permissões das 255 funções anteriores. Após o deploy, os 17 testes do acesso operacional passaram com o par autorizado da BMA. QR e downloads diretos sem sessão retornaram `401`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45920199341).
+
 ## P0.1 e P0.2 — preparação do corte e do Gantt por oficina
 
 As migrações **067–069** foram publicadas em **26/11/2026** no Railway **`9a155edb-8aa3-4607-ab91-ca7ae8acd06e`**, com commit `8a7ee486052682a275959cada2587de4f48b98ff`. Recebimentos ganhou uma consulta que filtra projetos e alocações antes da busca e dos indicadores. O Gantt ganhou autorização por oficina para gravar datas, dependências, referências, calendários e marcos. O banco passou a aceitar referências de novos códigos oficiais e recebeu a guarda transacional de origem para projetos e células.
