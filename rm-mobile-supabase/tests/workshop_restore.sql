@@ -2423,6 +2423,195 @@ $legacy_operator_reads$;
 select 'PASS: legacy operator reads scope login, refresh and execution to the approved BMA device and preserve delegated identity' result;
 rollback to savepoint legacy_operator_reads_fixture;
 release savepoint legacy_operator_reads_fixture;
+savepoint legacy_mobile_writes_fixture;
+do $legacy_mobile_writes$
+declare
+ bma uuid:=em_fixture.id(1);
+ device uuid:=em_fixture.id(711);
+ device_session uuid:=em_fixture.id(721);
+ device_profile uuid:=em_fixture.id(731);
+ actor uuid:=gen_random_uuid();
+ token text:=repeat('e1',32);
+ client_id uuid:=gen_random_uuid();
+ protocol uuid:=gen_random_uuid();
+ draft_id uuid:=gen_random_uuid();
+ submission uuid;
+ open_args jsonb;
+ write_args jsonb;
+ saved jsonb;
+ replayed jsonb;
+ action record;
+ own_stage uuid:=gen_random_uuid();
+ foreign_stage uuid:=gen_random_uuid();
+ bma_title uuid:=gen_random_uuid();
+ foreign_title uuid:=em_fixture.id(1122);
+ bma_project uuid:=em_fixture.id(101);
+ bma_cell uuid:=em_fixture.id(201);
+ bma_slot uuid:=em_fixture.id(301);
+ foreign_slot uuid:=em_fixture.id(302);
+ foreign_type uuid:=em_fixture.id(1102);
+ modern_device uuid:=em_fixture.id(712);
+ modern_session uuid:=em_fixture.id(722);
+ modern_actor uuid:=em_fixture.id(742);
+ modern_token text:=repeat('b',64);
+ modern_context jsonb;
+begin
+ if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_mobile_writes_v1()','execute')
+  or has_function_privilege('authenticated','rm_private.require_mobile_mutation_workshop_v1(uuid,text,jsonb,jsonb,uuid,text)','execute')
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_mobile_write_settings','select') then
+  raise exception 'A ativação ou a validação de gravações ficaram acessíveis ao cliente.';
+ end if;
+ begin
+  perform rm_private.activate_workshop_legacy_mobile_writes_v1();
+  raise exception 'A ativação não exigiu o recorte de identificação.';
+ exception when sqlstate 'PT409' then null;end;
+ perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(device,device_session);
+ perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ perform rm_private.activate_workshop_legacy_bma_people_v1();
+ perform rm_private.activate_workshop_legacy_operator_reads_v1();
+ perform rm_private.activate_workshop_legacy_mobile_writes_v1();
+ perform rm_private.activate_workshop_legacy_mobile_writes_v1();
+ -- This branch still supports the BMA legacy snapshot and its legacy writer.
+ delete from rm_private.execution_workshop_enforcement where channel='mobile';
+ insert into public.rm_users(id,nome,perfil) values(actor,'Operador compatível do ensaio','administrador');
+ insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(bma_cell,actor);
+ insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
+  values(extensions.digest(token,'sha256'),device,device_profile,actor,clock_timestamp()+interval '1 hour');
+ insert into public.rm_clientes(id,nome) values(client_id,'Cliente BMA do ensaio');
+ insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',client_id,bma);
+ insert into public.rm_cadastro_fotos(id,titulo,celula_nome) select bma_title,'Visão local',nome from public.rm_celulas where id=bma_cell;
+ insert into rm_private.engineering_photo_title_scope(title_id,workshop_id,cell_id) values(bma_title,bma,bma_cell);
+ insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_origem_id,celula_projeto_id)
+  values(own_stage,bma_project,bma_cell,bma_slot),(foreign_stage,em_fixture.id(102),em_fixture.id(202),foreign_slot);
+ perform set_config('request.jwt.claim.sub',device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+
+ for action in select * from (values
+  ('rm_update_cell_status_v1',jsonb_build_object('p_celula_projeto_id',bma_slot,'p_status','em_dia'),
+   jsonb_build_object('p_celula_projeto_id',foreign_slot,'p_status','em_dia')),
+  ('rm_add_cell_comment_v1',jsonb_build_object('p_celula_projeto_id',bma_slot,'p_comentario','Comentário do teste isolado'),
+   jsonb_build_object('p_celula_projeto_id',foreign_slot,'p_comentario','Comentário em outra oficina')),
+  ('rm_submit_form_inspection_v1',jsonb_build_object('p_projeto_id',bma_project,'p_celula_id',bma_cell,'p_form_id',em_fixture.id(401)),
+   jsonb_build_object('p_projeto_id',em_fixture.id(102),'p_celula_id',em_fixture.id(202),'p_form_id',em_fixture.id(402))),
+  ('rm_submit_form_revision_v1',jsonb_build_object('p_registro_formulario_id',em_fixture.id(501)),
+   jsonb_build_object('p_registro_formulario_id',em_fixture.id(502))),
+  ('rm_transition_stage_approval_v1',jsonb_build_object('p_aprovacao_etapa_id',own_stage,'p_acao','aprovar'),
+   jsonb_build_object('p_aprovacao_etapa_id',foreign_stage,'p_acao','aprovar')),
+  ('rm_record_cell_photo_v1',jsonb_build_object('p_projeto_id',bma_project,'p_celula_id',bma_cell,'p_celula_projeto_id',bma_slot,
+    'p_foto_url','https://fixture.invalid/legacy-photo.png','p_cadastro_foto_id',bma_title),
+   jsonb_build_object('p_projeto_id',bma_project,'p_celula_id',bma_cell,'p_celula_projeto_id',bma_slot,
+    'p_foto_url','https://fixture.invalid/legacy-photo.png','p_cadastro_foto_id',foreign_title)),
+  ('rm_record_execution_event_v1',jsonb_build_object('p_session_id',gen_random_uuid(),'p_allocation_id',bma_slot,'p_operador_id',actor,
+    'p_previous_event_id',null,'p_kind','start','p_occurred_at',clock_timestamp(),'p_pause_reason',null,'p_note',null,'p_effort_minutes',null),
+   jsonb_build_object('p_session_id',gen_random_uuid(),'p_allocation_id',foreign_slot,'p_operador_id',actor,
+    'p_previous_event_id',null,'p_kind','start','p_occurred_at',clock_timestamp(),'p_pause_reason',null,'p_note',null,'p_effort_minutes',null))
+ ) cases(rpc,writable,forbidden) loop
+  perform rm_private.require_mobile_mutation_workshop_v1(gen_random_uuid(),action.rpc,action.writable,action.writable,actor,token);
+  submission:=gen_random_uuid();
+  set local role authenticated;
+  begin
+   perform public.rm_mobile_mutate_v1(submission,action.rpc,action.forbidden,token);
+   raise exception 'A gravação legada % atravessou a oficina.',action.rpc;
+  exception when insufficient_privilege then null;end;
+  if action.rpc in('rm_add_cell_comment_v1','rm_record_cell_photo_v1','rm_record_execution_event_v1') then
+   saved:=public.rm_mobile_mutate_v1(submission,action.rpc,action.writable,token);
+   replayed:=public.rm_mobile_mutate_v1(submission,action.rpc,action.writable,token);
+   if (action.rpc<>'rm_record_cell_photo_v1' and saved->>'projeto_id' is distinct from bma_project::text)
+    or replayed->>'idempotent_replay' is distinct from 'true' or replayed-'idempotent_replay' is distinct from saved-'idempotent_replay' then
+    raise exception 'A gravação legada % perdeu o protocolo ou projeto original.',action.rpc;
+   end if;
+  end if;
+  reset role;
+  if action.rpc='rm_record_cell_photo_v1' and not exists(select 1 from public.rm_fotos
+   where id=(saved->>'foto_id')::uuid and projeto_id=bma_project and celula_id=bma_cell and titulo='Visão local') then
+   raise exception 'A foto local perdeu o vínculo com o projeto ou o título da oficina.';
+  end if;
+  if action.rpc in('rm_add_cell_comment_v1','rm_record_cell_photo_v1','rm_record_execution_event_v1')
+   and (select count(*) from rm_private.mobile_mutation_receipts where client_submission_id=submission and operator_id=actor)<>1 then
+   raise exception 'O reenvio do protocolo deixou mais de um efeito ou perdeu a autoria.';
+  end if;
+ end loop;
+
+ open_args:=jsonb_build_object('p_operador_id',actor,'p_cliente_id',client_id,'p_chegada_equipamento',clock_timestamp(),
+  'p_descricao_equipamento','Recebimento do ensaio','p_equipamento','{}'::jsonb,'p_fotos_recebimento','[]'::jsonb,
+  'p_receiving_draft_id',protocol,'p_receiving_draft_revision',0,'p_receiving_draft_snapshot',jsonb_build_object('id',protocol,'version',2,'submitted',false));
+ set local role authenticated;
+ begin
+  perform public.rm_mobile_open_receiving_v1(gen_random_uuid(),open_args||jsonb_build_object('p_tipo_equipamento_id',foreign_type),token);
+  raise exception 'A abertura legada aceitou tipo de outra oficina.';
+ exception when insufficient_privilege then null;end;
+ saved:=public.rm_mobile_open_receiving_v1(protocol,open_args,token);
+ replayed:=public.rm_mobile_open_receiving_v1(protocol,open_args,token);
+ if saved->>'projeto_id' is distinct from replayed->>'projeto_id' or replayed->>'idempotent_replay' is distinct from 'true' then
+  raise exception 'O recebimento legado perdeu a abertura original.';
+ end if;
+ replayed:=public.rm_mobile_mutate_v1(protocol,'rm_submit_recebimento_v1',open_args,token);
+ if saved->>'projeto_id' is distinct from replayed->>'projeto_id' then
+  raise exception 'A conclusão legada não reutilizou o recebimento original.';
+ end if;
+ if public.rm_receiving_draft_v1(token,'save',draft_id,jsonb_build_object('id',draft_id,'version',2),0,gen_random_uuid())->>'id'
+  is distinct from draft_id::text then raise exception 'O rascunho legítimo não foi gravado.';end if;
+ reset role;
+
+ perform set_config('request.jwt.claim.sub',modern_device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',modern_session,'aal','aal1')::text,true);
+ write_args:=jsonb_build_object('p_celula_projeto_id',foreign_slot,'p_comentario','Comentário autorizado na oficina local');
+ modern_context:=pg_temp.workshop_restore_native_context(2,2);
+ submission:=gen_random_uuid();
+ set local role authenticated;
+ begin
+  perform public.rm_mobile_mutate_v1(submission,'rm_add_cell_comment_v1',write_args,modern_token);
+  raise exception 'O dispositivo de outra oficina deixou de exigir a Central.';
+ exception when insufficient_privilege then null;end;
+ begin
+  perform public.rm_receiving_draft_v1(modern_token,'read');
+  raise exception 'O dispositivo de outra oficina abriu rascunho pelo serviço legado.';
+ exception when insufficient_privilege then null;end;
+ reset role;
+ perform public.rm_authorize_mobile_workshop_mutation_v1(modern_device,modern_session,modern_token,modern_context,
+  submission,'rm_add_cell_comment_v1',write_args);
+ set local role authenticated;
+ begin
+  perform public.rm_mobile_mutate_v1(submission,'rm_add_cell_comment_v1',write_args,modern_token);
+  raise exception 'A gravação direta consumiu uma autorização sem passar pelo serviço autorizado.';
+ exception when insufficient_privilege then null;end;
+ saved:=public.rm_mobile_workshop_mutate_v1(submission,'rm_add_cell_comment_v1',write_args,modern_token);
+ reset role;
+ if saved->>'projeto_id' is distinct from em_fixture.id(102)::text
+  or exists(select 1 from rm_private.mobile_workshop_mutation_permits where submission_id=submission) then
+  raise exception 'O serviço autorizado perdeu a gravação local ou não consumiu a autorização.';
+ end if;
+ perform public.rm_authorize_mobile_workshop_mutation_v1(modern_device,modern_session,modern_token,modern_context,
+  submission,'rm_add_cell_comment_v1',write_args);
+ set local role authenticated;
+ replayed:=public.rm_mobile_workshop_mutate_v1(submission,'rm_add_cell_comment_v1',write_args,modern_token);
+ reset role;
+ if replayed->>'comentario_id' is distinct from saved->>'comentario_id' or replayed->>'idempotent_replay' is distinct from 'true' then
+  raise exception 'O reenvio moderno duplicou a gravação original.';
+ end if;
+
+ client_id:=gen_random_uuid();
+ submission:=gen_random_uuid();
+ insert into public.rm_clientes(id,nome) values(client_id,'Cliente BRJ do ensaio');
+ insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',client_id,em_fixture.id(2));
+ write_args:=jsonb_build_object('p_operador_id',modern_actor,'p_cliente_id',client_id,'p_chegada_equipamento',clock_timestamp(),
+  'p_descricao_equipamento','Conclusão offline do ensaio','p_equipamento','{}'::jsonb,'p_fotos_recebimento','[]'::jsonb);
+ perform public.rm_authorize_mobile_receiving_workshop_v1(modern_device,modern_session,modern_token,
+  pg_temp.workshop_restore_native_context(2,2),submission,'complete',write_args);
+ set local role authenticated;
+ saved:=public.rm_mobile_receiving_workshop_v1(submission,'complete',write_args,modern_token);
+ reset role;
+ if not exists(select 1 from rm_private.receiving_workshop_protocols p where p.submission_id=submission
+   and p.project_id=(saved->>'projeto_id')::uuid and p.workshop_id=em_fixture.id(2) and p.creation_phase='complete') then
+  raise exception 'A conclusão offline moderna perdeu a origem comprovada da oficina.';
+ end if;
+end
+$legacy_mobile_writes$;
+select 'PASS: scoped legacy mobile writes preserve BMA offline retries and require the verified gateway for other workshops' result;
+rollback to savepoint legacy_mobile_writes_fixture;
+release savepoint legacy_mobile_writes_fixture;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
