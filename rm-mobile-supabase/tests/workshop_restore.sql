@@ -26,8 +26,9 @@ insert into rm_private.workshop_project_ownership(id,workshop_id)
 insert into public.rm_celulas(id,nome) select em_fixture.id(200+n),'Célula local '||n from generate_series(1,4)n;
 insert into rm_private.workshop_cell_ownership(cell_id,workshop_id)
  select em_fixture.id(200+n),em_fixture.id(n) from generate_series(1,4)n;
-insert into public.rm_celulas_projeto(id,projeto_id,celula_id,retirada,visibilidade,data_inicio,data_limite)
- select em_fixture.id(300+n),em_fixture.id(100+n),em_fixture.id(200+n),false,true,clock_timestamp(),clock_timestamp()+interval '2 days' from generate_series(1,4)n;
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,retirada,visibilidade,data_inicio,data_limite,posicao,indice,horas_previstas)
+ select em_fixture.id(300+n),em_fixture.id(100+n),em_fixture.id(200+n),false,true,clock_timestamp(),clock_timestamp()+interval '2 days',7,5,1.25*n
+ from generate_series(1,4)n;
 insert into rm_private.gantt_baselines(id,projeto_id,label,items,created_by)
  select em_fixture.id(800+n),a.projeto_id,'Linha de base local '||n,jsonb_build_array(jsonb_build_object('allocation_id',a.id,
   'data_inicio',a.data_inicio,'data_limite',a.data_limite)),em_fixture.id(30+n)
@@ -130,6 +131,14 @@ language sql as $$
   ||case when action='set_visibility' then jsonb_build_object('visibilidade',visible) else '{}'::jsonb end;
 $$;
 
+create function pg_temp.queue_payload(snapshot jsonb,apply_order boolean) returns jsonb
+language sql as $$
+ select jsonb_build_object('celula_id',snapshot->'cell'->'id','expected_queue_version',snapshot->'queue_version','apply_order',apply_order,
+  'items',(select jsonb_agg(jsonb_build_object('id',item->'id','expected_updated_at',item->'updated_at','prioridade','alta')
+    order by case when apply_order then -n else n end)
+   from jsonb_array_elements(snapshot->'items') with ordinality q(item,n)));
+$$;
+
 create function pg_temp.workshop_restore_native(office integer,urls text[],reachable boolean default true) returns jsonb language plpgsql as $$
 declare context jsonb; stamp timestamptz:=clock_timestamp();
 begin
@@ -149,11 +158,18 @@ declare value jsonb; project uuid; filters jsonb; own_file text; other_file text
  capacity_filters jsonb:=jsonb_build_object('start',(clock_timestamp() at time zone 'America/Sao_Paulo')::date,'days',14,'project_id',null,'can_manage',true);
  resource uuid; resource_payload jsonb; booking_payload jsonb; submission uuid; changed jsonb; replay jsonb;
  cell_filters jsonb; cell_snapshot jsonb; cell_payload jsonb; operation text;
+ queue_filters jsonb; queue_snapshot jsonb; queue_payload jsonb; planned_load jsonb;
  gantt_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
 begin
  update rm_private.sso_settings set require_sso=true where singleton;
  perform rm_private.activate_capacity_workshop_writes_v1();
  perform rm_private.activate_cell_availability_workshops_v1();
+ perform rm_private.activate_queue_workshops_v1();
+ if has_function_privilege('authenticated','public.rm_web_cell_queue_snapshot_v1(uuid)','execute')
+  or has_function_privilege('authenticated','public.rm_web_planning_load_v1()','execute')
+  or has_table_privilege('authenticated','rm_private.web_open_cell_allocations_v1','select') then
+  raise exception 'A rota anterior ainda expõe fila ou carga fora da oficina.';
+ end if;
  for office in 1..4 loop
   project:=em_fixture.id(100+office);
   value:=pg_temp.workshop_restore_read(office,'project_list',
@@ -293,6 +309,7 @@ begin
     or pg_temp.workshop_restore_read(office,'capacity_snapshot',capacity_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'cell_availability',jsonb_build_object(
      'project_id',em_fixture.id(100+foreign_office),'allocation_id',em_fixture.id(300+foreign_office))) is not null
+    or pg_temp.workshop_restore_read(office,'cell_queue',jsonb_build_object('cell_id',em_fixture.id(200+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+foreign_office),'source','project_photo')) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(780+foreign_office),'source','project_photo')) is not null then
     raise exception 'Uma referência direta retornou dados de outra oficina.';
@@ -312,8 +329,8 @@ begin
   -- An unused allocation can still be retired and restored with its original ID.
   insert into public.rm_projetos(id,nome,status_pcp) values(em_fixture.id(900+office),'Projeto local sem registros','executando');
   insert into rm_private.workshop_project_ownership(id,workshop_id) values(em_fixture.id(900+office),em_fixture.id(office));
-  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade)
-   values(em_fixture.id(910+office),em_fixture.id(900+office),em_fixture.id(200+office),true);
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade,posicao,indice)
+   values(em_fixture.id(910+office),em_fixture.id(900+office),em_fixture.id(200+office),true,7,8);
   cell_filters:=jsonb_build_object('project_id',em_fixture.id(900+office),'allocation_id',em_fixture.id(910+office));
   value:=pg_temp.workshop_restore_read(office,'cell_availability',cell_filters);
   if value->>'can_retire' is distinct from 'true'
@@ -331,7 +348,84 @@ begin
    or value->'allocation'->>'visibilidade' is distinct from 'false' or value->>'in_queue' is distinct from 'true' then
    raise exception 'A restauração da alocação deve preservar ID, fila e visibilidade explícita.';
   end if;
+
+  queue_filters:=jsonb_build_object('cell_id',em_fixture.id(200+office));
+  queue_snapshot:=pg_temp.workshop_restore_read(office,'cell_queue',queue_filters);
+  planned_load:=pg_temp.workshop_restore_read(office,'planning_load','{}');
+  value:=pg_temp.workshop_restore_read(office,'gantt_cells','{}');
+  if queue_snapshot->>'total' is distinct from '2' or queue_snapshot->'items'->0->>'id' is distinct from em_fixture.id(300+office)::text
+   or queue_snapshot->'items'->1->>'visibilidade' is distinct from 'false'
+   or jsonb_array_length(planned_load->'cells') is distinct from 1
+   or planned_load->'cells'->0->>'id' is distinct from em_fixture.id(200+office)::text
+   or planned_load->'cells'->0->>'open_allocations' is distinct from '2'
+   or planned_load->'cells'->0->>'hidden_allocations' is distinct from '1'
+   or planned_load->'cells'->0->>'unestimated_allocations' is distinct from '1'
+   or (planned_load->'cells'->0->>'planned_hours')::numeric is distinct from 1.25*office
+   or jsonb_array_length(value) is distinct from 1 or value->0->>'id' is distinct from em_fixture.id(200+office)::text then
+   raise exception 'Fila, seleção e carga divergiram da oficina ou perderam posições e horas.';
+  end if;
+  queue_payload:=pg_temp.queue_payload(queue_snapshot,false);
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_cell_queue',queue_payload,false);
+   raise exception 'O gravador anterior contornou a autorização da oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   perform pg_temp.workshop_restore_planning_write((office % 4)+1,gen_random_uuid(),'save_cell_queue',queue_payload);
+   raise exception 'Uma oficina estrangeira alterou a fila.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_cell_queue',
+    jsonb_set(queue_payload,'{items,0,id}',to_jsonb(em_fixture.id(300+(office % 4)+1))));
+   raise exception 'Uma alocação estrangeira entrou na fila autorizada.';
+  exception when insufficient_privilege then null;
+  end;
+  submission:=gen_random_uuid();
+  changed:=pg_temp.workshop_restore_planning_write(office,submission,'save_cell_queue',queue_payload);
+  replay:=pg_temp.workshop_restore_planning_write(office,submission,'save_cell_queue',queue_payload);
+  value:=pg_temp.workshop_restore_read(office,'cell_queue',queue_filters);
+  if changed->'record'->>'queue_version' is distinct from value->>'queue_version'
+   or value->>'queue_version'=queue_snapshot->>'queue_version'
+   or replay->>'idempotent_replay' is distinct from 'true'
+   or exists(select 1 from jsonb_array_elements(value->'items') row where row->>'posicao' is distinct from '7'
+    or row->>'prioridade' is distinct from 'alta') then
+   raise exception 'A atualização só de prioridades não preservou as posições duplicadas e o reenvio.';
+  end if;
+  queue_snapshot:=value;
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_cell_queue',queue_payload);
+   raise exception 'Uma versão antiga da fila permitiu outra gravação.';
+  exception when sqlstate 'PT409' then null;
+  end;
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_cell_queue',pg_temp.queue_payload(queue_snapshot,true));
+  value:=pg_temp.workshop_restore_read(office,'cell_queue',queue_filters);
+  if value->'items'->0->>'id' is distinct from em_fixture.id(910+office)::text
+   or value->'items'->0->>'posicao' is distinct from '1' or value->'items'->0->>'indice' is distinct from '8'
+   or value->'items'->1->>'posicao' is distinct from '2' or value->'items'->1->>'indice' is distinct from '5' then
+   raise exception 'A reordenação explícita não manteve o índice do roteiro.';
+  end if;
+
+  -- Legacy work without a classified project can arrive before the general cutover.
+  -- It is excluded from totals and blocks reordering until its origin is confirmed.
+  queue_payload:=pg_temp.queue_payload(value,true);
+  begin
+   insert into public.rm_projetos(id,nome,status_pcp) values(em_fixture.id(950+office),'Origem pendente local','executando');
+   insert into public.rm_celulas_projeto(id,projeto_id,celula_id,visibilidade,horas_previstas)
+    values(em_fixture.id(960+office),em_fixture.id(950+office),em_fixture.id(200+office),true,999);
+   if pg_temp.workshop_restore_read(office,'cell_queue',queue_filters) is distinct from value
+    or pg_temp.workshop_restore_read(office,'planning_load','{}')->'cells' is distinct from planned_load->'cells' then
+    raise exception 'Trabalho sem origem entrou nos dados da oficina.';
+   end if;
+   begin
+    perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_cell_queue',queue_payload);
+    raise exception 'A fila foi reordenada com a origem de um trabalho pendente.';
+   exception when sqlstate 'PT409' then null;
+   end;
+   raise exception using errcode='P0999',message='Rollback only for unclassified local fixture';
+  exception when sqlstate 'P0999' then null;
+  end;
  end loop;
 end$$;
 rollback;
-select 'PASS: four offices, three Gantt views, capacity, availability, own media; 120 denied cross-office reads, 12 crossed writes, 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: four offices, three Gantt views, capacity, availability, queue, load, own media; 132 denied cross-office reads, 20 crossed writes, 8 denied reads after revocation or unavailable authority' result;

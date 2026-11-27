@@ -78,6 +78,36 @@ test('cell queue returns a complete atomic export-only snapshot with exact versi
   assert.deepEqual(f.calls, [{ name: 'rm_web_cell_queue_snapshot_v1', args: { p_cell_id: id(1) } }]);
 });
 
+test('planning queue, load and choices use only the office reader and reject missing, duplicate or unavailable data', async () => {
+  const client = {
+    async rpc() { assert.fail('Office readers do not query the legacy RPC.'); },
+    from() { assert.fail('Office choices do not query the legacy catalogue.'); },
+  } as unknown as SupabaseClient;
+  const capabilities = ['em.portal.read', 'em.planning.read'] as const;
+  const calls: [string, Record<string, unknown>][] = [];
+  let choices = [{ id: id(1), nome: 'Oficina', privateValue: 'ignored' }];
+  const scoped = createPcpData(client, capabilities, async (resource, args) => {
+    calls.push([resource, args]);
+    if (resource === 'cell_queue') return args.cell_id === id(1) ? queue() : null;
+    if (resource === 'planning_load') return load();
+    assert.equal(resource, 'gantt_cells');
+    return choices;
+  });
+  assert.equal(await scoped.getCellQueue('invalid'), null);
+  assert.equal((await scoped.getCellQueue(id(1)))?.items[0].visibilidade, false);
+  assert.equal(await scoped.getCellQueue(id(2)), null);
+  assert.equal((await scoped.getPlanningLoad()).cells[0].open_allocations, 2);
+  assert.deepEqual(await scoped.getPcpChoices(), { cells: [{ id: id(1), nome: 'Oficina' }] });
+  assert.deepEqual(calls, [['cell_queue', { cell_id: id(1) }], ['cell_queue', { cell_id: id(2) }],
+    ['planning_load', {}], ['gantt_cells', {}]]);
+  choices = [...choices, choices[0]];
+  await assert.rejects(scoped.getPcpChoices(), /Não foi possível/);
+  const failed = createPcpData(client, capabilities, async () => { throw new Error('Central indisponível'); });
+  await assert.rejects(failed.getCellQueue(id(1)), /Central indisponível/);
+  await assert.rejects(failed.getPlanningLoad(), /Central indisponível/);
+  await assert.rejects(failed.getPcpChoices(), /Central indisponível/);
+});
+
 test('queue cannot silently accept partial, duplicated, crossed or concluded allocation snapshots', async () => {
   const f = fixture(); assert.equal(await f.data.getCellQueue('invalid'), null); assert.deepEqual(f.calls, []);
   for (const corrupt of [

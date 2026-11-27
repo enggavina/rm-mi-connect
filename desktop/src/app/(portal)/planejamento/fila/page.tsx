@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { getCellQueue, getPcpChoices } from '@/server/web/pcp-data';
 import { requireWebUser } from '@/server/web/auth';
 import { hasWebCapability } from '@/server/web/auth-policy';
@@ -8,7 +9,7 @@ import { Icon } from '@/components/web/icons';
 import { editorChoices } from '@/server/web/choices';
 import { createWebData } from '@/server/web/data';
 import { CORPORATE_CAPABILITIES } from '@/server/web/sso-policy';
-import { readWorkshopOperations } from '@/server/web/workshop-operation-reader';
+import { ssoWorkshopRead } from '@/server/web/sso-bridge';
 import { getCellAvailability } from '@/server/web/cell-availability-data';
 import { availabilityMatchesContext } from '@/components/web/cell-availability-model';
 import { AllocationPlanningPanel } from '@/components/web/allocation-planning-panel';
@@ -17,14 +18,16 @@ import { scheduleId } from '@/server/web/project-schedule-policy';
 import s from '@/components/web/pcp.module.css';
 
 export default async function FilaCelula({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const query = await searchParams; const cellId = typeof query.cell === 'string' ? query.cell : '';
+  const query = await searchParams;
+  const cellId = scheduleId(query.cell) ?? '';
   const [session, choices, snapshot] = await Promise.all([requireWebUser('em.planning.read'), getPcpChoices(), cellId ? getCellQueue(cellId) : null]);
+  if (cellId && !snapshot) notFound();
   const canProjects = hasWebCapability(session, 'em.projects.read');
   const canEdit = hasWebCapability(session, 'em.planning.manage') && ['administrador', 'padr_o'].includes(session.profile.perfil);
   const allocationId = scheduleId(query.allocation);
   const item = canProjects && snapshot?.complete && allocationId ? snapshot.items.find(row => row.id === allocationId) : undefined;
-  const capabilities = (session.sso?.capabilities ?? CORPORATE_CAPABILITIES).filter(capability => !['em.photos.read', 'em.documents.read', 'em.history.read'].includes(capability));
-  const projectData = item ? await createWebData(session.client, capabilities, undefined, await readWorkshopOperations(session))
+  const capabilities = (session.sso?.capabilities ?? CORPORATE_CAPABILITIES).filter(capability => !['em.photos.read', 'em.documents.read', 'em.history.read', 'em.forms.read'].includes(capability));
+  const projectData = item ? await createWebData(session.client, capabilities, undefined, session.sso && ssoWorkshopRead(session.sso, session.client))
     .getProject(item.projeto_id, { includeDossier: false, includeEquipment: false }) : null;
   const allocation = projectData?.allocations.find(row => row.id === item?.id);
   const availability = item && allocation ? await getCellAvailability(item.projeto_id, item.id) : null;
@@ -49,6 +52,6 @@ export default async function FilaCelula({ searchParams }: { searchParams: Promi
         <div className="form-actions"><a className="button small secondary" href={`/cronograma?project=${item.projeto_id}&allocation=${item.id}`}>Fotos, formulários e aprovações</a><a className="button small secondary" href={`/projetos/${item.projeto_id}?tab=planejamento#celula-${item.id}`}>Projeto e histórico da célula</a></div>
       </>}
     </div></section>}
-    {snapshot ? <section className="panel"><div className="panel-header"><div><h2>Trabalhos abertos <span className="inline-count">{snapshot.total}</span></h2><p>Projetos ativos · inclui trabalhos visíveis e ocultos</p></div><span className="panel-caption">{item ? 'Feche a alocação para alterar a ordem e as prioridades da fila' : canEdit ? 'Alterações são aplicadas ao salvar' : 'Consulta da fila'}</span></div><CellQueueEditor key={`${snapshot.cell.id}:${snapshot.queue_version}:${item?.id ?? ''}`} snapshot={snapshot} canEdit={canEdit && !item} canProjects={canProjects} /></section> : <section className="panel"><Empty title={cellId ? 'Célula não encontrada' : 'Selecione uma célula para começar'} detail={cellId ? 'Escolha uma célula disponível na lista para consultar sua fila.' : 'A escolha da célula mantém a ordem e as prioridades no contexto do trabalho.'} icon="board" /></section>}
+    {snapshot ? <section className="panel"><div className="panel-header"><div><h2>Trabalhos abertos <span className="inline-count">{snapshot.total}</span></h2><p>Projetos ativos · inclui trabalhos visíveis e ocultos</p></div><span className="panel-caption">{item ? 'Feche a alocação para alterar a ordem e as prioridades da fila' : canEdit ? 'Alterações são aplicadas ao salvar' : 'Consulta da fila'}</span></div><CellQueueEditor key={`${snapshot.cell.id}:${snapshot.queue_version}:${item?.id ?? ''}`} snapshot={snapshot} canEdit={canEdit && !item} canProjects={canProjects} /></section> : <section className="panel"><Empty title="Selecione uma célula para começar" detail="A escolha da célula mantém a ordem e as prioridades no contexto do trabalho." icon="board" /></section>}
   </>;
 }

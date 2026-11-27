@@ -62,10 +62,17 @@ export function createPcpData(client: SupabaseClient, capabilities?: readonly Co
   async function getCellQueue(cellId: string): Promise<PcpCellQueue | null> {
     authorize('em.planning.read');
     if (!uuid.safeParse(cellId).success) return null;
-    const result = await client.rpc('rm_web_cell_queue_snapshot_v1', { p_cell_id: cellId });
-    if (result.error) throw queryError();
-    if (result.data === null) return null;
-    const parsed = queueSchema.safeParse(result.data);
+    cellId = cellId.toLowerCase();
+    let payload: unknown;
+    if (workshopRead) {
+      payload = await workshopRead('cell_queue', { cell_id: cellId });
+    } else {
+      const result = await client.rpc('rm_web_cell_queue_snapshot_v1', { p_cell_id: cellId });
+      if (result.error) throw queryError();
+      payload = result.data;
+    }
+    if (payload === null) return null;
+    const parsed = queueSchema.safeParse(payload);
     if (!parsed.success) throw queryError();
     const data = parsed.data;
     if (data.cell.id !== cellId || data.items.some(item => item.celula_id !== cellId || ['finalizado', 'n_a'].includes(item.status ?? ''))
@@ -75,9 +82,15 @@ export function createPcpData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function getPlanningLoad(): Promise<PcpLoad> {
     authorize('em.planning.read');
-    const result = await client.rpc('rm_web_planning_load_v1');
-    if (result.error) throw queryError();
-    const parsed = loadSchema.safeParse(result.data);
+    let payload: unknown;
+    if (workshopRead) {
+      payload = await workshopRead('planning_load', {});
+    } else {
+      const result = await client.rpc('rm_web_planning_load_v1');
+      if (result.error) throw queryError();
+      payload = result.data;
+    }
+    const parsed = loadSchema.safeParse(payload);
     if (!parsed.success || new Set(parsed.data.cells.map(cell => cell.id)).size !== parsed.data.cells.length
       || parsed.data.cells.some(cell => cell.visible_allocations + cell.hidden_allocations !== cell.open_allocations
         || cell.estimated_allocations + cell.unestimated_allocations !== cell.open_allocations
@@ -108,6 +121,11 @@ export function createPcpData(client: SupabaseClient, capabilities?: readonly Co
   }
   async function getPcpChoices() {
     authorize('em.planning.read');
+    if (workshopRead) {
+      const parsed = z.array(cellSchema).max(19999).safeParse(await workshopRead('gantt_cells', {}));
+      if (!parsed.success || new Set(parsed.data.map(cell => cell.id)).size !== parsed.data.length) throw queryError();
+      return { cells: parsed.data };
+    }
     const cells: z.infer<typeof cellSchema>[] = [];
     for (let offset = 0; offset < 20_000; offset += 500) {
       const result = await client.from('rm_celulas').select('id,nome').order('nome').order('id').range(offset, offset + 499);
@@ -136,13 +154,15 @@ function validReceivingItem(item: ReceivingItem): boolean {
   return item.reasons.length === expected.length && new Set(item.reasons).size === expected.length && expected.every(reason => item.reasons.includes(reason));
 }
 
-async function data(capability: CorporateCapability, scopedReceiving = false) {
+async function data(capability: 'em.planning.read' | 'em.projects.read') {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser(capability);
-  const workshopRead = scopedReceiving ? await (await import('./workshop-operation-reader')).readWorkshopOperations(access) : undefined;
+  const workshopRead = capability === 'em.projects.read'
+    ? await (await import('./workshop-operation-reader')).readWorkshopOperations(access)
+    : access.sso ? (await import('./sso-bridge')).ssoWorkshopRead(access.sso, access.client) : undefined;
   return createPcpData(access.client, access.sso?.capabilities, workshopRead);
 }
 export async function getCellQueue(cellId: string) { return (await data('em.planning.read')).getCellQueue(cellId); }
 export async function getPlanningLoad() { return (await data('em.planning.read')).getPlanningLoad(); }
-export async function listReceiving(filters: ReceivingFilters = {}) { return (await data('em.projects.read', true)).listReceiving(filters); }
+export async function listReceiving(filters: ReceivingFilters = {}) { return (await data('em.projects.read')).listReceiving(filters); }
 export async function getPcpChoices() { return (await data('em.planning.read')).getPcpChoices(); }
