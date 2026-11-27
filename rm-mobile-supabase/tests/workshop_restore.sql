@@ -28,6 +28,10 @@ insert into rm_private.workshop_cell_ownership(cell_id,workshop_id)
  select em_fixture.id(200+n),em_fixture.id(n) from generate_series(1,4)n;
 insert into public.rm_celulas_projeto(id,projeto_id,celula_id,retirada,visibilidade,data_inicio,data_limite)
  select em_fixture.id(300+n),em_fixture.id(100+n),em_fixture.id(200+n),false,true,clock_timestamp(),clock_timestamp()+interval '2 days' from generate_series(1,4)n;
+insert into rm_private.gantt_baselines(id,projeto_id,label,items,created_by)
+ select em_fixture.id(800+n),a.projeto_id,'Linha de base local '||n,jsonb_build_array(jsonb_build_object('allocation_id',a.id,
+  'data_inicio',a.data_inicio,'data_limite',a.data_limite)),em_fixture.id(30+n)
+ from generate_series(1,4)n join public.rm_celulas_projeto a on a.id=em_fixture.id(300+n);
 insert into public.rm_forms(id,titulo) select em_fixture.id(400+n),'Modelo local '||n from generate_series(1,4)n;
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id)
  select 'form_model',em_fixture.id(400+n),em_fixture.id(n) from generate_series(1,4)n;
@@ -105,7 +109,8 @@ begin
 end$$;
 
 do $$
-declare value jsonb; project uuid; filters jsonb; own_file text; other_file text;
+declare value jsonb; project uuid; filters jsonb; own_file text; other_file text; gantt jsonb;
+ gantt_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":false}';
 begin
  for office in 1..4 loop
   project:=em_fixture.id(100+office);
@@ -126,6 +131,15 @@ begin
   if (value->>'row_count')::int is distinct from 1 or (value->'cells'->0->'rows'->0->>'project_id')::uuid is distinct from project then
    raise exception 'A exportação recuperada perdeu seu projeto.';
   end if;
+  for gantt in select * from (values (gantt_filters), (gantt_filters||jsonb_build_object('cell_id',em_fixture.id(200+office))),
+   (gantt_filters||jsonb_build_object('project_id',project,'include_closed',true))) v(filter) loop
+   value:=pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt);
+   if (value->>'total')::int is distinct from 1 or (value->'items'->0->>'id')::uuid is distinct from em_fixture.id(300+office)
+    or value->'items'->0->>'data_limite' is null or value->'items'->0->>'data_inicio' is null
+    or (gantt->>'project_id' is not null and (value->'baseline'->>'id')::uuid is distinct from em_fixture.id(800+office)) then
+    raise exception 'Uma das três visões do Gantt perdeu seu intervalo ou linha de base.';
+   end if;
+  end loop;
   value:=pg_temp.workshop_restore_read(office,'form_record_project',jsonb_build_object('id',em_fixture.id(500+office)));
   if (value->>'project_id')::uuid is distinct from project then raise exception 'Formulário próprio indisponível.';end if;
   value:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo'));
@@ -153,6 +167,8 @@ begin
    if foreign_office=office then continue;end if;
    if pg_temp.workshop_restore_read(office,'project_qr',jsonb_build_object('id',em_fixture.id(100+foreign_office))) is not null
     or pg_temp.workshop_restore_read(office,'form_record_project',jsonb_build_object('id',em_fixture.id(500+foreign_office))) is not null
+    or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('cell_id',em_fixture.id(200+foreign_office))) is not null
+    or pg_temp.workshop_restore_read(office,'gantt_snapshot',gantt_filters||jsonb_build_object('project_id',em_fixture.id(100+foreign_office),'include_closed',true)) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+foreign_office),'source','project_photo')) is not null
     or pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(780+foreign_office),'source','project_photo')) is not null then
     raise exception 'Uma referência direta retornou dados de outra oficina.';
@@ -171,4 +187,4 @@ begin
  end loop;
 end$$;
 rollback;
-select 'PASS: four offices, own media in portal and Android, 72 denied cross-office checks, and 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: four offices, three Gantt views, own media, 96 denied cross-office checks, and 8 denied reads after revocation or unavailable authority' result;

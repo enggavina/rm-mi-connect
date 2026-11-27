@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — oficina de origem do rascunho de recebimento
+
+A migração **086** e o Railway **`5560a65b-8c2d-4a77-b7ac-19a5542ce24f`** publicaram `/api/mobile/recebimentos/rascunho`. O salvamento registra a oficina com o rascunho e confere essa origem quando o app recupera ou inicia o recebimento. Rascunhos anteriores podem ser recuperados pela origem comprovada nos registros vinculados. Uma divergência mantém o trabalho disponível para conferência na oficina original.
+
+Passaram 159 testes mobile, a regressão SQL, o CI, 54 verificações da API e 17 do Operacional Web em produção. O teste isolado confirmou a recuperação de um rascunho anterior, a origem de um rascunho novo, o reenvio idempotente e a recusa cruzada. O APK **1.2.20/código 23** abriu as 29 células autorizadas e uma foto existente da BMA com e sem conexão no Moto G84. SHA-256 `2b631e4e31513aa6a08dece9180466550b5e1159d62e07b3babeb1cf25affd14`. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45934770832).
+
 ## P0.3 — upload privado dos registros em fila
 
 A migração **085** e o Railway **`a3774ddc-c530-4077-b20b-9621241dd75c`** publicaram `/api/mobile/midia/envio`. O serviço associa o arquivo ao projeto, ao operador, à oficina e ao protocolo antes de gravar. O reenvio valida tamanho e SHA-256. O endereço de armazenamento usa um prefixo privado que exige autorização do portal ou do Android para leitura.
