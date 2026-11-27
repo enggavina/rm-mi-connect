@@ -13,6 +13,7 @@ export const orderSchema = z.object({
 })
 export const snapshotSchema = z.object({
   schemaVersion: z.literal(1), source: z.literal('supabase'), fetchedAt: date, referenceAt: date,
+  layout: z.enum(['bma', 'management']).optional(),
   cells: z.array(z.object({ id: z.string().min(1), name: z.string().min(1), order: z.number().finite().nullable() })).optional(),
   orders: z.array(orderSchema), resources: z.array(z.object({ id: z.string(), name: z.string(), sector: z.string(), position: z.tuple([z.number(), z.number(), z.number()]), rotation: z.number(), kind: z.enum(['bench', 'support', 'test']), capacity: z.number().int().positive().nullable(), illustrative: z.boolean() })), warnings: z.array(z.string()),
 }).superRefine((value, ctx) => {

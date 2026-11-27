@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
 import { createWorkshopData } from '../src/server/web/workshop-data';
+import { snapshotSchema } from '../src/components/workshop/domain/schema';
 
 const capabilities: CorporateCapability[] = ['em.portal.read', 'em.projects.read', 'em.planning.read'];
 const id = '00000000-0000-4000-8000-000000000001';
@@ -86,4 +87,18 @@ test('empty authorized cohort is explicit Supabase data with complete metadata',
   const f = fixture(); f.setData({ as_of: at, project_count: 0, allocation_count: 0, cell_count: 0, projects: [], allocations: [], cells: [] });
   const output = await f.reader.getWorkshopSnapshot(); assert.equal(output.source, 'supabase'); assert.equal(output.fetchedAt, at);
   assert.deepEqual(output.orders, []); assert.deepEqual(output.resources, []); assert.deepEqual(output.cells, []);
+});
+
+test('scoped workshop data retains the server-authorized layout through browser validation', async () => {
+  const client = { rpc() { assert.fail('unexpected legacy workshop reader'); } } as unknown as SupabaseClient;
+  for (const layout of ['bma', 'management'] as const) {
+    const reader = createWorkshopData(client, capabilities, async (resource, args) => {
+      assert.equal(resource, 'workshop_twin');
+      assert.deepEqual(args, {});
+      return { ...snapshot(), layout };
+    });
+    assert.equal(snapshotSchema.parse(await reader.getWorkshopSnapshot()).layout, layout);
+  }
+  const reader = createWorkshopData(client, capabilities, async () => snapshot());
+  await assert.rejects(reader.getWorkshopSnapshot(), /planta autorizada/);
 });

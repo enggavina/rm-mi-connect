@@ -11,6 +11,7 @@ import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelop
 import { createCatalogWorkshopAuthorizer, isScopedGanttWrite, isScopedTemplateWrite, rootWriteCapability } from './catalog-workshop';
 import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
+import { AllocationExportError } from './allocation-export-data';
 import { workshopFormReviewWritesEnabled, workshopGanttWritesEnabled, workshopOperationReadsEnabled } from './workshop-operation-reader';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
@@ -56,6 +57,8 @@ export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof l
     if (resource === 'gantt_snapshot' && response.error?.code === 'PT413') {
       throw new Error('O Gantt excede o limite desta consulta. Selecione um projeto ou uma célula.');
     }
+    if (resource === 'planning_export' && response.error?.code === 'PT413') throw new AllocationExportError('limit');
+    if (response.error?.code === '42501') throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
     if (response.error) throw new WorkshopContextError('WORKSHOP_UNAVAILABLE');
     try { return workshopReadResult(response.data, { requestId, resource, workshopId: office }); }
     catch { throw new WorkshopContextError('WORKSHOP_UNAVAILABLE'); }

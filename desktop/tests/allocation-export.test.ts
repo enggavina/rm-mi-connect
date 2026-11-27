@@ -26,6 +26,15 @@ test('one authorized snapshot preserves allocations in distinct cells and reques
  assert.notEqual(result.cells[0].rows[0].allocation_id,result.cells[1].rows[0].allocation_id);
  await assert.rejects(()=>createAllocationExportData(client,['em.planning.read']).snapshot(selection),error=>error instanceof AllocationExportError&&error.code==='denied');assert.equal(calls.length,1);
 });
+test('workshop export sends the closed request to the scoped projection', async () => {
+ const client={rpc(){assert.fail('unexpected legacy export RPC');}} as any;
+ const data=createAllocationExportData(client,allocationExportScopes,async(resource,args)=>{
+  assert.equal(resource,'planning_export');
+  assert.deepEqual(args,selection);
+  return snapshot();
+ });
+ assert.equal((await data.snapshot(selection)).row_count,2);
+});
 test('incomplete, substituted or overbroad data never becomes a downloadable workbook',async()=>{
  const good=snapshot();const corruptions=[
   {...good,complete:false}, {...good,row_count:1}, {...good,fields:['project_number']},

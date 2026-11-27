@@ -45,6 +45,9 @@ async function main() {
           assert.equal(response?.status(), 200);
           await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
           if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
+          if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+          if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
+          if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
           process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
         }
         for (const [index, path] of office.denied.entries()) {

@@ -328,4 +328,31 @@ begin
   'existing decision audit and operator answer are preserved');
 end$$;
 select 'PASS: scoped form decisions, review audit, own retry, foreign refusal and changed payload refusal' result;
+
+update public.rm_projetos set chegada_do_equipamento=statement_timestamp()-interval '1 day',status_pcp='executando'
+ where id in(pg_temp.project_read_id(101),pg_temp.project_read_id(127),pg_temp.project_read_id(128));
+do $$
+declare bma uuid:=pg_temp.project_read_id(1); brj uuid:=pg_temp.project_read_id(2); filters jsonb; v jsonb;
+begin
+ v:=pg_temp.project_read_call('workshop_twin','{}',bma);
+ perform pg_temp.project_read_check(v->>'layout'='bma' and (v->>'project_count')::int=1 and (v->>'allocation_count')::int=1
+  and (v->>'cell_count')::int=1 and (v->'projects'->0->>'id')::uuid=pg_temp.project_read_id(101)
+  and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(301),'BMA 3D data and counts use only its classified projects and cells');
+ v:=pg_temp.project_read_call('workshop_twin','{}',brj);
+ perform pg_temp.project_read_check(v->>'layout'='management' and (v->>'project_count')::int=1 and (v->>'allocation_count')::int=1
+  and (v->>'cell_count')::int=1 and (v->'projects'->0->>'id')::uuid=pg_temp.project_read_id(127)
+  and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(302),'BRJ management uses its own counts without the BMA plant');
+ filters:=jsonb_build_object('cell_ids',jsonb_build_array(pg_temp.project_read_id(301)),
+  'fields',jsonb_build_array('project_number','client_name','cell_name'));
+ v:=pg_temp.project_read_call('planning_export',filters,bma);
+ perform pg_temp.project_read_check((v->>'row_count')::int=1 and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(301)
+  and v->'cells'->0->'rows'->0->'values'->>'client_name'='LOCAL BMA client','BMA spreadsheet input contains its own cell and customer');
+ perform pg_temp.project_read_deny(format('select pg_temp.project_read_call(''planning_export'',%L,%L)',filters,brj),'42501');
+ filters:=jsonb_set(filters,'{cell_ids}',jsonb_build_array(pg_temp.project_read_id(302)));
+ v:=pg_temp.project_read_call('planning_export',filters,brj);
+ perform pg_temp.project_read_check((v->>'row_count')::int=1 and (v->'cells'->0->>'id')::uuid=pg_temp.project_read_id(302)
+  and v->'cells'->0->'rows'->0->'values'->>'client_name'='LOCAL BRJ client','BRJ spreadsheet input has its own projects even with an analogous query');
+ perform pg_temp.project_read_deny(format('select pg_temp.project_read_call(''planning_export'',%L,%L)',filters,bma),'42501');
+end$$;
+select 'PASS: scoped workshop twin projections and planning export in two offices' result;
 rollback;

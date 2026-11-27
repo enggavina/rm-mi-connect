@@ -65,6 +65,7 @@ export interface WorkshopSnapshot {
   resources: WorkshopResource[]
   warnings: string[]
   cells?: WorkshopCell[]
+  layout?: 'bma' | 'management'
 }
 export interface WorkshopCell { id: string; name: string; order: number | null }
 export type RoofMode = 'hidden' | 'translucent' | 'closed'
