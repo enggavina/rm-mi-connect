@@ -20,7 +20,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const kind = new URL(request.url).searchParams.get('source');
     const source = documentSource(kind);
     if (!uuid.safeParse(id).success || !source) return Response.json({ error: 'Documento inválido.' }, { status: 400, headers });
-    const read = await readWorkshopOperations(current, 'sso');
+    const read = await readWorkshopOperations(current);
     let data: { id: string; file: unknown; archive_path?: unknown } | null;
     if (read) {
       data = await read('document_link', { id, source: kind ?? 'documentos' });

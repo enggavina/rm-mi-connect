@@ -89,7 +89,7 @@ export default async function Cronograma({ searchParams }: { searchParams: Promi
   const photos = current && tab === 'fotos' ? await getOperationalPhotos(projectId, current.id) : null;
   const reviewers = current && tab === 'formularios' ? await getFormReviewerAssignments(projectId, current.id) : null;
   const stages = current && tab === 'etapas'
-    ? await createProjectScheduleData(session.client, session.sso?.capabilities, operations ?? await readWorkshopOperations(session, 'sso'), true)
+    ? await createProjectScheduleData(session.client, session.sso?.capabilities, operations, true)
       .stages(projectId, current.id, typeof params.page === 'string' ? params.page : undefined)
     : null;
   const stageRules = current && tab === 'etapas' ? await getOperationalStageRules(projectId, current.id) : null;

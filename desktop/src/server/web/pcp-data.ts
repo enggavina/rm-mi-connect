@@ -157,9 +157,8 @@ function validReceivingItem(item: ReceivingItem): boolean {
 async function data(capability: 'em.planning.read' | 'em.projects.read') {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser(capability);
-  const workshopRead = capability === 'em.projects.read'
-    ? await (await import('./workshop-operation-reader')).readWorkshopOperations(access)
-    : access.sso ? (await import('./sso-bridge')).ssoWorkshopRead(access.sso, access.client) : undefined;
+  const { readWorkshopOperations } = await import('./workshop-operation-reader');
+  const workshopRead = await readWorkshopOperations(access);
   return createPcpData(access.client, access.sso?.capabilities, workshopRead);
 }
 export async function getCellQueue(cellId: string) { return (await data('em.planning.read')).getCellQueue(cellId); }

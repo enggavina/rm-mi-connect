@@ -139,7 +139,7 @@ async function data() {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser('em.approvals.read');
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
-  return createStageApprovalData(access.client, access.sso?.capabilities, await readWorkshopOperations(access, 'sso'), true);
+  return createStageApprovalData(access.client, access.sso?.capabilities, await readWorkshopOperations(access), true);
 }
 export async function listStageApprovals(filters: StageApprovalFilters = {}) { return (await data()).listStageApprovals(filters); }
 export async function getStageApproval(id: string) { return (await data()).getStageApproval(id); }

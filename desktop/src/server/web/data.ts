@@ -357,7 +357,7 @@ async function data(capability: CorporateCapability) {
   const { ssoWorkshopRead } = await import('./sso-bridge');
   const { readWorkshopOperations } = await import('./workshop-operation-reader');
   const operationRead = ['em.projects.read', 'em.planning.read', 'em.forms.read', 'em.portal.read'].includes(capability)
-    ? await readWorkshopOperations(session, capability === 'em.forms.read' ? 'sso' : 'rollout') : undefined;
+    ? await readWorkshopOperations(session) : undefined;
   return createWebData(session.client, session.sso?.capabilities, session.sso ? ssoWorkshopRead(session.sso, session.client) : undefined, operationRead);
 }
 export async function getOverview() { return (await data('em.portal.read')).getOverview(); }

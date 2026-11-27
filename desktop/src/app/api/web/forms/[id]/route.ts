@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (!hasWebCapability(current, 'em.forms.read')) return Response.json({ error: 'Acesso a formulários não autorizado.' }, { status: 403, headers });
     const { id } = await context.params;
     if (!uuid.safeParse(id).success) return Response.json({ error: 'Registro inválido.' }, { status: 400, headers });
-    const record = await createWebData(current.client, current.sso?.capabilities, undefined, await readWorkshopOperations(current, 'sso')).getRecord(id);
+    const record = await createWebData(current.client, current.sso?.capabilities, undefined, await readWorkshopOperations(current)).getRecord(id);
     return record ? Response.json(record, { headers }) : Response.json({ error: 'Registro não encontrado.' }, { status: 404, headers });
   } catch (error) {
     const status = error instanceof CorporateAuthError || error instanceof WorkshopContextError ? error.status : 503;

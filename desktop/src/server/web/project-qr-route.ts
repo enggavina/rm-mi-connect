@@ -19,7 +19,7 @@ export async function handleProjectQrImage(request: Request, projectId: string, 
     const input = projectQrIdSchema.safeParse(projectId), query = new URL(request.url).searchParams;
     if (!input.success || [...query.keys()].some(key => key !== 'download') || query.getAll('download').length > 1
       || query.has('download') && query.get('download') !== '1') return errorResponse(400, 'Projeto ou opção de imagem inválidos.');
-    const project = await createProjectQrData(access.client, access.sso?.capabilities, await readWorkshopOperations(access, 'sso')).getProjectQr(input.data);
+    const project = await createProjectQrData(access.client, access.sso?.capabilities, await readWorkshopOperations(access)).getProjectQr(input.data);
     if (!project) return errorResponse(404, 'Projeto não encontrado.');
     const svg = await (dependencies.renderQr ?? renderProjectQrSvg)(project.id);
     return new Response(svg, { headers: { ...headers, 'Content-Type': 'image/svg+xml; charset=utf-8',

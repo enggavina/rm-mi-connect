@@ -4,14 +4,16 @@ import type { WorkshopRead } from './workshop-read-policy';
 
 type WorkshopSession = Pick<Extract<WebAccess, { state: 'authenticated' }>, 'client' | 'sso'>;
 
-/** Activation follows origin coverage for all project and cell writers. */
-export function workshopOperationReadsEnabled() {
+/** Preserve the rollout variable for project and cell updates. */
+export function workshopRootEditsEnabled() {
   return process.env.EM_WORKSHOP_OPERATION_READS === 'true';
 }
 
-export async function readWorkshopOperations(access: WorkshopSession, mode: 'rollout' | 'sso' = 'rollout'): Promise<WorkshopRead | undefined> {
-  if (!workshopOperationReadsEnabled() && !(mode === 'sso' && access.sso)) return undefined;
-  if (!access.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+export async function readWorkshopOperations(access: WorkshopSession): Promise<WorkshopRead | undefined> {
+  if (!access.sso) {
+    if (workshopRootEditsEnabled()) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
+    return undefined;
+  }
   const { ssoWorkshopRead } = await import('./sso-bridge');
   return ssoWorkshopRead(access.sso, access.client);
 }

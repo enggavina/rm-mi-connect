@@ -1409,6 +1409,61 @@ begin
  end loop;
 end
 $review_cutover$;
+do $receiving_read_cutover$
+declare
+ legacy_receiving constant text:='public.rm_web_receivings_v1(text,text,integer,integer)';
+ filters constant jsonb:='{"reason":"without_number","q":"","page":1}';
+ selection constant jsonb:='{"q":"","status":null,"client":null,"cell":null,"page":1,"planning":true}';
+ overview constant jsonb:='{"projects":true,"forms":true,"planning":true,"documents":true}';
+ project uuid; choices jsonb; entries jsonb; dashboard jsonb; twin jsonb;
+begin
+ if not has_function_privilege('authenticated',legacy_receiving,'execute') then
+  raise exception 'A consulta antiga foi retirada antes da mudança do portal.';
+ end if;
+ begin
+  perform rm_private.activate_workshop_receiving_read_cutover_v1();
+  raise exception 'A ativação aceitou origens pendentes no acervo.';
+ exception when sqlstate 'PT409' then null;
+ end;
+ insert into rm_private.workshop_project_ownership(id,workshop_id) values(em_fixture.id(1290),em_fixture.id(1));
+ insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(em_fixture.id(1291),em_fixture.id(1));
+ perform rm_private.activate_workshop_receiving_read_cutover_v1();
+ perform rm_private.activate_workshop_receiving_read_cutover_v1();
+ if has_function_privilege('authenticated',legacy_receiving,'execute')
+  or has_function_privilege('anon',legacy_receiving,'execute')
+  or has_function_privilege('service_role','rm_private.activate_workshop_receiving_read_cutover_v1()','execute')
+  or (select activated_at is not null from rm_private.workshop_root_enforcement where singleton) then
+  raise exception 'O corte não isolou a consulta ou alterou as entradas legadas.';
+ end if;
+ for office in 1..4 loop
+  select project_id into strict project from rm_private.receiving_openings where client_submission_id=em_fixture.id(1250+office);
+  choices:=pg_temp.workshop_restore_read(office,'project_list',selection);
+  entries:=pg_temp.workshop_restore_read(office,'receiving_list',filters);
+  dashboard:=pg_temp.workshop_restore_read(office,'overview',overview);
+  twin:=pg_temp.workshop_restore_read(office,'workshop_twin','{}');
+  if not choices->'rows' @> jsonb_build_array(jsonb_build_object('id',project))
+   or not entries->'items' @> jsonb_build_array(jsonb_build_object('id',project))
+   or (pg_temp.workshop_restore_read(office,'project_entry',
+    jsonb_build_object('id',project,'documents',true,'cells',true))->'project'->>'id')::uuid is distinct from project
+   or not dashboard->'recentProjects' @> jsonb_build_array(jsonb_build_object('id',project))
+   or not twin->'cells' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(200+office))) then
+   raise exception 'Uma consulta operacional perdeu os registros autorizados da própria oficina.';
+  end if;
+  for other in 1..4 loop
+   if other=office then continue;end if;
+   if pg_temp.workshop_restore_read(other,'project_entry',
+    jsonb_build_object('id',project,'documents',true,'cells',true)) is not null
+    or pg_temp.workshop_restore_read(other,'receiving_list',jsonb_build_object(
+     'reason','without_number','q','Motor local do Gantt '||office,'page',1))->>'total' is distinct from '0'
+    or pg_temp.workshop_restore_read(other,'project_list',selection)->'rows' @> jsonb_build_array(jsonb_build_object('id',project))
+    or pg_temp.workshop_restore_read(other,'overview',overview)->'recentProjects' @> jsonb_build_array(jsonb_build_object('id',project))
+    or pg_temp.workshop_restore_read(other,'workshop_twin','{}')->'cells' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(200+office))) then
+    raise exception 'A consulta operacional expôs dados de outra oficina.';
+   end if;
+  end loop;
+ end loop;
+end
+$receiving_read_cutover$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
@@ -1422,3 +1477,4 @@ select 'PASS: exact legacy receiving receipts become visible only in the verifie
 select 'PASS: restored archive copies authorize photos, form answers and invoices only in the original workshop' result;
 select 'PASS: archived Word attachments use the same private read and reject a foreign workshop' result;
 select 'PASS: review cutover preserves legacy actions and rejects foreign decisions in four workshops before the general root cutover' result;
+select 'PASS: receiving and project reads are isolated with the overview and twin in four workshops after retiring legacy receiving reads' result;

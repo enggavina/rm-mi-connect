@@ -25,7 +25,7 @@ export async function handleAllocationExport(request:Request,dependencies:{getWe
   if(request.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json')return fail(415,'Envie uma seleção de células e campos.');
   let input:unknown;try{input=await boundedJson(request);}catch(error){return fail(error instanceof BodyTooLarge?413:400,'Não foi possível ler a seleção de células e campos.');}
   const parsed=allocationExportSchema.safeParse(input);if(!parsed.success)return fail(400,'Selecione ao menos uma célula e um campo válido, sem repetições.');
-  const snapshot=await createAllocationExportData(access.client,access.sso?.capabilities,await readWorkshopOperations(access,'sso')).snapshot(parsed.data);
+  const snapshot=await createAllocationExportData(access.client,access.sso?.capabilities,await readWorkshopOperations(access)).snapshot(parsed.data);
   const bytes=await(dependencies.buildWorkbook??buildAllocationWorkbook)(snapshot,request.signal);
   return new Response(bytes as Uint8Array<ArrayBuffer>,{status:200,headers:{...headers,'Content-Type':allocationExportMime,
    'Content-Disposition':`attachment; filename="${allocationExportFilename(new Date(snapshot.generated_at))}"`}});
