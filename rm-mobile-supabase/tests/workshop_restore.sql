@@ -2172,8 +2172,8 @@ declare
  own_answer uuid:=em_fixture.id(1461);
  other_answer uuid:=em_fixture.id(1462);
  device_profile uuid:=em_fixture.id(731);
- own_operator uuid:=em_fixture.id(741);
- other_operator uuid:=em_fixture.id(742);
+ own_operator uuid:=em_fixture.id(3606);
+ other_operator uuid:=em_fixture.id(3607);
  other_profile uuid;
  delegation text:=repeat('c1',32);
  opened jsonb;
@@ -2215,6 +2215,11 @@ begin
 
  insert into public.rm_users(id,nome,perfil) values(operator_id,'Operador de recebimento legado local','mobile'),
   (unrelated_person,'Pessoa sem vínculo comprovado','mobile');
+ -- The assignment fixtures also contain people with recorded memberships in more than one workshop.
+ insert into public.rm_users(id,nome,perfil)
+  select em_fixture.id(3605+n),'Pessoa com histórico em uma oficina '||n,'mobile' from generate_series(1,4)n;
+ insert into public.rm_tablet_celula_users(celula_id,identidade_id)
+  select em_fixture.id(200+n),em_fixture.id(3605+n) from generate_series(1,4)n;
  insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at)
   values(extensions.digest(delegation,'sha256'),device,em_fixture.id(731),operator_id,clock_timestamp()+interval '1 hour');
  insert into public.rm_clientes(id,nome) values(customer,'Cliente de recebimento legado local');
@@ -2272,8 +2277,8 @@ begin
   end if;
   result:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),repeat(chr(96+office),64),
    pg_temp.workshop_restore_native_context(office,office),'rm_users',null,null,false);
-  if not result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(740+office)))
-   or result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(741))) then
+  if not result->'rows' @> jsonb_build_array(jsonb_build_object('id',em_fixture.id(3605+office)))
+   or result->'rows' @> jsonb_build_array(jsonb_build_object('id',own_operator)) then
    raise exception 'A consulta moderna perdeu o operador local ou incluiu o operador da BMA.';
   end if;
  end loop;
