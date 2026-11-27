@@ -38,7 +38,7 @@ export const savePhotoTitleSchema = z.object({
 }).strict().superRefine((value, context) => {
   if (value.expected_updated_at === null) {
     if (!value.changes.titulo) context.addIssue({ code: 'custom', path: ['changes', 'titulo'], message: 'Informe o título.' });
-    if (!Object.hasOwn(value.changes, 'celula_id') || value.changes.celula_id === undefined) context.addIssue({ code: 'custom', path: ['changes', 'celula_id'], message: 'Escolha uma célula ou o escopo global.' });
+    if (!Object.hasOwn(value.changes, 'celula_id') || value.changes.celula_id === undefined) context.addIssue({ code: 'custom', path: ['changes', 'celula_id'], message: 'Escolha uma célula ou toda a oficina.' });
   }
 });
 export const deletePhotoTitleSchema = z.object({ submissionId: uuid, id: uuid, expected_updated_at: z.string().datetime({ offset: true }) }).strict();

@@ -5,6 +5,29 @@ import { createEngineeringData, photoTitleScope } from '../src/server/web/engine
 import type { WebRow } from '../src/server/web/data';
 import type { CorporateCapability } from '../src/server/web/sso-policy';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+test('workshop engineering uses the scoped reader for lists, choices and direct links', async () => {
+  const db = new Fixture();
+  const ownCell = { id: id(1), nome: 'Desmontagem' }, ownType = { id: id(2), nome: 'Motor' };
+  const title = { id: id(3), celula_id: ownCell.id, titulo: 'Frontal' };
+  const calls: string[] = [];
+  const data = createEngineeringData(db as unknown as SupabaseClient, ['em.portal.read', 'em.engineering.read'], async (resource, args) => {
+    calls.push(resource);
+    if (resource === 'engineering_matrix') return { cells: [ownCell], types: [ownType], rows: [], selectedTypeId: null };
+    if (resource === 'engineering_choices') return { cells: [ownCell], types: [ownType], forms: [], users: [], cellUserLinks: [], photoTitles: [title], statuses: [] };
+    if (resource === 'photo_title_list') return { rows: [title], total: 1, page: args.page, pageSize: 50, cells: [ownCell] };
+    return null;
+  });
+  assert.equal((await data.getEngineeringMatrix(id(90))).selectedTypeId, null);
+  assert.equal(await data.getEngineeringEntry(id(90)), null);
+  assert.equal((await data.getEngineeringChoices()).photoTitles[0].celula_id, ownCell.id);
+  assert.equal((await data.listPhotoTitles({ cell: ownCell.id })).total, 1);
+  await assert.rejects(data.listPhotoTitles({ cell: id(90) }), /validada/);
+  assert.equal(await data.getPhotoTitle(id(90)), null);
+  assert.deepEqual(calls, ['engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_list', 'photo_title_entry']);
+  assert.deepEqual(db.calls, []);
+  assert.deepEqual(db.rpcCalls, []);
+});
 class Fixture {
   tables: Record<string, WebRow[]> = {}; snapshot: any = null; rpcCalls: any[] = []; calls: any[] = [];
   from(table: string) { return new Query(this, table); }

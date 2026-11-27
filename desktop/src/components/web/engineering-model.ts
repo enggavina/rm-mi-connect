@@ -46,7 +46,9 @@ export function engineeringRouteRows(rows: WebRow[], cells: WebRow[]) {
 }
 export function titlesForCell(choices: EngineeringChoices, cellId: string) {
   const cell = choices.cells.find(row => row.id === cellId);
-  return cell ? choices.photoTitles.filter(row => !cellNameKey(row.celula_nome) || cellNameKey(row.celula_nome) === cellNameKey(cell.nome)) : [];
+  return cell ? choices.photoTitles.filter(row => row.celula_id !== undefined
+    ? row.celula_id === null || row.celula_id === cellId
+    : !cellNameKey(row.celula_nome) || cellNameKey(row.celula_nome) === cellNameKey(cell.nome)) : [];
 }
 export function approversForCell(choices: EngineeringChoices, cellId: string | null) {
   const linked = new Set(choices.cellUserLinks.filter(row => row.celula_id === cellId).map(row => row.identidade_id));

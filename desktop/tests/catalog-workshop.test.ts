@@ -19,6 +19,20 @@ test('only exact client/type save and delete operations require workshop confirm
   assert.equal(isScopedCatalogWrite('save_project', { kind: 'clients' }), false);
 });
 
+test('engineering writes require their exact capability and a new workshop confirmation on retry', async () => {
+  const context: SsoContext = { ...sso(), capabilities: ['em.engineering.manage'] };
+  let reads = 0;
+  const minted: string[] = [];
+  const authorizer = createCatalogWorkshopAuthorizer({ reader: { async readWeb() { reads++; return workshop(); } },
+    async mint(value) { minted.push(value.operation); } });
+  authorizer.remember(context, session());
+  const operations = ['save_engineering', 'save_photo_title', 'delete_photo_title'];
+  for (const operation of operations) assert.equal(await authorizer.authorize(context, 'protocol', operation, {}, 'em.engineering.manage'), true);
+  await assert.rejects(authorizer.authorize(context, 'protocol', 'save_photo_title', {}, 'em.planning.manage'), CorporateAuthError);
+  assert.deepEqual(minted, operations);
+  assert.equal(reads, 3);
+});
+
 test('every protected action reads current authority and mints for the exact request without serializing Bearer', async () => {
   const corporate = session(), context = sso(), payload = Object.freeze({ kind: 'clients', id: subject });
   const before = JSON.stringify(context); let reads = 0, mints = 0;

@@ -3,6 +3,7 @@ import type { WebRow } from './data';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { withFormVersionLabels } from './form-version-labels';
+import { checkedWorkshopPage, type WorkshopRead } from './workshop-read-policy';
 
 const MATRIX = 'id,celula_id,tipo_equipamento_id,ativo,visibilidade,updated_at';
 const CELL = 'id,nome,codigo,indice,ordem';
@@ -22,6 +23,13 @@ function selectedIds(values: unknown[]): string[] { return [...new Set(values.fi
 function pick(row: Record<string, unknown>, columns: string): WebRow {
   return Object.fromEntries(columns.split(',').map(key => [key, row[key]])) as WebRow;
 }
+
+const invalidWorkshopReading = () => new Error('A configuração retornada não pôde ser validada.');
+function scopedRows(rows: unknown): WebRow[] {
+  if (!Array.isArray(rows) || rows.length > 20000 || rows.some(row => !uuid.safeParse(row?.id).success)
+    || new Set(rows.map(row => row.id)).size !== rows.length) throw invalidWorkshopReading();
+  return rows;
+}
 /** Same name equivalence as SQL; ambiguous/unknown legacy names are not global. */
 export function photoTitleScope(row: WebRow, cells: WebRow[]): PhotoTitleRow {
   const key = (value: unknown) => typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').toLowerCase() : null;
@@ -31,7 +39,7 @@ export function photoTitleScope(row: WebRow, cells: WebRow[]): PhotoTitleRow {
 }
 
 /** Injectable anon+RLS client. Templates only; no URLs, emails or Auth metadata. */
-export function createEngineeringData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
+export function createEngineeringData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], workshopRead?: WorkshopRead) {
   function authorize() {
     if (capabilities !== undefined && (!capabilities.includes('em.portal.read') || !capabilities.includes('em.engineering.read'))) throw new Error('Acesso não autorizado à engenharia.');
   }
@@ -57,6 +65,17 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
   }
   async function getEngineeringMatrix(typeId?: string) {
     authorize();
+    if (workshopRead) {
+      if (typeId && !uuid.safeParse(typeId).success) return { rows: [], types: [], cells: [], selectedTypeId: null };
+      const result = await workshopRead('engineering_matrix', { type: typeId || null });
+      const rows = scopedRows(result?.rows), types = scopedRows(result?.types), cells = scopedRows(result?.cells);
+      const selectedTypeId = result.selectedTypeId;
+      const cellIds = new Set(cells.map(cell => cell.id));
+      if (selectedTypeId !== null && !types.some(type => type.id === selectedTypeId)
+        || typeId && selectedTypeId !== null && typeId !== selectedTypeId
+        || rows.some(row => row.tipo_equipamento_id !== selectedTypeId || !cellIds.has(row.celula_id))) throw invalidWorkshopReading();
+      return { rows, types, cells, selectedTypeId: selectedTypeId as string | null };
+    }
     const { types, cells } = await baseChoices();
     const selectedTypeId = typeId ? types.find(type => type.id === typeId)?.id ?? null : types[0]?.id ?? null;
     if (!selectedTypeId) return { rows: [] as WebRow[], types, cells, selectedTypeId };
@@ -83,7 +102,8 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
     if (!uuid.safeParse(id).success) return null;
     // One STABLE statement is essential: a parent timestamp from an earlier
     // query must never be paired with children from a later committed revision.
-    const raw = checked(await client.rpc('rm_web_engineering_snapshot_v1', { p_id: id })).data;
+    const raw = workshopRead ? await workshopRead('engineering_entry', { id })
+      : checked(await client.rpc('rm_web_engineering_snapshot_v1', { p_id: id })).data;
     if (!raw?.matrix) return null;
     if (raw.matrix.id !== id || !Array.isArray(raw.form_ids) || !Array.isArray(raw.photos) || !Array.isArray(raw.stages)) throw new Error('A configuração retornada não pôde ser validada.');
     return { matrix: pick(raw.matrix, MATRIX), form_ids: raw.form_ids,
@@ -91,6 +111,15 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
   }
   async function getEngineeringChoices(entry?: EngineeringSnapshot | null) {
     authorize();
+    if (workshopRead) {
+      const result = await workshopRead('engineering_choices', { id: entry?.matrix.id ?? null });
+      const cells = scopedRows(result?.cells), types = scopedRows(result?.types), forms = scopedRows(result?.forms), users = scopedRows(result?.users);
+      const links = scopedRows(result?.cellUserLinks), titles = scopedRows(result?.photoTitles);
+      const cellIds = new Set(cells.map(cell => cell.id)), userIds = new Set(users.map(user => user.id));
+      if (!Array.isArray(result.statuses) || links.some(link => !cellIds.has(link.celula_id) || !userIds.has(link.identidade_id))
+        || titles.some(title => title.celula_id !== null && !cellIds.has(title.celula_id))) throw invalidWorkshopReading();
+      return { cells, types, forms, users, cellUserLinks: links, photoTitles: titles as PhotoTitleRow[], statuses: result.statuses };
+    }
     const formIds = selectedIds(entry?.form_ids ?? []);
     const userIds = selectedIds((entry?.stages ?? []).flatMap(stage => [stage.aprovador_id, ...(stage.aprovadores_ids ?? []), ...(stage.aprovadores_retorno_ids ?? [])]));
     const [base, activeForms, currentForms, activeUsers, currentUsers, cellUserLinks, photoTitles, statusResult] = await Promise.all([
@@ -114,6 +143,16 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
   }
   async function listPhotoTitles(filters: PhotoTitleFilters = {}) {
     authorize();
+    if (workshopRead) {
+      const page = pageNumber(filters.page);
+      const cell = filters.cell ?? null;
+      if (cell && !uuid.safeParse(cell).success) return { rows: [], total: 0, page, pageSize: 50, cells: [] };
+      const result = checkedWorkshopPage(await workshopRead('photo_title_list', { q: searchTerm(filters.q), page, cell }), page, 50);
+      const cells = scopedRows(result.cells), rows = result.rows as PhotoTitleRow[];
+      const cellIds = new Set(cells.map(row => row.id));
+      if (rows.some(row => row.celula_id !== null && !cellIds.has(row.celula_id ?? '') || cell && row.celula_id !== cell)) throw invalidWorkshopReading();
+      return { rows, total: result.total as number, page, pageSize: 50, cells };
+    }
     const cells = await all('rm_celulas', CELL, undefined, 'nome');
     let query: any = client.from('rm_cadastro_fotos').select(TITLE, { count: 'exact' });
     const term = searchTerm(filters.q);
@@ -130,6 +169,11 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
   async function getPhotoTitle(id: string): Promise<PhotoTitleRow | null> {
     authorize();
     if (!uuid.safeParse(id).success) return null;
+    if (workshopRead) {
+      const result = await workshopRead('photo_title_entry', { id });
+      if (result !== null && result?.id !== id) throw invalidWorkshopReading();
+      return result;
+    }
     const [result, cells] = await Promise.all([client.from('rm_cadastro_fotos').select(TITLE).eq('id', id).maybeSingle(), all('rm_celulas', CELL)]);
     const row = checked(result).data;
     return row ? photoTitleScope(row, cells) : null;
@@ -139,8 +183,9 @@ export function createEngineeringData(client: SupabaseClient, capabilities?: rea
 
 async function data() {
   const { requireWebUser } = await import('./auth');
+  const { ssoWorkshopRead } = await import('./sso-bridge');
   const session = await requireWebUser('em.engineering.read');
-  return createEngineeringData(session.client, session.sso?.capabilities);
+  return createEngineeringData(session.client, session.sso?.capabilities, session.sso && ssoWorkshopRead(session.sso, session.client));
 }
 export async function getEngineeringMatrix(typeId?: string) { return (await data()).getEngineeringMatrix(typeId); }
 export async function getEngineeringEntry(id: string) { return (await data()).getEngineeringEntry(id); }

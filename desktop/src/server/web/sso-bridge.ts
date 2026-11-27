@@ -8,7 +8,7 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
   type CorporateFlow, type VerifiedCorporateSession, type CorporateCapability } from './sso-corporate';
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
-import { createCatalogWorkshopAuthorizer, isScopedPlanningWrite, isScopedTemplateWrite, requiresPlanningWorkshop, rootWriteCapability, workshopReviewCapability } from './catalog-workshop';
+import { createCatalogWorkshopAuthorizer, isScopedEngineeringWrite, isScopedPlanningWrite, isScopedTemplateWrite, requiresPlanningWorkshop, rootWriteCapability, workshopReviewCapability } from './catalog-workshop';
 import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
 import { AllocationExportError } from './allocation-export-data';
@@ -41,6 +41,7 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: workshopGanttWritesEnabled(),
   enableRootEdits: workshopOperationReadsEnabled(), enableFormReviewWrites: workshopFormReviewWritesEnabled(), mint: async value => {
   const issuer = rootWriteCapability(value.operation, value.payload, workshopOperationReadsEnabled()) ? 'rm_sso_root_creation_permit_v1'
+    : isScopedEngineeringWrite(value.operation) ? 'rm_sso_engineering_workshop_permit_v1'
     : requiresPlanningWorkshop(value.operation) || isScopedPlanningWrite(value.operation) ? 'rm_sso_gantt_workshop_permit_v1'
     : workshopReviewCapability(value.operation) ? 'rm_sso_form_review_workshop_permit_v1'
     : isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1';

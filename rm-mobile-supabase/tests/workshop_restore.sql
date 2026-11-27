@@ -42,6 +42,22 @@ insert into rm_private.capacity_bookings(id,resource_id,allocation_id,day,minute
 insert into public.rm_forms(id,titulo) select em_fixture.id(400+n),'Modelo local '||n from generate_series(1,4)n;
 insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id)
  select 'form_model',em_fixture.id(400+n),em_fixture.id(n) from generate_series(1,4)n;
+insert into public.rm_tipos_equipamento(id,nome)
+ select em_fixture.id(1100+n),'Tipo em comum' from generate_series(1,4)n;
+insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id)
+ select 'equipment_type',em_fixture.id(1100+n),em_fixture.id(n) from generate_series(1,4)n;
+insert into public.rm_celula_tipos_equipamento(id,celula_id,tipo_equipamento_id)
+ select em_fixture.id(1110+n),em_fixture.id(200+n),em_fixture.id(1100+n) from generate_series(1,4)n;
+insert into public.rm_celula_form_tipos_equipamento(celula_tipo_equipamento_id,form_id,ativo)
+ select em_fixture.id(1110+n),em_fixture.id(400+n),true from generate_series(1,4)n;
+insert into public.rm_cadastro_fotos(id,titulo,numero,celula_nome)
+ select em_fixture.id(1120+n),'Frontal',3,c.nome from generate_series(1,4)n
+ join public.rm_celulas c on c.id=em_fixture.id(200+n);
+insert into rm_private.engineering_photo_title_scope(title_id,workshop_id,cell_id)
+ select em_fixture.id(1120+n),em_fixture.id(n),em_fixture.id(200+n) from generate_series(2,4)n;
+insert into public.rm_fotos(id,celula_id,celula_tipo_equipamento_id,categoria_foto,cadastro_foto_id,titulo,numero)
+ select em_fixture.id(1130+n),em_fixture.id(200+n),em_fixture.id(1110+n),'obrigat_ria',em_fixture.id(1120+n),'Frontal',1
+ from generate_series(1,4)n;
 insert into public.rm_registros_formulario(id,projeto_id,celula_id,form_id,numero_projeto_rm)
  select em_fixture.id(500+n),em_fixture.id(100+n),em_fixture.id(200+n),em_fixture.id(400+n),'QA-MESMA-OS' from generate_series(1,4)n;
 insert into public.rm_fotos(id,projeto_id,celula_id,celula_projeto_id,foto_url)
@@ -132,6 +148,20 @@ declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
 begin
  if scoped then perform public.rm_sso_gantt_workshop_permit_v1(hash,submission,operation,payload,context);
  else perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,'em.planning.manage');end if;
+ set local role authenticated;
+ value:=public.rm_web_mutate_v1(submission,operation,payload);
+ reset role;
+ return value;
+exception when others then reset role;raise;
+end$$;
+
+create function pg_temp.workshop_restore_engineering_write(office integer,submission uuid,operation text,payload jsonb,scoped boolean default true)
+returns jsonb language plpgsql as $$
+declare context jsonb:=pg_temp.workshop_restore_sso(office); value jsonb;
+ hash text:=repeat(office::text,64);
+begin
+ if scoped then perform public.rm_sso_engineering_workshop_permit_v1(hash,submission,operation,payload,context);
+ else perform public.rm_sso_action_permit_v1(hash,submission,operation,payload,'em.engineering.manage');end if;
  set local role authenticated;
  value:=public.rm_web_mutate_v1(submission,operation,payload);
  reset role;
@@ -550,5 +580,113 @@ begin
  end loop;
 end
 $workshop_execution$;
+
+do $workshop_engineering$
+declare original jsonb; title jsonb; choices jsonb; payload jsonb; own_cell uuid; foreign_cell uuid;
+ target uuid; protocol uuid; deletion jsonb;
+begin
+ begin
+  perform rm_private.activate_engineering_workshops_v1(3);
+  raise exception 'O corte aceitou um lote de títulos diferente do aprovado.';
+ exception when sqlstate 'PT409' then null;
+ end;
+ perform rm_private.activate_engineering_workshops_v1(4);
+ if has_function_privilege('authenticated','public.rm_web_engineering_snapshot_v1(uuid)','execute')
+  or has_table_privilege('authenticated','rm_private.engineering_photo_title_scope','select') then
+  raise exception 'A leitura direta ainda contorna o contexto atual da engenharia.';
+ end if;
+ for office in 1..4 loop
+  own_cell:=em_fixture.id(200+office);
+  choices:=pg_temp.workshop_restore_read(office,'engineering_choices','{"id":null}');
+  if choices->'cells'->0->>'id' is distinct from own_cell::text
+   or jsonb_array_length(choices->'cells')<>1
+   or choices->'users'->0->>'id' is distinct from em_fixture.id(740+office)::text
+   or jsonb_array_length(choices->'users')<>1
+   or choices->'photoTitles'->0->>'celula_id' is distinct from own_cell::text then
+   raise exception 'As opções de engenharia misturaram oficinas.';
+  end if;
+  original:=pg_temp.workshop_restore_read(office,'engineering_matrix',jsonb_build_object('type',em_fixture.id(1100+office)));
+  if original->'rows'->0->>'id' is distinct from em_fixture.id(1110+office)::text
+   or original->'rows'->0->>'form_count' is distinct from '1'
+   or original->'rows'->0->>'photo_count' is distinct from '1' then
+   raise exception 'A matriz perdeu os vínculos próprios após a restauração.';
+  end if;
+  for outsider in 1..4 loop
+   if outsider=office then continue;end if;
+   foreign_cell:=em_fixture.id(200+outsider);
+   if pg_temp.workshop_restore_read(outsider,'engineering_entry',jsonb_build_object('id',em_fixture.id(1110+office))) is not null
+    or pg_temp.workshop_restore_read(outsider,'photo_title_entry',jsonb_build_object('id',em_fixture.id(1120+office))) is not null
+    or pg_temp.workshop_restore_read(office,'engineering_matrix',jsonb_build_object('type',em_fixture.id(1100+outsider)))->'rows' <> '[]'::jsonb
+    or pg_temp.workshop_restore_read(office,'photo_title_list',jsonb_build_object('cell',foreign_cell,'q','frontal','page',1))->>'total'<>'0' then
+    raise exception 'A pesquisa ou o link de engenharia expôs dados cruzados.';
+   end if;
+  end loop;
+  title:=pg_temp.workshop_restore_read(office,'photo_title_entry',jsonb_build_object('id',em_fixture.id(1120+office)));
+  payload:=jsonb_build_object('id',em_fixture.id(1120+office),'expected_updated_at',title->'updated_at','changes','{"numero":12}'::jsonb);
+  begin
+   perform pg_temp.workshop_restore_engineering_write((office % 4)+1,gen_random_uuid(),'save_photo_title',payload);
+   raise exception 'Outra oficina alterou um título de foto.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   perform pg_temp.workshop_restore_engineering_write(office,gen_random_uuid(),'save_photo_title',payload,false);
+   raise exception 'Título editado sem autorização recente da oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  original:=pg_temp.workshop_restore_read(office,'engineering_entry',jsonb_build_object('id',em_fixture.id(1110+office)));
+  payload:=jsonb_build_object('id',em_fixture.id(1110+office),'expected_updated_at',original->'matrix'->'updated_at',
+   'celula_id',own_cell,'tipo_equipamento_id',em_fixture.id(1100+office),'changes',
+   jsonb_build_object('form_ids',jsonb_build_array(em_fixture.id(400+(office % 4)+1))));
+  begin
+   perform pg_temp.workshop_restore_engineering_write(office,gen_random_uuid(),'save_engineering',payload);
+   raise exception 'A configuração aceitou formulário de outra oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  payload:=jsonb_set(payload,'{changes}',jsonb_build_object('photos',jsonb_build_array(
+   jsonb_build_object('id',gen_random_uuid(),'cadastro_foto_id',em_fixture.id(1120+(office % 4)+1),'numero',2,'descricao',null))));
+  begin
+   perform pg_temp.workshop_restore_engineering_write(office,gen_random_uuid(),'save_engineering',payload);
+   raise exception 'A configuração aceitou título de outra oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+   insert into public.rm_fotos(celula_id,celula_tipo_equipamento_id,categoria_foto,cadastro_foto_id,titulo,numero)
+   values(own_cell,em_fixture.id(1110+office),'obrigat_ria',em_fixture.id(1120+(office % 4)+1),'Frontal',2);
+   raise exception 'A gravação direta vinculou título de outra oficina.';
+  exception when insufficient_privilege then null;
+  end;
+  payload:=jsonb_set(payload,'{changes}','{"visibilidade":true}');
+  protocol:=gen_random_uuid();
+  perform pg_temp.workshop_restore_engineering_write(office,protocol,'save_engineering',payload);
+  if pg_temp.workshop_restore_engineering_write(office,protocol,'save_engineering',payload)->>'idempotent_replay' is distinct from 'true' then
+   raise exception 'O reenvio da engenharia perdeu seu recibo.';
+  end if;
+  target:=gen_random_uuid();
+  payload:=jsonb_build_object('id',target,'expected_updated_at',null,
+    'changes',jsonb_build_object('titulo','Detalhe','celula_id',own_cell));
+  title:=pg_temp.workshop_restore_engineering_write(office,gen_random_uuid(),'save_photo_title',payload);
+  if not exists(select 1 from rm_private.engineering_photo_title_scope t where t.title_id=target and t.cell_id=own_cell
+   and t.workshop_id=em_fixture.id(office)) then raise exception 'O título novo ficou sem origem durável.';end if;
+  deletion:=jsonb_build_object('id',target,'expected_updated_at',title->'updated_at');
+  protocol:=gen_random_uuid();
+  perform pg_temp.workshop_restore_engineering_write(office,protocol,'delete_photo_title',deletion);
+  if pg_temp.workshop_restore_engineering_write(office,protocol,'delete_photo_title',deletion)->>'idempotent_replay' is distinct from 'true'
+   or pg_temp.workshop_restore_read(office,'photo_title_entry',jsonb_build_object('id',target)) is not null then
+   raise exception 'A exclusão deixou um título visível ou perdeu o recibo.';
+  end if;
+  begin
+   perform pg_temp.workshop_restore_engineering_write(office,gen_random_uuid(),'save_photo_title',payload);
+   raise exception 'Um título encerrado teve sua identidade reutilizada.';
+  exception when insufficient_privilege then null;
+  end;
+  update public.rm_celulas set nome='Célula renomeada '||office where id=own_cell;
+  title:=pg_temp.workshop_restore_read(office,'photo_title_entry',jsonb_build_object('id',em_fixture.id(1120+office)));
+  if title->>'celula_id' is distinct from own_cell::text or title->>'celula_nome' is distinct from 'Célula renomeada '||office then
+   raise exception 'O nome antigo mudou o vínculo de um título existente.';
+  end if;
+ end loop;
+end
+$workshop_engineering$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
+select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;

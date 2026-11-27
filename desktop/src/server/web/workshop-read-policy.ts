@@ -6,6 +6,7 @@ export const WORKSHOP_READ_RESOURCES = [
   'project_qr', 'document_link', 'form_record_project', 'form_record_list', 'workshop_twin', 'planning_export', 'media_reference', 'overview',
   'approval_list', 'approval_entry', 'approval_choices', 'approval_allocation', 'capacity_snapshot', 'cell_availability',
   'cell_queue', 'planning_load', 'execution_snapshot',
+  'engineering_matrix', 'engineering_entry', 'engineering_choices', 'photo_title_list', 'photo_title_entry',
 ] as const;
 export type WorkshopReadResource = typeof WORKSHOP_READ_RESOURCES[number];
 export type WorkshopRead = (resource: WorkshopReadResource, args: Record<string, unknown>) => Promise<any>;
@@ -30,6 +31,8 @@ export function workshopReadCapabilities(resource: WorkshopReadResource, filters
     case 'capacity_snapshot': return filters.can_manage === true
       ? ['em.portal.read', 'em.planning.read', 'em.projects.read', 'em.planning.manage'] : ['em.portal.read', 'em.planning.read', 'em.projects.read'];
     case 'gantt_cells': case 'cell_queue': case 'planning_load': return ['em.portal.read', 'em.planning.read'];
+    case 'engineering_matrix': case 'engineering_entry': case 'engineering_choices': case 'photo_title_list': case 'photo_title_entry':
+      return ['em.portal.read', 'em.engineering.read'];
     case 'receiving_list': case 'project_qr': return ['em.portal.read', 'em.projects.read'];
     case 'document_link': return ['em.portal.read', 'em.documents.read'];
     case 'media_reference': return ['em.portal.read', 'em.photos.read', filters.source === 'project_photo' ? 'em.projects.read' : 'em.forms.read'];

@@ -33,6 +33,10 @@ export function requiresPlanningWorkshop(operation: string): boolean {
     'save_cell_queue', 'review_execution_session'].includes(operation);
 }
 
+export function isScopedEngineeringWrite(operation: string): boolean {
+  return ['save_engineering', 'save_photo_title', 'delete_photo_title'].includes(operation);
+}
+
 export function workshopReviewCapability(operation: string): CorporateCapability | null {
   if (operation === 'review_form') return 'em.forms.review';
   if (operation === 'transition_stage_approval') return 'em.approvals.decide';
@@ -70,6 +74,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
         : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage'
+        : isScopedEngineeringWrite(operation) ? 'em.engineering.manage'
         : requiresPlanningWorkshop(operation) || enableGanttWrites && isScopedPlanningWrite(operation) ? 'em.planning.manage'
         : (enableFormReviewWrites && workshopReviewCapability(operation)) || rootWriteCapability(operation, payload, enableRootEdits);
       if (!expected) return false;
