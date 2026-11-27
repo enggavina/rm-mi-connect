@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pageNumber, searchTerm, uuid } from './policy';
 import type { CorporateCapability } from './sso-policy';
 import { stageActions } from './stage-approval-policy';
+import type { WorkshopRead } from './workshop-read-policy';
 
 const text = z.string().nullable();
 const nullableId = uuid.nullable();
@@ -50,8 +51,8 @@ export type StageApprovalFilters = { q?: string; project?: string; cell?: string
 const queryError = () => new Error('Não foi possível consultar as aprovações de etapas. Tente novamente.');
 
 /** Reads use the user's RLS client; no media, Auth, synchronization or private receipt metadata enters these DTOs. */
-export function createStageApprovalData(client: SupabaseClient, capabilities?: readonly CorporateCapability[]) {
-  const canDecide = capabilities === undefined || capabilities.includes('em.approvals.decide');
+export function createStageApprovalData(client: SupabaseClient, capabilities?: readonly CorporateCapability[], read?: WorkshopRead, scopedDecisions = false) {
+  const canDecide = (!read || scopedDecisions) && (capabilities === undefined || capabilities.includes('em.approvals.decide'));
   function authorize() {
     if (capabilities !== undefined && (!capabilities.includes('em.portal.read') || !capabilities.includes('em.approvals.read'))) throw new Error('Acesso não autorizado às aprovações de etapas.');
   }
@@ -83,7 +84,10 @@ export function createStageApprovalData(client: SupabaseClient, capabilities?: r
     if (filters.state && !['pending', 'approved', 'returned', 'all'].includes(filters.state)) throw queryError();
     // A read-only account cannot have actions waiting for its decision.
     if (filters.mine && !canDecide) return { items: [], total: 0, page, page_size };
-    const result = await client.rpc('rm_web_stage_approvals_v1', {
+    const result = read ? { data: await read('approval_list', {
+      project: filters.project || null, cell: filters.cell || null, state: filters.state || 'pending',
+      mine: filters.mine === true, q: searchTerm(filters.q), page,
+    }), error: null } : await client.rpc('rm_web_stage_approvals_v1', {
       p_project_id: filters.project || null, p_cell_id: filters.cell || null,
       p_state: filters.state || 'pending', p_mine: filters.mine === true,
       p_search: searchTerm(filters.q), p_page: page, p_page_size: page_size,
@@ -100,7 +104,8 @@ export function createStageApprovalData(client: SupabaseClient, capabilities?: r
     if (!uuid.safeParse(id).success) return null;
     // A single STABLE snapshot pairs the two exact timestamps with eligibility
     // and history from the same database statement, including legacy null links.
-    const result = await client.rpc('rm_web_stage_approval_snapshot_v1', { p_id: id });
+    const result = read ? { data: await read('approval_entry', { id }), error: null }
+      : await client.rpc('rm_web_stage_approval_snapshot_v1', { p_id: id });
     if (result.error) throw queryError();
     if (result.data === null) return null;
     const parsed = snapshotSchema.safeParse(result.data);
@@ -111,6 +116,11 @@ export function createStageApprovalData(client: SupabaseClient, capabilities?: r
   }
   async function getStageApprovalChoices() {
     authorize();
+    if (read) {
+      const result = z.array(actorSchema).max(20_000).safeParse(await read('approval_choices', {}));
+      if (!result.success || new Set(result.data.map(cell => cell.id)).size !== result.data.length) throw queryError();
+      return { cells: result.data };
+    }
     const cells: z.infer<typeof actorSchema>[] = [];
     for (let offset = 0; offset < 20_000; offset += 500) {
       const result = await client.from('rm_celulas').select('id,nome').order('nome').order('id').range(offset, offset + 499);
@@ -128,7 +138,8 @@ export function createStageApprovalData(client: SupabaseClient, capabilities?: r
 async function data() {
   const { requireWebUser } = await import('./auth');
   const access = await requireWebUser('em.approvals.read');
-  return createStageApprovalData(access.client, access.sso?.capabilities);
+  const { readWorkshopOperations, workshopFormReviewWritesEnabled } = await import('./workshop-operation-reader');
+  return createStageApprovalData(access.client, access.sso?.capabilities, await readWorkshopOperations(access), workshopFormReviewWritesEnabled());
 }
 export async function listStageApprovals(filters: StageApprovalFilters = {}) { return (await data()).listStageApprovals(filters); }
 export async function getStageApproval(id: string) { return (await data()).getStageApproval(id); }

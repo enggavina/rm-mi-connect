@@ -458,4 +458,66 @@ begin
  perform pg_temp.project_read_deny(format('select pg_temp.workshop_gantt_save(%L,''assign_form_reviewer'',%L,%L)',gen_random_uuid(),p,brj),'42501');
 end$$;
 select 'PASS: scoped route edits, reviewer model and foreign stage refusal' result;
+
+insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_projeto_id,celula_origem_id)
+ select pg_temp.project_read_id(980+n),pg_temp.project_read_id(p),pg_temp.project_read_id(a),pg_temp.project_read_id(c)
+ from (values(1,101,501,301),(2,127,504,302),(3,101,503,303)) v(n,p,a,c);
+do $$
+declare bma uuid:=pg_temp.project_read_id(1); brj uuid:=pg_temp.project_read_id(2); v jsonb;
+begin
+ v:=pg_temp.project_read_call('approval_list','{"cell":null,"mine":false,"page":1,"project":null,"q":"LOCAL","state":"all"}',bma);
+ perform pg_temp.project_read_check((v->>'total')::int=1 and (v->'items'->0->'stage'->>'id')::uuid=pg_temp.project_read_id(981),
+  'approval totals and search pick only the stage with known own roots');
+ v:=pg_temp.project_read_call('approval_choices','{}',brj);
+ perform pg_temp.project_read_check(jsonb_array_length(v)=1 and (v->0->>'id')::uuid=pg_temp.project_read_id(302),
+  'other office sees its own cell selector');
+ v:=pg_temp.project_read_call('approval_entry',jsonb_build_object('id',pg_temp.project_read_id(981)),bma);
+ perform pg_temp.project_read_check((v->'stage'->>'projeto_id')::uuid=pg_temp.project_read_id(101) and
+  pg_temp.project_read_call('approval_entry',jsonb_build_object('id',pg_temp.project_read_id(981)),brj) is null,
+  'direct approval record follows project and cell boundaries');
+ v:=pg_temp.project_read_call('approval_allocation',jsonb_build_object('id',pg_temp.project_read_id(501),'project_id',pg_temp.project_read_id(101)),brj);
+ perform pg_temp.project_read_check(v is null,'stage tab cannot load allocations of another office');
+end$$;
+select 'PASS: scoped approval list, history, selectors and schedule allocation' result;
+
+create function pg_temp.workshop_stage_decision(rid uuid,p jsonb,office uuid) returns jsonb language plpgsql as $$
+declare result jsonb;
+begin
+ perform public.rm_sso_form_review_workshop_permit_v1(repeat('7',64),rid,'transition_stage_approval',p,pg_temp.project_read_context(office));
+ set local role authenticated;
+ result:=public.rm_web_mutate_v1(rid,'transition_stage_approval',p);
+ reset role;
+ return result;
+exception when others then reset role;raise;
+end$$;
+insert into public.rm_celulas(id,nome) values(pg_temp.project_read_id(304),'LOCAL destination BRJ');
+insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(pg_temp.project_read_id(304),pg_temp.project_read_id(2));
+insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade)
+ values(pg_temp.project_read_id(505),pg_temp.project_read_id(127),pg_temp.project_read_id(304),'pendente',false);
+insert into public.rm_aprovacoes_etapas(id,projeto_id,celula_projeto_id,celula_origem_id,celula_destino_id,status_cel_proj)
+ values(pg_temp.project_read_id(984),pg_temp.project_read_id(127),pg_temp.project_read_id(504),
+  pg_temp.project_read_id(302),pg_temp.project_read_id(304),'em_dia');
+do $$
+declare
+ bma uuid:=pg_temp.project_read_id(1);
+ brj uuid:=pg_temp.project_read_id(2);
+ rid uuid:=gen_random_uuid();
+ p jsonb;
+ result jsonb;
+begin
+ select jsonb_build_object('aprovacao_etapa_id',s.id,'expected_updated_at',s.updated_at,
+  'expected_cell_updated_at',a.updated_at,'acao','liberar','observacao','LOCAL decision') into p
+ from public.rm_aprovacoes_etapas s join public.rm_celulas_projeto a on a.id=s.celula_projeto_id where s.id=pg_temp.project_read_id(984);
+ perform public.rm_sso_action_permit_v1(repeat('7',64),rid,'transition_stage_approval',p,'em.approvals.decide');
+ set local role authenticated;
+ perform pg_temp.project_read_deny(format('select public.rm_web_mutate_v1(%L,''transition_stage_approval'',%L)',rid,p),'42501');
+ reset role;
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_stage_decision(%L,%L,%L)',rid,p,bma),'42501');
+ result:=pg_temp.workshop_stage_decision(rid,p,brj);
+ perform pg_temp.project_read_check(result->'snapshot'->'stage'->>'status'='aprovado'
+  and (pg_temp.workshop_stage_decision(rid,p,brj)->>'idempotent_replay')::boolean
+  and (select count(*)=1 from public.rm_web_stage_decisions where client_submission_id=rid),
+  'own decision advances through the existing writer and retains a single audit entry');
+end$$;
+select 'PASS: workshop stage decisions, legacy permit refusal, own audit and exact retry' result;
 rollback;

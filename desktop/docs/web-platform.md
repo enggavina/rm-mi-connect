@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.2 — alocação de células por oficina
+
+A migração **077** e o Railway **`525ccbd7-8060-44e0-ad67-b21458d81985`** foram publicados com o commit `c360931e08239a886daee7cbf90ae2a272d4b229`. O planejamento passa a conferir a origem do projeto, da célula e dos modelos selecionados antes de gravar a alocação. Os testes confirmaram gravação própria, recusa cruzada e reenvio sem duplicação. A ativação usa o mesmo corte das gravações do Gantt.
+
+Passaram 19 testes direcionados, o CI, a regressão SQL e 17 verificações operacionais em produção. O ensaio revertido e a aplicação preservaram 127 tabelas e as identidades e permissões das 268 funções anteriores. [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45925370728).
+
 ## P0.4 — células do operador Android confirmadas pela oficina
 
 O Railway **`ba497463-0e3c-4a50-816d-a0e735cc16ab`** publicou `/api/mobile/catalogo` com o commit `438b2b20a9c0e6d1e2da9ee33209d1cc50a0a8bb`. A consulta confirma o dispositivo e o operador na Central e devolve as células permitidas. O piloto cruza esse retorno com as permissões do operador, conserva a identificação validada para uso offline e suspende a sincronização quando identifica mudança de oficina no mesmo dispositivo.

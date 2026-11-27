@@ -28,6 +28,12 @@ export function isScopedPlanningWrite(operation: string): boolean {
     'manage_project_route_cell', 'assign_form_reviewer'].includes(operation);
 }
 
+export function workshopReviewCapability(operation: string): CorporateCapability | null {
+  if (operation === 'review_form') return 'em.forms.review';
+  if (operation === 'transition_stage_approval') return 'em.approvals.decide';
+  return null;
+}
+
 /** Request objects, not serializable session fields, retain the verified bearer.
  * The bridge calls remember only after current corporate/local SSO and MFA.
  * There is no cross-request positive decision cache or new browser credential. */
@@ -60,7 +66,7 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
         : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage'
         : enableGanttWrites && isScopedPlanningWrite(operation) ? 'em.planning.manage'
-        : enableFormReviewWrites && operation === 'review_form' ? 'em.forms.review' : rootWriteCapability(operation, payload, enableRootEdits);
+        : (enableFormReviewWrites && workshopReviewCapability(operation)) || rootWriteCapability(operation, payload, enableRootEdits);
       if (!expected) return false;
       if (capability !== expected || !context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');
       const corporate = verified.get(context);
