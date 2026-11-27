@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Downloads de arquivos históricos por oficina
+
+O Railway **`8a511d49-8e3a-43cb-907e-66c86b42d9b6`**, commit **`5cf2543`**, publicou a regra de download do acervo histórico. Após confirmar a oficina, as rotas de documentos e mídia do portal e o serviço Android entregam arquivos do Bubble pela cópia privada. Quando a cópia falta, o portal informa que o arquivo está indisponível e o serviço Android omite o link de download. As referências originais são preservadas para recuperação. [EM em produção](https://em-web-production.up.railway.app) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46063636018).
+
+A auditoria confirmou **6.422 de 6.424 referências (99,97%)** no acervo privado. Os dois PNGs restantes continuam com HTTP 403 no armazenamento de origem e HTTP 404 no registro do Bubble. A busca conferiu cópias com o mesmo caminho, versões dos anexos e os backups consultados. Em ambiente isolado passaram 14 verificações no navegador com duas oficinas. Em produção passaram nove verificações no navegador e o serviço Android entregou anexo Word, foto, nota fiscal e foto de resposta com os hashes registrados. Os dois arquivos pendentes ficaram sem link de download. A matriz local `.tmp/oficinas-piloto-bma-acervo-protegido.json` inclui os dois anexos para a conferência com sessão Microsoft real. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
+O emulador com Android **1.2.24** abriu uma foto histórica da BMA pela rede e retomou a mesma foto do cache offline.
+
 ## P0.1 — Origem em criações diretas de projetos e células
 
 A migração **125**, publicada no Supabase `oficina-em-mi-off`, exige que importações e outras gravações privilegiadas registrem a oficina de origem na mesma transação que cria um projeto ou uma célula. Atualizações dos registros existentes continuam disponíveis. O portal mantém a autorização por oficina e os recebimentos legados autenticados seguem a transição já publicada. [Migração](../../rm-mobile-supabase/migrations/125_rm_workshop_direct_root_enforcement.sql) · [EM em produção](https://em-web-production.up.railway.app).
