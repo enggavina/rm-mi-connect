@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 — Alternativas históricas no Android e no detalhe web
+
+A migração **118**, publicada no Supabase `oficina-em-mi-off`, recupera as alternativas pela pergunta original quando o item histórico não tem o campo redundante de formulário. Um vínculo explícito divergente é recusado. A leitura usa o formulário autorizado da oficina. O catálogo incremental volta a entregar as alternativas que ficaram fora da sincronização, com os registros, vínculos e datas originais preservados no banco. [Migração](../../rm-mobile-supabase/migrations/118_rm_workshop_question_option_lineage.sql) · [EM em produção](https://em-web-production.up.railway.app).
+
+A API do Android entregou **2.410 de 2.410 opções legadas da BMA** em dez páginas a partir do cursor anterior. A lista de identificadores retornou o mesmo conjunto. Uma consulta de detalhe a um registro real da BMA retornou as alternativas do modelo e recusou os contextos das outras oficinas. No emulador com o APK **1.2.24**, o mesmo formulário saiu do aviso de falta de opções e passou a exibir a alternativa com e sem conexão. Também passaram a matriz em quatro oficinas antes e depois da restauração, a regressão PostgreSQL e nove verificações no navegador. A homologação do detalhe com uma sessão Microsoft real e do Android em aparelho físico segue pendente. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46050090439) · [Roteiro do navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.2 — Tabelas legadas retiradas do acesso direto
 
 A migração **117** entrou no Supabase `oficina-em-mi-off` com o bloqueio de acesso direto de clientes a **31 tabelas**. O inventário consultou as estatísticas disponíveis e comparou as tabelas com seis revisões do catálogo Android e os consumidores web. Inclui a tabela antiga de rascunhos de formulário. As três tabelas internas de Aprovações e Dossiê são retiradas na ativação dos módulos por oficina, condição já atendida em produção. O ensaio preservou os registros das 148 tabelas auditadas e as permissões dos consumidores de serviço. [Migração](../../rm-mobile-supabase/migrations/117_rm_workshop_retire_unused_direct_tables.sql) · [EM em produção](https://em-web-production.up.railway.app).
