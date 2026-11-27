@@ -59,6 +59,17 @@ test('reopening online restores recovery from durable queues without relying on 
   }
 });
 
+test('identifying an operator after reconnect restores their previously hidden pending protocols', () => {
+  const app = scenario();
+  app.connection(true);
+  app.queue(0, 0, true);
+  assert.equal(app.visible(), false);
+  app.queue(0, 1, true);
+  assert.equal(app.visible(), true);
+  app.queue(0, 0);
+  assert.equal(app.visible(), false);
+});
+
 test('a transport failure can expose pending sends even when the network monitor still says online', () => {
   const app = scenario(); app.connection(true); app.queue(1, 1);
   app.interrupted(); assert.equal(app.visible(), true);

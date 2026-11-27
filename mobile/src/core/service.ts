@@ -243,7 +243,9 @@ class MobileService {
       this.scheduleSync();
     } finally {
       this.identityBusy = false;
-      await this.refreshCounts().catch(() => undefined);
+      // After a process restart, scoped rows are invisible until their author
+      // identifies again. Restore the recovery notice from that durable queue.
+      await this.refreshCounts(Boolean(this.snapshot.operator)).catch(() => undefined);
     }
   }
   async switchOperator() {
@@ -1199,7 +1201,7 @@ class MobileService {
         : null;
     if (mediaCacheNotice !== this.snapshot.mediaCacheNotice) this.update({ mediaCacheNotice });
   }
-  private async refreshCounts() {
+  private async refreshCounts(restoring = false) {
     const db = this.database.connection();
     const counts = await db.getFirstAsync<{pendingMedia: number; pendingMutations: number}>(`SELECT
       (SELECT count(*) FROM local_media_upload_queue WHERE status<>'uploaded') AS pendingMedia,
@@ -1212,7 +1214,7 @@ class MobileService {
       pendingMedia = candidates.filter(row => selection?.included(row.local_uri)).length;
     }
     this.update({ pendingMedia, pendingMutations, syncRecovery: nextSyncRecovery(this.snapshot.syncRecovery, {
-      type: 'queue', online: this.snapshot.online, pendingMedia, pendingMutations, restoring: !this.snapshot.ready,
+      type: 'queue', online: this.snapshot.online, pendingMedia, pendingMutations, restoring: restoring || !this.snapshot.ready,
     }) });
   }
 }
