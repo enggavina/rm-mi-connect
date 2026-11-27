@@ -34,7 +34,7 @@ export function workshopMediaTarget(raw: unknown, supabaseOrigin: string, source
     const bucket = source === 'document' ? 'rm-documentos' : source === 'answer_signature' ? 'rm-assinaturas' : 'rm-fotos';
     const prefix = [`/storage/v1/object/public/${bucket}/`, `/storage/v1/object/authenticated/${bucket}/`]
       .find(path => url.pathname.startsWith(path));
-    if (!prefix) return null;
+    if (!prefix || !raw.startsWith(`${origin.origin}${prefix}`)) return null;
     const path = decodeURIComponent(url.pathname.slice(prefix.length));
     if (!path || path.startsWith('mobile-oficina/') || path.startsWith('acervo-oficina/') || /[%\\\x00-\x1f]/.test(path)
       || path.split('/').some(part => !part || part === '.' || part === '..')) return null;

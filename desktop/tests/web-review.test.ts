@@ -69,6 +69,8 @@ test('workshop media accepts exact local references and restricts signing by sto
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner%2F..%2Ffile.jpg`, base, 'project_photo'), null);
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/other/%2e%2e/file.jpg`, base, 'project_photo'), null);
   assert.equal(workshopMediaTarget(`${base}/storage/v1/object/public/rm-fotos/owner/f.jpg?token=known`, base, 'project_photo'), null);
+  assert.equal(workshopMediaTarget(`HTTPS://example.supabase.co/storage/v1/object/public/rm-fotos/owner/f.jpg`, base, 'project_photo'), null);
+  assert.equal(workshopMediaTarget(` ${base}/storage/v1/object/public/rm-fotos/owner/f.jpg`, base, 'project_photo'), null);
   assert.equal(workshopMediaTarget('https://files.cdn.bubble.io.example.org/legacy.jpg', base, 'project_photo'), null);
 });
 
