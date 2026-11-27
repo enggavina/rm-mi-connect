@@ -1,5 +1,15 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.3 — Recuperação dos originais PNG
+
+Na BMA, a OS **2026-07-17181** contém os anexos **Dados técnicos** (`Imagem1.png`) e **Placa de motor do mesmo modelo**. Os downloads de origem retornaram HTTP 403. A busca pelo nome, pela referência e pelas chaves conhecidas de cache nos backups examinados do emulador, no workspace e no material do gerador de relatórios ficou sem correspondência. O acervo privado segue com **6.422 de 6.424 referências verificadas (99,97%)**.
+
+Ao recuperar um original, confirme sua procedência com a oficina ou com o responsável pelo acervo. Identifique a referência histórica e calcule o SHA-256 da cópia aprovada. Execute o [importador](../../rm-mobile-supabase/scripts/copy_workshop_archive.ts) pela raiz do repositório com o `tsx` do desktop, `--provider bubble`, `--workshop`, `--project`, `--recover-png`, `--reference-sha256` e `--content-sha256`. A execução padrão valida o formato, o hash e o vínculo em modo de consulta. Com `--apply`, o importador relê o objeto no Storage privado e confere os bytes antes de registrar a cópia. Se já houver recibo, a retentativa verifica a cópia confirmada. O hash comprova a integridade dos bytes da cópia aprovada. A procedência vem do acervo ou da equipe responsável pelo original.
+
+O ensaio de PostgreSQL confirmou o escopo de projeto e oficina e a leitura do recibo existente. O importador passou oito cenários isolados, incluindo simulação, aplicação, retentativa, recusa de escopo, arquivo inválido, hash divergente e conflito no armazenamento. O ensaio revertido do Supabase preservou 152 tabelas e os 6.422 recibos do acervo. [Migração 131](../../rm-mobile-supabase/migrations/131_rm_workshop_archive_recovery_target.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46075206273).
+
+A migração **131** está ativa no Supabase `oficina-em-mi-off`. A consulta administrativa encontrou os dois alvos. A implantação `82c5b048-a80d-424e-8dd9-7ef1567c7134` segue ativa no Railway. Depois da publicação, passaram 11 verificações no navegador, quatro downloads reais da API com conferência de SHA-256 e a abertura da mesma foto existente da BMA no emulador Android **1.2.24**, com rede e pelo cache offline. Os dois alvos aguardam os originais. [EM em produção](https://em-web-production.up.railway.app) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.1, P0.4 e P0.5 — Consulta de protocolos do Android
 
 Em **Projetos → Protocolo do Android**, o gestor autorizado consulta o código exibido no aplicativo. A página mostra a abertura ou o envio confirmado e liga o protocolo ao projeto. Para formulários, oferece o atalho ao registro original. Quando o serviço recebe o mesmo protocolo e o mesmo conteúdo novamente, o resultado mostra a hora do reenvio confirmado. [Migração 130](../../rm-mobile-supabase/migrations/130_rm_android_protocol_lookup.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46072970265).
