@@ -17,11 +17,13 @@ import { EXECUTION_RPC, executionCacheKey, parseExecutionParams, parseExecutionR
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, parseExecutionCache, refreshExecutionRead, type ExecutionEpoch, type ExecutionLocalView, type ExecutionScope } from './execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention } from './execution-store';
 import { RECEIVING_OPEN_RPC, ReceivingOpeningCoordinator, parseReceivingOpeningState, receivingOpeningKey, storeReceivingOpening, type ReceivingOpeningState } from './receiving-opening';
+import { sendScopedReceiving } from './receiving-workshop';
 import { busySyncWithPriority, canonicalJson, decodeBase64, isConnectivityError, isLocalUri, replaceMedia, retryDelay, uploadThenMutate, validateAnswers } from './sync-policy';
 import { TABLES, RPC_NAMES, type Answer, type AppSnapshot, type Bucket, type CatalogFilter, type CatalogTable, type Draft, type DraftContext, type MediaRow, type Operator, type OutboxRow, type Row, type RpcName } from './types';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const scopedReceiving = process.env.EXPO_PUBLIC_EM_SCOPED_RECEIVING === 'true';
 const mediaDirectory = `${FileSystem.documentDirectory}rm-media/`;
 const timestamp = () => new Date().toISOString();
 const errorText = (error: unknown) => error instanceof Error ? error.message : typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
@@ -74,6 +76,9 @@ class MobileService {
       if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante a abertura.');
       const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
       try {
+        if (scopedReceiving) return await sendScopedReceiving({
+          deviceToken: auth.session.access_token, operatorToken: token, submission: row.id, phase: 'open', payload: params,
+        }, controller.signal);
         const { data, error } = await this.supabase().rpc(RECEIVING_OPEN_RPC, { p_client_submission_id: row.id, p_params: params, p_operator_token: token }).abortSignal(controller.signal);
         if (error) throw error; return data;
       } finally { clearTimeout(timeout); }
@@ -669,11 +674,9 @@ class MobileService {
         // remains text and must not become a missing-upload dependency.
         const raw = JSON.parse(row.params_json);
         const params = row.rpc_name === EXECUTION_RPC ? raw : replaceMedia(raw, uploaded);
-        const { data, error } = await this.supabase().rpc('rm_mobile_mutate_v1', {
-          p_client_submission_id: row.id, p_rpc_name: row.rpc_name,
-          p_params: params, p_operator_token: token,
-        });
-        if (error) throw error;
+        const data = scopedReceiving && row.rpc_name === 'rm_submit_recebimento_v1'
+          ? await this.completeScopedReceiving(owner, row.id, params, token)
+          : await this.sendMutation(row, params, token);
         if (row.rpc_name === EXECUTION_RPC) {
           const receipt = parseExecutionReceipt(data);
           if (receipt.event_id !== row.id || receipt.session_id !== raw.p_session_id) throw new Error('Não foi possível confirmar o protocolo do apontamento. O envio foi preservado para nova tentativa.');
@@ -703,6 +706,28 @@ class MobileService {
       }
     }
   }
+
+  private async sendMutation(row: OutboxRow, params: Record<string, unknown>, token: string) {
+    const { data, error } = await this.supabase().rpc('rm_mobile_mutate_v1', {
+      p_client_submission_id: row.id, p_rpc_name: row.rpc_name, p_params: params, p_operator_token: token,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  private async completeScopedReceiving(owner: string, submission: string, payload: Record<string, unknown>, operatorToken: string) {
+    const { data, error } = await this.supabase().auth.getSession();
+    if (error || data.session?.user.id !== owner || this.snapshot.sessionUserId !== owner) {
+      throw new Error('Renove a sessão do dispositivo original. O recebimento permanece salvo.');
+    }
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const response = await sendScopedReceiving({ deviceToken: data.session.access_token, operatorToken, submission, phase: 'complete', payload }, controller.signal);
+      if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante o recebimento. O protocolo original permanece salvo.');
+      return response;
+    } finally { clearTimeout(timeout); }
+  }
+
   private async fail(table: 'local_rpc_outbox' | 'local_media_upload_queue', id: string, attempts: number, error: unknown) {
     await this.database.write(async db => {
       await db.runAsync(`UPDATE ${table} SET status='failed',attempts=attempts+1,last_error=? WHERE id=?`, errorText(error), id);

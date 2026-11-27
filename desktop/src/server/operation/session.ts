@@ -60,3 +60,12 @@ export const operationService = createOperationService({
 export async function loadOperation(selection: OperationSelection = {}) {
   return operationService.load((await cookies()).get(OPERATION_COOKIE)?.value, selection);
 }
+
+export async function sendNativeReceiving(token: string, operatorToken: string, submission: string,
+  phase: 'open' | 'complete', payload: Record<string, unknown>) {
+  const scope = await operationService.authorizeNativeReceiving(token, operatorToken);
+  const input = { p_client_submission_id: submission, p_phase: phase, p_params: payload, p_operator_token: operatorToken };
+  const permit = await operationClient(true).rpc('rm_authorize_mobile_receiving_workshop_v1', { ...scope, ...input });
+  if (permit.error) return permit;
+  return await operationClient(false, token).rpc('rm_mobile_receiving_workshop_v1', input);
+}

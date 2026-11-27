@@ -1,5 +1,11 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 — origem na criação de projetos e células do portal
+
+Em **26/11/2026**, a migração **065** e o Railway **`402a3bd4-67d2-4850-b088-605c594daca8`** ativaram a gravação da origem em projetos criados com equipamento e tipo e em células cadastradas no portal. A confirmação de Acessos é vinculada à sessão SSO, a uma ação e ao protocolo exato. A propriedade, o registro e o recibo são gravados na mesma transação. A exclusão autorizada da célula mantém a origem histórica e depende das verificações de vínculos.
+
+A regressão PostgreSQL, o ensaio revertido em produção e o CI do commit `a3b5bf6ca988980fea9c5eca6e7a72fd4e6d5ec2` passaram. A migração preservou os dados de 119 tabelas e a identidade e permissões de 242 funções anteriores. A conferência após a ativação manteve 182 projetos e 29 células BMA classificados, com zero pendências naquele instante. As 17 verificações públicas confirmaram o login operacional, o acesso à lista de células da BMA e a disponibilidade da entrada Microsoft. No Moto G84, o APK oficial **1.2.11/código 14** foi atualizado e abriu as células e a tela de recebimento com o operador de teste. A homologação da primeira escrita real no portal e de recebimento com o novo contrato Android integra o aceite de P0.1. [Portal do EM](https://em-web-production.up.railway.app/login) · [CI web/mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/45916375496).
+
 ## Envio de formulários pelo EM Operacional Web
 
 Publicado em **24/11/2026** para o piloto da BMA. O operador entra por senha, abre o formulário vinculado ao projeto e responde texto, número, data, intervalo de datas e escolhas. O comprovante apresenta o código da inspeção, que vai para **Formulários e aprovações** com status **Em análise** e autoria do operador. A validação Microsoft permanece em consulta. [Entrada operacional](https://em-web-production.up.railway.app/operacao/login) · [Contrato operacional](online-operation.md).

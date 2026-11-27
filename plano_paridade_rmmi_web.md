@@ -30,6 +30,8 @@ A Central de Acessos define a oficina efetiva e seus vínculos. O portal de gest
 3. Executar uma etapa no Android com foto e formulário, testar a reconexão e conferir autoria, anexos e revisão no portal. No Operacional Web, consultar a célula e testar o formulário compatível.
 4. Repetir as verificações de acesso com o usuário da outra oficina, inclusive por link direto, busca, QR, download e exportação. Conferir a revogação de acesso e a recuperação autorizada de um envio pendente.
 
+O [executor de consultas com Microsoft interativo](desktop/tests/workshop-pilot.browser.cjs) usa uma janela Chrome isolada por oficina. A matriz recebe `origin` e `offices`, com `code`, `allowed` e `denied` por oficina. Cada entrada permitida informa `path`, `heading` e, opcionalmente, `marker`. As recusas recebem caminhos de registros de outra oficina. O executor verifica os códigos de resposta e as telas de leitura com as contas reais do piloto.
+
 **Progresso inicial.** **0 de 6 entregas P0 integralmente aceitas (0% por contagem de aceites)**. A base de Acessos, a classificação do acervo, os cadastros com escopo e o piloto no navegador já reduzem o trabalho restante. A operação atual tem **1 de 3 oficinas cadastradas ativas (33%)**. O aceite final é medido pela operação simultânea de duas unidades reais e pelo ensaio de quatro unidades em ambiente isolado.
 
 ## Roadmap após a independência operacional
