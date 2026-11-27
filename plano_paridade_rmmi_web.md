@@ -96,7 +96,9 @@ O relatório de Recebimentos cruza protocolo, autoria, projeto, equipamento, ofi
 
 **Aceite do marco em 27/11/2026.** **0 de 6 entregas P0 integralmente aceitas (0% por contagem de aceites)**. A operação atual tem **1 de 3 oficinas cadastradas ativas (33%)**. O aceite final exige a operação simultânea de duas unidades reais e o ensaio de quatro unidades em ambiente isolado.
 
-**Avanço por entrega em 27/11/2026.** Foram verificados **16 de 27 marcos (59%)**. Cada marco listado conta uma vez dentro da sua entrega. O aceite integral segue as condições do roadmap.
+**Ativação, suspensão e retomada.** Cinco verificações passaram em dois bancos PostgreSQL isolados, usando as rotas de Acessos e as operações do EM. Ao suspender a segunda oficina, novas consultas de contexto foram recusadas e a BMA continuou operando. Ao retomar, o mesmo protocolo retornou a confirmação do comentário original, com uma única gravação e histórico de auditoria preservado. Em produção, a consulta da Central confirmou a BMA ativa e BRJ e BBH inativas. [Procedimento e teste reproduzível](desktop/docs/sso.md#ativação-suspensão-e-retomada-de-uma-oficina).
+
+**Avanço por entrega em 27/11/2026.** Foram verificados **17 de 27 marcos (63%)**. Cada marco listado conta uma vez dentro da sua entrega. **0 de 6 entregas** atingiram o aceite integral.
 
 | Entrega | Avanço | Marcos verificados | Marcos pendentes |
 | --- | --- | --- | --- |
@@ -105,7 +107,7 @@ O relatório de Recebimentos cruza protocolo, autoria, projeto, equipamento, ofi
 | P0.3 · Arquivos e saídas | **2 de 4 (50%)** | Mídia privada por oficina e saídas do portal com escopo, incluindo QR, exportações e gêmeo digital. O bucket `rm-fotos` está privado e os oito originais foram verificados. | Resolver os dois PNGs indisponíveis na origem e conferir arquivos e saídas em duas oficinas reais. |
 | P0.4 · Android e Operacional Web | **3 de 5 (60%)** | Catálogo e cache Android por oficina, fila ensaiada em ambiente isolado e Operacional Web verificado com operador real da BMA. | Envios reais de ponta a ponta e transição dos clientes e filas anteriores. |
 | P0.5 · Testes e recuperação | **3 de 4 (75%)** | Matriz de quatro oficinas, recusa após revogação ou indisponibilidade da Central, e restauração de banco e arquivos. | Recuperação e reenvio de filas reais nos dispositivos do piloto. |
-| P0.6 · Segunda oficina | **1 de 4 (25%)** | BMA, BRJ e BBH cadastradas em Acessos, com a BMA ativa. | Vínculos da segunda oficina, piloto simultâneo e validação do procedimento de ativação e suspensão. |
+| P0.6 · Segunda oficina | **2 de 4 (50%)** | BMA, BRJ e BBH cadastradas em Acessos, com a BMA ativa. Procedimento de ativação, suspensão e retomada verificado em ambiente isolado. | Vínculos reais da segunda oficina e piloto simultâneo com a BMA. |
 
 ## Roadmap após a independência operacional
 
