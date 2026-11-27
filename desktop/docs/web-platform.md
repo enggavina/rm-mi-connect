@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.1 e P0.5 — Confirmação do protocolo de recebimento
+
+A migração **127** no Supabase `oficina-em-mi-off` e o Railway **`016cc23f-0575-40ea-b663-cd33e9addf9f`**, commit **`04bbed3`**, fazem o serviço Android conferir a confirmação gravada pelo banco. O protocolo, a oficina, a fase, o projeto e o equipamento precisam corresponder ao recebimento. Se a confirmação estiver ausente ou divergente, o aplicativo mantém o envio pendente para retentativa. O reenvio válido recupera o projeto e o equipamento do recibo original. [EM em produção](https://em-web-production.up.railway.app) · [Migração](../../rm-mobile-supabase/migrations/127_rm_receiving_confirmation.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46066729554).
+
+Passaram a regressão PostgreSQL e a matriz em quatro oficinas antes e depois da restauração, incluindo reenvios exatos e conclusão offline. Quatro cenários de API no navegador isolado conferiram a abertura, a recusa das confirmações divergentes e a retomada pelo protocolo original. O ensaio revertido e a publicação preservaram as 151 tabelas auditadas e os dois recibos históricos.
+
+Depois da publicação, passaram nove verificações no navegador, incluindo o acesso do operador às 29 células da BMA e a abertura de um formulário real. O emulador Android **1.2.24** abriu um rascunho existente de Recebimento com e sem conexão e recuperou a rede sem enviar o rascunho. A consulta de produção ainda não encontrou um recebimento confirmado pelo protocolo novo. [Consulta de prontidão](../../rm-mobile-supabase/scripts/workshop_receiving_readiness.sql) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 — Envio do Operacional Web por oficina
 
 A migração **126** no Supabase `oficina-em-mi-off` e o Railway **`1e0dc602-8b2c-466f-ad6d-f30d1644c986`**, commit **`8e952d0`**, liberam o envio de formulários compatíveis em qualquer oficina ativa em Acessos. A confirmação exige a oficina atual e vincula o dispositivo, o operador, a célula, o projeto e a versão do formulário. A retentativa exata conserva o registro e o código originais. [Operacional Web em produção](https://em-web-production.up.railway.app/operacao) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46065563422).
