@@ -2296,6 +2296,133 @@ $legacy_operations$;
 select 'PASS: only the verified legacy device can read proven BMA people, self profiles remain available, and other workshops use scoped catalogs' result;
 rollback to savepoint legacy_operations_fixture;
 release savepoint legacy_operations_fixture;
+savepoint legacy_operator_reads_fixture;
+do $legacy_operator_reads$
+declare
+ device uuid:=em_fixture.id(711);
+ device_session uuid:=em_fixture.id(721);
+ bma uuid:=em_fixture.id(1);
+ bma_cell uuid:=em_fixture.id(201);
+ foreign_cell uuid:=em_fixture.id(202);
+ bma_allocation uuid:=em_fixture.id(301);
+ foreign_allocation uuid:=em_fixture.id(302);
+ bma_actor uuid:=em_fixture.id(3711);
+ foreign_actor uuid:=em_fixture.id(3712);
+ local_execution_actor uuid:=em_fixture.id(741);
+ local_execution uuid:=em_fixture.id(970+1);
+ expected_cells uuid[];
+ context jsonb;
+ refreshed jsonb;
+ token text;
+ native_token text;
+ allowed_id uuid;
+begin
+ if has_function_privilege('authenticated','rm_private.activate_workshop_legacy_operator_reads_v1()','execute')
+  or has_function_privilege('service_role','rm_private.activate_workshop_legacy_operator_reads_v1()','execute')
+  or has_function_privilege('authenticated','rm_private.workshop_legacy_operator_office_v1(uuid)','execute')
+  or has_table_privilege('authenticated','rm_private.workshop_legacy_operator_read_settings','select') then
+  raise exception 'A ativação ou sua autoridade ficaram acessíveis ao cliente.';
+ end if;
+ begin
+  perform rm_private.activate_workshop_legacy_operator_reads_v1();
+  raise exception 'A ativação não exigiu o recorte de pessoas.';
+ exception when sqlstate 'PT409' then null; end;
+ perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(1,1),'1.2.24',27);
+ perform rm_private.activate_workshop_legacy_bma_catalog_v1(device,device_session);
+ perform rm_private.activate_workshop_legacy_bma_operations_v1();
+ perform rm_private.activate_workshop_legacy_bma_people_v1();
+ perform rm_private.activate_workshop_legacy_operator_reads_v1();
+ perform rm_private.activate_workshop_legacy_operator_reads_v1();
+ if has_function_privilege('authenticated','public.rm_user_has_element_permission(uuid,text)','execute')
+  or has_function_privilege('anon','public.rm_user_has_element_permission(uuid,text)','execute')
+  or not has_function_privilege('service_role','public.rm_user_has_element_permission(uuid,text)','execute')
+  or has_function_privilege('authenticated','public.rm_mobile_execution_snapshot_v1(text,uuid)','execute') then
+  raise exception 'A ativação ampliou a leitura de clientes ou removeu acesso interno.';
+ end if;
+
+ -- Exercise the case where the installation still supports legacy execution
+ -- reads. The earlier matrix has already tested the permanent mobile cutover.
+ grant execute on function public.rm_mobile_execution_snapshot_v1(text,uuid) to authenticated;
+ insert into public.rm_users(id,nome,matricula,perfil) values
+  (bma_actor,'Administrador local BMA','WORKSHOP-LOCAL-BMA','administrador'),
+  (foreign_actor,'Administrador de outra oficina','WORKSHOP-LOCAL-BRJ','administrador');
+ insert into rm_private.user_credentials(user_id,palavra_chave_hash)
+  select u,extensions.crypt('isolated-fixture-password',extensions.gen_salt('bf',4)) from unnest(array[bma_actor,foreign_actor]) u;
+ insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(bma_cell,bma_actor),(foreign_cell,foreign_actor);
+ select array_agg(cell_id order by cell_id) into expected_cells from rm_private.workshop_cell_ownership where workshop_id=bma;
+
+ perform set_config('request.jwt.claim.sub',device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+ set local role authenticated;
+ context:=public.rm_authenticate_operator_v1('WORKSHOP-LOCAL-BMA','isolated-fixture-password',p_celula_id=>bma_cell);
+ token:=context->>'operator_token';
+ if (context->>'authenticated')::boolean is distinct from true or context->>'operador_id'<>bma_actor::text or length(token)<>64
+  or (select array_agg(cell order by cell) from (select (r->>'celula_id')::uuid cell from jsonb_array_elements(context->'celulas_vinculadas') r) ids)
+    is distinct from expected_cells then
+  raise exception 'A identificação não preservou o administrador e as células autorizadas da BMA.';
+ end if;
+ refreshed:=public.rm_operator_context_v1(token);
+ if refreshed->'celulas_vinculadas' is distinct from context->'celulas_vinculadas'
+  or refreshed->'token_expires_at' is distinct from context->'token_expires_at' then
+  raise exception 'A renovação modificou a delegação ou o catálogo da oficina.';
+ end if;
+ begin
+  perform public.rm_authenticate_operator_v1('WORKSHOP-LOCAL-BMA','isolated-fixture-password',p_celula_id=>foreign_cell);
+  raise exception 'A identificação aceitou a indicação explícita de uma célula externa.';
+ exception when insufficient_privilege then null; end;
+ refreshed:=public.rm_authenticate_operator_v1('WORKSHOP-LOCAL-BRJ','isolated-fixture-password');
+ if refreshed->>'operador_id'<>foreign_actor::text or refreshed->'celulas_vinculadas' is distinct from '[]'::jsonb
+  or public.rm_operator_context_v1(refreshed->>'operator_token')->'celulas_vinculadas' is distinct from '[]'::jsonb then
+  raise exception 'A conta do dispositivo legou um catálogo a outro operador sem vínculo comprovado.';
+ end if;
+ context:=public.rm_mobile_execution_snapshot_v1(repeat('a',64),bma_allocation);
+ if context->'allocation'->>'id'<>bma_allocation::text or context->'session'->>'id'<>local_execution::text
+  or context->>'operator_id'<>local_execution_actor::text then
+  raise exception 'A consulta legada perdeu o apontamento autorizado da BMA.';
+ end if;
+ begin
+  perform public.rm_mobile_execution_snapshot_v1(token,foreign_allocation);
+  raise exception 'A consulta legada retornou apontamento de outra oficina.';
+ exception when no_data_found then null; end;
+ reset role;
+
+ for office in 2..4 loop
+  native_token:=repeat(chr(96+office),64);
+  allowed_id:=em_fixture.id(200+office);
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+  set local role authenticated;
+  if public.rm_operator_context_v1(native_token)->'celulas_vinculadas' is distinct from '[]'::jsonb then
+   raise exception 'A identificação direta retornou células a um dispositivo que precisa da Central.';
+  end if;
+  begin
+   perform public.rm_mobile_execution_snapshot_v1(native_token,foreign_allocation);
+   raise exception 'A consulta legada retornou apontamentos antes da confirmação da oficina.';
+  exception when no_data_found then null; end;
+  reset role;
+  refreshed:=public.rm_mobile_workshop_catalog_v1(em_fixture.id(710+office),em_fixture.id(720+office),native_token,
+   pg_temp.workshop_restore_native_context(office,office),'rm_celulas',null,null,false);
+  if not refreshed->'rows' @> jsonb_build_array(jsonb_build_object('id',allowed_id))
+   or refreshed->'rows' @> jsonb_build_array(jsonb_build_object('id',bma_cell)) then
+   raise exception 'A consulta pela Central perdeu as células autorizadas da oficina.';
+  end if;
+ end loop;
+
+ perform set_config('request.jwt.claim.sub',device::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('session_id',device_session,'aal','aal1')::text,true);
+ perform public.rm_observe_mobile_workshop_android_v1(device,device_session,repeat('a',64),
+  pg_temp.workshop_restore_native_context(2,1),'1.2.24',27);
+ set local role authenticated;
+ if public.rm_operator_context_v1(token)->'celulas_vinculadas' is distinct from '[]'::jsonb then
+  raise exception 'A transferência preservou o catálogo anterior na renovação.';
+ end if;
+ reset role;
+end
+$legacy_operator_reads$;
+select 'PASS: legacy operator reads scope login, refresh and execution to the approved BMA device and preserve delegated identity' result;
+rollback to savepoint legacy_operator_reads_fixture;
+release savepoint legacy_operator_reads_fixture;
 do $portal_read_cutover$
 declare
  args jsonb; value jsonb; native_count bigint;
