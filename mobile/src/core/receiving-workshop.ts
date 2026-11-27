@@ -7,6 +7,7 @@ export async function sendScopedReceiving(input: {
   operatorToken: string;
   submission: string;
   phase: ReceivingPhase;
+  workshopOrigin?: string;
   payload: Record<string, unknown>;
 }, signal: AbortSignal, request = fetch): Promise<unknown> {
   const { deviceToken, ...body } = input;

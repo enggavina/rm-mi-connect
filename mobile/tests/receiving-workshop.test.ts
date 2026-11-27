@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { sendScopedReceiving } from '../src/core/receiving-workshop';
 
 const id = '16b86a9e-d20d-4000-a970-ec344ae6d366';
+const workshopOrigin = '16b86a9e-d20d-4000-a970-ec344ae6d368';
 const payload = { p_cliente_id: id, p_fotos_recebimento: [{ foto_url: 'file:///cache/intake.jpg' }] };
-const draft = { deviceToken: 'local-device-fixture', operatorToken: 'local-operator-fixture', submission: id, payload };
+const draft = { deviceToken: 'local-device-fixture', operatorToken: 'local-operator-fixture', submission: id, payload, workshopOrigin };
 
 test('the native receiving transport sends the frozen payload to the EM origin and keeps the device token in the header', async () => {
   const signal = new AbortController().signal;
@@ -14,7 +15,7 @@ test('the native receiving transport sends the frozen payload to the EM origin a
     assert.equal(options?.redirect, 'error');
     assert.equal(options?.signal, signal);
     assert.equal(new Headers(options?.headers).get('authorization'), `Bearer ${draft.deviceToken}`);
-    assert.deepEqual(JSON.parse(String(options?.body)), { operatorToken: draft.operatorToken, submission: id, phase: 'open', payload });
+    assert.deepEqual(JSON.parse(String(options?.body)), { operatorToken: draft.operatorToken, submission: id, phase: 'open', payload, workshopOrigin });
     return Response.json(receipt);
   });
   assert.deepEqual(response, receipt);

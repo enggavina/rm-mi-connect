@@ -64,8 +64,8 @@ export async function loadOperation(selection: OperationSelection = {}) {
 }
 
 export async function sendNativeReceiving(token: string, operatorToken: string, submission: string,
-  phase: 'open' | 'complete', payload: Record<string, unknown>) {
-  const scope = await operationService.authorizeNativeOperation(token, operatorToken);
+  phase: 'open' | 'complete', payload: Record<string, unknown>, workshopOrigin?: string) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken, workshopOrigin);
   const input = { p_client_submission_id: submission, p_phase: phase, p_params: payload, p_operator_token: operatorToken };
   const permit = await operationClient(true).rpc('rm_authorize_mobile_receiving_workshop_v1', { ...scope, ...input });
   if (permit.error) return permit;
@@ -73,8 +73,8 @@ export async function sendNativeReceiving(token: string, operatorToken: string, 
 }
 
 export async function sendNativeWorkshopMutation(token: string, operatorToken: string, submission: string,
-  operation: string, payload: Record<string, unknown>) {
-  const scope = await operationService.authorizeNativeOperation(token, operatorToken);
+  operation: string, payload: Record<string, unknown>, workshopOrigin?: string) {
+  const scope = await operationService.authorizeNativeOperation(token, operatorToken, workshopOrigin);
   const input = { p_client_submission_id: submission, p_rpc_name: operation, p_params: payload, p_operator_token: operatorToken };
   const permit = await operationClient(true).rpc('rm_authorize_mobile_workshop_mutation_v1', { ...scope, ...input });
   if (permit.error) return permit;

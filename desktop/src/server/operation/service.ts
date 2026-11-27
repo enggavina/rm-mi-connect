@@ -118,9 +118,10 @@ export function createOperationService(deps: OperationDeps) {
       return { workshop: { id, code, revision }, deviceId: claims.authUserId, operatorId: access.operator,
         expiresAt: new Date(expiresAt).toISOString(), data };
     },
-    async authorizeNativeOperation(token: string, delegation: string) {
+    async authorizeNativeOperation(token: string, delegation: string, workshopOrigin?: string) {
       const claims = await verifiedClaims(token);
       const { args, workshop } = await authority(claims, delegation, claims.expiresAt);
+      if (workshopOrigin && workshop.workshop.id !== workshopOrigin.toLowerCase()) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');
       return { ...args, p_workshop_context: workshop };
     },
     async login(input: OperationCredentials): Promise<LoginCookie> {

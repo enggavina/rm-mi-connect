@@ -56,6 +56,7 @@ export interface MediaRow {
   mime_type?: string | null; file_name?: string | null;
 }
 export interface OutboxRow {
+  workshop_id?: string | null;
   id: string; rpc_name: RpcName; params_json: string; status: string;
   attempts: number; created_at: string; next_retry_at: number;
   actor_id: string; token_key: string; draft_id: string | null;

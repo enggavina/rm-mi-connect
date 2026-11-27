@@ -4,6 +4,7 @@ import { sendWorkshopMutation } from '../src/core/mutation-workshop';
 
 const input = { deviceToken: 'local-device-token', operatorToken: 'original-local-operator',
   submission: '08300000-0000-4000-8000-000000000002', operation: 'rm_add_cell_comment_v1' as const,
+  workshopOrigin: '08300000-0000-4000-8000-000000000005',
   payload: { p_celula_projeto_id: '08300000-0000-4000-8000-000000000003', p_comentario: 'Comentário local' } };
 
 test('a queued mutation uses the original protocol, actor delegation and payload to reach the workshop writer', async () => {

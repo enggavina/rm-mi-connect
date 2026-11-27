@@ -77,6 +77,14 @@ test('login and every new read validate both principals and obtain office from f
   assert.deepEqual(calls.slice(-2), ['verify', 'signOut']);
 });
 
+test('queued native writes compare their original workshop against each fresh authority decision', async () => {
+  const { service, calls } = fixture();
+  assert.deepEqual((await service.authorizeNativeOperation(accessToken, operatorToken, exampleWorkshop.workshop.id)).p_workshop_context, exampleWorkshop);
+  await assert.rejects(service.authorizeNativeOperation(accessToken, operatorToken, id('8')), { code: 'WORKSHOP_FORBIDDEN' });
+  assert.deepEqual(calls, ['verify', 'identity', 'authority', 'verify', 'identity', 'authority']);
+  assert.deepEqual((await service.authorizeNativeOperation(accessToken, operatorToken)).p_workshop_context, exampleWorkshop);
+});
+
 test('native catalog verifies the device, operator and assigned workshop before returning scoped data', async () => {
   const { service, calls } = fixture();
   const response = await service.loadNativeCatalog(accessToken, operatorToken, {});

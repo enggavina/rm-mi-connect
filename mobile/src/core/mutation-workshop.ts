@@ -5,7 +5,7 @@ type NativeOperation = Exclude<RpcName, 'rm_submit_recebimento_v1'>;
 const codes = new Set(['28000', '42501', '22023', 'P0002', 'PT409', 'PT410', 'PT422', 'PT503']);
 
 export async function sendWorkshopMutation(input: { deviceToken: string; operatorToken: string; submission: string;
-  operation: NativeOperation; payload: Record<string, unknown> }, request = fetch) {
+  operation: NativeOperation; payload: Record<string, unknown>; workshopOrigin?: string }, request = fetch) {
   const { deviceToken, ...body } = input;
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 25_000);
   let response: Response, data;

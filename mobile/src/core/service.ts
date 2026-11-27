@@ -86,7 +86,8 @@ class MobileService {
       const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
       try {
         if (scopedReceiving) return await sendScopedReceiving({
-          deviceToken: auth.session.access_token, operatorToken: token, submission: row.id, phase: 'open', payload: params,
+          deviceToken: auth.session.access_token, operatorToken: token, submission: row.id, phase: 'open',
+          payload: params, workshopOrigin: row.workshop_id ?? undefined,
         }, controller.signal);
         const { data, error } = await this.supabase().rpc(RECEIVING_OPEN_RPC, { p_client_submission_id: row.id, p_params: params, p_operator_token: token }).abortSignal(controller.signal);
         if (error) throw error; return data;
@@ -440,6 +441,7 @@ class MobileService {
   async enqueue(rpc: RpcName, params: Record<string, unknown>, id = Crypto.randomUUID(), draftId?: string, receiving?: ReceivingDraftEntry) {
     if (!(RPC_NAMES as readonly string[]).includes(rpc)) throw new Error('Operação não permitida.');
     const actor = this.actor(), tokenKey = `rm.operation.${id}`, token = this.operatorToken!, owner = this.snapshot.sessionUserId;
+    const scope = scopedCatalog ? await this.operatorWorkshop() : null;
     const payload = {...params,p_operador_id:actor.operador_id};
     await this.database.write(async db => {
       const already = await db.getFirstAsync<{id: string; rpc_name: string; params_json: string; actor_id: string | null}>('SELECT o.id,o.rpc_name,o.params_json,m.actor_id FROM local_rpc_outbox o LEFT JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
@@ -447,6 +449,7 @@ class MobileService {
         if (already.rpc_name !== rpc || canonicalJson(JSON.parse(already.params_json)) !== canonicalJson(payload) || rpc === EXECUTION_RPC && already.actor_id !== actor.operador_id) throw new Error('Este protocolo já foi enviado com outros dados. Consulte o envio antes de alterar o registro.');
         return;
       }
+      scope?.assertCurrent();
       if (receiving) {
         if (rpc !== 'rm_submit_recebimento_v1' || receiving.data.id !== id) throw new Error('Contexto de recebimento inválido.');
         assertReceivingDraftUnchanged(await this.readReceivingEntry(db, actor.operador_id), receiving);
@@ -458,6 +461,10 @@ class MobileService {
       } else {
         await db.runAsync(`INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES (?,?,?,?)`, id, rpc, JSON.stringify(payload), timestamp());
         await db.runAsync('INSERT INTO local_queue_meta(id,actor_id,token_key,draft_id) VALUES (?,?,?,?)', id, actor.operador_id, tokenKey, draftId ?? null);
+      }
+      if (scope) {
+        scope.assertCurrent();
+        await db.runAsync('UPDATE local_queue_meta SET workshop_id=? WHERE id=?', scope.workshop, id);
       }
       if (draftId) await db.runAsync("UPDATE local_form_drafts SET status='ready_to_sync' WHERE draft_id=?", draftId);
       if (receiving) await db.runAsync('INSERT INTO local_meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', `recebimento:${actor.operador_id}`, JSON.stringify({ ...receiving.data, submitted: true }));
@@ -514,10 +521,10 @@ class MobileService {
     }));
   }
   async listQueue(): Promise<OutboxRow[]> {
-    return this.database.connection().getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE status<>'completed' ORDER BY o.created_at,o.rowid`);
+    return this.database.connection().getAllAsync<OutboxRow>(`SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json,m.workshop_id FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE status<>'completed' ORDER BY o.created_at,o.rowid`);
   }
   async operation(id: string): Promise<(OutboxRow & { result?: unknown }) | null> {
-    const row = await this.database.connection().getFirstAsync<OutboxRow>('SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
+    const row = await this.database.connection().getFirstAsync<OutboxRow>('SELECT o.*,m.next_retry_at,m.actor_id,m.token_key,m.draft_id,m.result_json,m.workshop_id FROM local_rpc_outbox o JOIN local_queue_meta m USING(id) WHERE o.id=?', id);
     return row ? { ...row, result: row.result_json ? JSON.parse(row.result_json) : undefined } : null;
   }
   async receivingOpeningInfo(id: string): Promise<ReceivingOpeningState | null> {
@@ -619,17 +626,17 @@ class MobileService {
     this.scheduleSync();
     return destination;
   }
-  private async mediaScope() {
+  private async operatorWorkshop() {
     const owner = this.snapshot.sessionUserId, actor = this.snapshot.operator?.operador_id, token = this.operatorToken;
-    if (!owner || !actor || !token || this.identityBusy) throw new Error('Identifique o operador para abrir arquivos da oficina.');
+    if (!owner || !actor || !token || this.identityBusy) throw new Error('Identifique o operador para confirmar a oficina.');
     const workshop = await secureStorage.getItem(`rm.workshop.device.${owner}`);
     const confirmed = await secureStorage.getItem(`rm.workshop.operator.${owner}.${actor}`);
     const assertCurrent = () => {
       if (!workshop || this.identityBusy || this.snapshot.sessionUserId !== owner
-        || this.snapshot.operator?.operador_id !== actor || this.operatorToken !== token) throw new Error('A autorização dos arquivos mudou.');
+        || this.snapshot.operator?.operador_id !== actor || this.operatorToken !== token) throw new Error('O vínculo do operador com a oficina mudou.');
     };
     if (!workshop || workshop !== confirmed || await secureStorage.getItem(`rm.workshop.suspended.${owner}`)) {
-      throw new Error('Confirme a oficina para abrir o arquivo.');
+      throw new Error('Confirme a oficina deste dispositivo e operador.');
     }
     assertCurrent();
     return { owner, actor, token, workshop, assertCurrent };
@@ -642,12 +649,12 @@ class MobileService {
     if (!uri) return null;
     if (isLocalUri(uri)) return uri;
     if (!scopedMedia) return this.locateMedia(`media:${uri}`);
-    const scope = await this.mediaScope();
+    const scope = await this.operatorWorkshop();
     const local = await this.locateMedia(workshopMediaCacheKey(scope.workshop, scope.actor, uri));
     scope.assertCurrent();
     return local;
   }
-  private async mediaLinks(scope: Awaited<ReturnType<MobileService['mediaScope']>>, urls: string[]) {
+  private async mediaLinks(scope: Awaited<ReturnType<MobileService['operatorWorkshop']>>, urls: string[]) {
     const { data, error } = await this.supabase().auth.getSession();
     scope.assertCurrent();
     if (error || !data.session || data.session.user.id !== scope.owner) throw new Error('Renove a sessão para abrir o arquivo.');
@@ -655,7 +662,7 @@ class MobileService {
     scope.assertCurrent();
     return links;
   }
-  private async saveAuthorizedMedia(scope: Awaited<ReturnType<MobileService['mediaScope']>>, reference: string, source: string, document = false) {
+  private async saveAuthorizedMedia(scope: Awaited<ReturnType<MobileService['operatorWorkshop']>>, reference: string, source: string, document = false) {
     const key = workshopMediaCacheKey(scope.workshop, scope.actor, reference);
     const existing = this.scopedDownloads.get(key);
     if (existing) return existing;
@@ -688,7 +695,7 @@ class MobileService {
     return download;
   }
   private async downloadAuthorizedMedia(reference: string, document = false) {
-    const scope = await this.mediaScope();
+    const scope = await this.operatorWorkshop();
     const link = (await this.mediaLinks(scope, [reference])).get(reference);
     if (!link) throw new Error('Arquivo indisponível para este operador na oficina.');
     return this.saveAuthorizedMedia(scope, reference, link, document);
@@ -838,7 +845,7 @@ class MobileService {
         const raw = JSON.parse(row.params_json);
         const params = row.rpc_name === EXECUTION_RPC ? raw : replaceMedia(raw, uploaded);
         const data = scopedReceiving && row.rpc_name === 'rm_submit_recebimento_v1'
-          ? await this.completeScopedReceiving(owner, row.id, params, token)
+          ? await this.completeScopedReceiving(owner, row, params, token)
           : await this.sendMutation(row, params, token);
         if (row.rpc_name === EXECUTION_RPC) {
           const receipt = parseExecutionReceipt(data);
@@ -877,7 +884,7 @@ class MobileService {
         throw new Error('Renove a sessão original do dispositivo. O registro permanece na fila.');
       }
       return sendWorkshopMutation({ deviceToken: data.session.access_token, operatorToken: token,
-        submission: row.id, operation: row.rpc_name, payload: params });
+        submission: row.id, operation: row.rpc_name, payload: params, workshopOrigin: row.workshop_id ?? undefined });
     }
     const { data, error } = await this.supabase().rpc('rm_mobile_mutate_v1', {
       p_client_submission_id: row.id, p_rpc_name: row.rpc_name, p_params: params, p_operator_token: token,
@@ -886,14 +893,15 @@ class MobileService {
     return data;
   }
 
-  private async completeScopedReceiving(owner: string, submission: string, payload: Record<string, unknown>, operatorToken: string) {
+  private async completeScopedReceiving(owner: string, row: OutboxRow, payload: Record<string, unknown>, operatorToken: string) {
     const { data, error } = await this.supabase().auth.getSession();
     if (error || data.session?.user.id !== owner || this.snapshot.sessionUserId !== owner) {
       throw new Error('Renove a sessão do dispositivo original. O recebimento permanece salvo.');
     }
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20_000);
     try {
-      const response = await sendScopedReceiving({ deviceToken: data.session.access_token, operatorToken, submission, phase: 'complete', payload }, controller.signal);
+      const response = await sendScopedReceiving({ deviceToken: data.session.access_token, operatorToken, submission: row.id, phase: 'complete',
+        payload, workshopOrigin: row.workshop_id ?? undefined }, controller.signal);
       if (this.snapshot.sessionUserId !== owner) throw new Error('A conta mudou durante o recebimento. O protocolo original permanece salvo.');
       return response;
     } finally { clearTimeout(timeout); }
@@ -1020,7 +1028,7 @@ class MobileService {
   private async downloadPendingMedia() {
     const pending = await this.database.connection().getAllAsync<{url: string; local_uri: string}>(
       `SELECT * FROM local_media_download_queue LIMIT ${scopedMedia ? 25 : 50}`);
-    const scope = scopedMedia && pending.length ? await this.mediaScope() : null;
+    const scope = scopedMedia && pending.length ? await this.operatorWorkshop() : null;
     let links: Promise<Map<string, string>> | undefined;
     const pause = await prefetchWithSpaceReserve(pending, () => FileSystem.getFreeDiskStorageAsync(), async item => {
       try {

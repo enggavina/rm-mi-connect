@@ -7,6 +7,7 @@ import { join, dirname, basename } from 'node:path';
 import { existsSync, unlinkSync } from 'node:fs';
 import { RM_MOBILE_SQLITE_DDL } from '../src/core/schema';
 import { QUEUE_EXECUTION_MIGRATION } from '../src/core/execution-queue-migration';
+import { QUEUE_WORKSHOP_MIGRATION } from '../src/core/workshop-queue-migration';
 import { EXECUTION_RPC, executionCacheKey, executionMinutes, executionReviewReasonLabel, parseExecutionParams, parseExecutionReceipt, parseExecutionSnapshot, projectExecution, type ExecutionSnapshot, type ExecutionSummary, type ExecutionParams } from '../src/core/execution';
 import { EXECUTION_CONTEXT_SQL, acceptExecutionRead, executionContextKeys, executionContexts, executionEpoch, executionEpochKey, executionLocalView, executionReadRefused, newestExecutionView, parseExecutionCache, refreshExecutionRead, type ExecutionCache, type ExecutionEpoch, type ExecutionLocalView } from '../src/core/execution-cache';
 import { invalidateExecutionRead, storeExecutionAck, storeExecutionFailure, storeExecutionIntention, type ExecutionSql } from '../src/core/execution-store';
@@ -44,6 +45,26 @@ test('execution queue v3 preserves authors, payloads, retries, results and equal
   assert.deepEqual(db.prepare('SELECT * FROM local_queue_meta ORDER BY id').all(), meta);
   db.prepare('INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES(?,?,?,?)').run(id(99), EXECUTION_RPC, '{}', stamp);
   assert.equal(db.prepare('SELECT value FROM local_meta WHERE key=?').get('queue_schema_version')?.value, '3'); db.close();
+});
+
+test('queue v4 adds workshop provenance without assigning or rewriting existing offline work', async () => {
+  const db = setup();
+  try {
+    db.exec(QUEUE_EXECUTION_MIGRATION);
+    await transaction(db, adapter => storeExecutionIntention(adapter, intention()));
+    await transaction(db, adapter => storeExecutionFailure(adapter, { owner, actor, eventId: id(20), error: new Error('Offline'), message: 'Offline', nextRetryAt: 42 }));
+    const outbox = db.prepare('SELECT * FROM local_rpc_outbox').get();
+    const metadata = db.prepare('SELECT * FROM local_queue_meta').get();
+    db.exec(`BEGIN;${QUEUE_WORKSHOP_MIGRATION}COMMIT;`);
+    assert.deepEqual(db.prepare('SELECT * FROM local_rpc_outbox').get(), outbox);
+    assert.deepEqual({ ...db.prepare('SELECT * FROM local_queue_meta').get() }, { ...metadata, workshop_id: null });
+    await transaction(db, async adapter => {
+      await storeExecutionIntention(adapter, intention(21));
+      await adapter.runAsync('UPDATE local_queue_meta SET workshop_id=? WHERE id=?', id(88), id(21));
+    });
+    assert.equal(db.prepare('SELECT workshop_id FROM local_queue_meta WHERE id=?').get(id(21))?.workshop_id, id(88));
+    assert.equal(db.prepare('SELECT value FROM local_meta WHERE key=?').get('queue_schema_version')?.value, '4');
+  } finally { db.close(); }
 });
 test('failed queue v3 upgrade rolls back all old protocols and the original allowlist', () => {
   const db = setup(':memory:', true); db.prepare('INSERT INTO local_rpc_outbox(id,rpc_name,params_json,created_at) VALUES(?,?,?,?)').run(id(2), 'rm_record_cell_photo_v1', '{"file":"file:///original.jpg"}', stamp);

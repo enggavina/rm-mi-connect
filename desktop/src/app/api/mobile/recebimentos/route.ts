@@ -8,6 +8,7 @@ const command = z.object({
   submission: z.uuid(),
   phase: z.enum(['open', 'complete']),
   operatorToken,
+  workshopOrigin: z.uuid().optional(),
   payload: z.record(z.string(), z.unknown()),
 }).strict();
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   try { input = command.parse(JSON.parse(raw ?? 'null')); }
   catch { return failure('22023'); }
   try {
-    const { data, error } = await sendNativeReceiving(bearer, input.operatorToken, input.submission, input.phase, input.payload);
+    const { data, error } = await sendNativeReceiving(bearer, input.operatorToken, input.submission, input.phase, input.payload, input.workshopOrigin);
     if (error || !data) return failure(error?.code ?? 'PT503');
     return NextResponse.json(data, { headers });
   } catch (error) {

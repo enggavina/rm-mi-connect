@@ -5,7 +5,8 @@ import { WorkshopContextError } from '@/server/web/workshop-context';
 
 const commands = ['rm_submit_form_inspection_v1', 'rm_submit_form_revision_v1', 'rm_record_cell_photo_v1',
   'rm_transition_stage_approval_v1', 'rm_update_cell_status_v1', 'rm_add_cell_comment_v1', 'rm_record_execution_event_v1'] as const;
-const schema = z.object({ operatorToken, submission: z.uuid(), operation: z.enum(commands), payload: z.record(z.string(), z.unknown()) }).strict();
+const schema = z.object({ operatorToken, submission: z.uuid(), operation: z.enum(commands), payload: z.record(z.string(), z.unknown()),
+  workshopOrigin: z.uuid().optional() }).strict();
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' };
 const errors: Record<string, [number, string]> = {
   '28000': [401, 'Identifique novamente o operador responsável neste dispositivo.'],
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
   try { input = schema.parse(JSON.parse(raw ?? 'null')); }
   catch { return failure('22023'); }
   try {
-    const { data, error } = await sendNativeWorkshopMutation(bearer, input.operatorToken, input.submission, input.operation, input.payload);
+    const { data, error } = await sendNativeWorkshopMutation(bearer, input.operatorToken, input.submission, input.operation, input.payload, input.workshopOrigin);
     return error || !data ? failure(error?.code ?? 'PT503') : Response.json(data, { headers });
   } catch (error) {
     return failure(error instanceof WorkshopContextError && error.status === 401 ? '28000'
