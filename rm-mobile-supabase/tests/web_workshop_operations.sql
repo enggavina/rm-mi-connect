@@ -223,7 +223,10 @@ select pg_temp.project_read_check((public.rm_web_gantt_snapshot_v1('{"project_id
  'legacy Gantt remains available to its previous authorized callers');
 reset role;
 select pg_temp.project_read_deny('select pg_temp.project_read_call(''gantt_cells'',''{"office":"BRJ"}'',pg_temp.project_read_id(1))','22023');
-select pg_temp.project_read_deny('select pg_temp.project_read_call(''gantt_snapshot'',''{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":true}'',pg_temp.project_read_id(1))','22023');
+select pg_temp.project_read_deny('select pg_temp.project_read_call(''gantt_snapshot'',''{"project_id":null,"cell_id":null,"include_closed":false,"project_details":false,"can_manage":true}'',pg_temp.project_read_id(1))','22023');
+select pg_temp.project_read_check((pg_temp.project_read_call('gantt_snapshot',
+ '{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":true}',pg_temp.project_read_id(2))->'items'->0->>'can_edit')::boolean,
+ 'scoped edit eligibility is available before legacy access is removed');
 select pg_temp.project_read_check(not has_function_privilege('authenticated','rm_private.workshop_project_read_data_v1(text,jsonb,uuid)','execute')
  and not has_function_privilege('authenticated','rm_private.workshop_gantt_snapshot_v1(jsonb,uuid)','execute')
  and not has_function_privilege('anon','public.rm_web_workshop_read_v1(uuid,text,jsonb)','execute')

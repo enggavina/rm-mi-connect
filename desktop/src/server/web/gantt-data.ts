@@ -144,9 +144,11 @@ export function createGanttData(client: SupabaseClient, capabilities?: readonly 
 
 async function data() {
   const { requireWebUser } = await import('./auth');
-  const { readWorkshopOperations, workshopGanttWritesEnabled } = await import('./workshop-operation-reader');
+  const { ssoWorkshopRead } = await import('./sso-bridge');
   const session = await requireWebUser('em.planning.read');
-  return createGanttData(session.client, session.sso?.capabilities, await readWorkshopOperations(session), workshopGanttWritesEnabled());
+  const workshop = session.sso && ssoWorkshopRead(session.sso, session.client);
+  const canManage = ['administrador', 'padr_o'].includes(session.profile.perfil);
+  return createGanttData(session.client, session.sso?.capabilities, workshop, canManage);
 }
 export async function getGanttSnapshot(filters: GanttFilters) { return (await data()).getGanttSnapshot(filters); }
 export async function listGanttProjects(query?: string, page?: number | string) { return (await data()).listGanttProjects(query, page); }

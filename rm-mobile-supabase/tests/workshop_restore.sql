@@ -930,9 +930,146 @@ begin
  if denied<>12 then raise exception 'Cobertura incompleta de mídias em rascunho.';end if;
 end
 $draft_media$;
+
+do $gantt_cutover$
+declare
+ pending_project uuid:=em_fixture.id(1290); pending_cell uuid:=em_fixture.id(1291);
+ reset_project uuid:=em_fixture.id(1292); project uuid; first_cell uuid; second_cell uuid; plan jsonb; settings jsonb;
+ first_row uuid; second_row uuid; snapshot jsonb; part jsonb; source jsonb; request_id uuid;
+ customer uuid; receiving_id uuid; delegation text; args jsonb; receipt jsonb; anchor jsonb;
+ view_filters constant jsonb:='{"project_id":null,"cell_id":null,"include_closed":false,"project_details":true,"can_manage":true}';
+begin
+ update rm_private.sso_settings set require_sso=true where singleton;
+ perform rm_private.activate_root_creation_v1(repeat('9',40),em_fixture.id(1299));
+ insert into public.rm_projetos(id,nome) values(pending_project,'Recebimento legado local');
+ insert into public.rm_celulas(id,nome) values(pending_cell,'Célula pendente local');
+ begin
+  insert into public.rm_celulas_projeto(id,projeto_id,celula_id) values(em_fixture.id(1293),pending_project,em_fixture.id(201));
+  perform rm_private.activate_gantt_workshop_cutover_v1();
+  raise exception 'A ativação aceitou uma alocação com origem pendente.';
+ exception when sqlstate 'PT409' then null;
+ end;
+ perform rm_private.activate_gantt_workshop_cutover_v1();
+ perform rm_private.activate_gantt_workshop_cutover_v1();
+ if exists(select 1 from rm_private.workshop_root_enforcement where activated_at is not null)
+  or exists(select 1 from unnest(array[
+   'public.rm_web_gantt_snapshot_v1(jsonb)','rm_private.web_gantt_snapshot_before_calendar_v1(jsonb)',
+   'rm_private.web_gantt_project_version_v1(uuid)','rm_private.web_gantt_project_version_before_calendar_v1(uuid)'
+  ]) f where has_function_privilege('authenticated',f,'execute'))
+  or exists(select 1 from unnest(array['rm_private.gantt_project_plans','rm_private.gantt_baselines','rm_private.gantt_project_settings']) t
+   where has_table_privilege('authenticated',t,'select')) then
+  raise exception 'A ativação não revogou as leituras antigas ou alterou os recebimentos legados.';
+ end if;
+ insert into public.rm_projetos(id,nome) values(reset_project,'Entrada legada durante transição');
+ begin
+  insert into public.rm_celulas_projeto(projeto_id,celula_id) values(reset_project,em_fixture.id(201));
+  set constraints public.workshop_planning_project_origin immediate;
+  raise exception 'Um novo projeto sem origem entrou no Gantt.';
+ exception when foreign_key_violation then null;
+ end;
+ begin
+  insert into public.rm_celulas_projeto(projeto_id,celula_id) values(em_fixture.id(101),pending_cell);
+  set constraints public.workshop_planning_cell_origin immediate;
+  raise exception 'Uma célula sem origem entrou no Gantt.';
+ exception when foreign_key_violation then null;
+ end;
+ begin
+  delete from rm_private.workshop_project_ownership where id=em_fixture.id(101);
+  set constraints public.workshop_planning_project_origin immediate;
+  raise exception 'Uma alocação ativa perdeu a origem de seu projeto.';
+ exception when foreign_key_violation then null;
+ end;
+ -- A project and route may be inserted before the owner row, provided the
+ -- classified root exists when the normal operation finishes.
+ insert into public.rm_celulas_projeto(projeto_id,celula_id) values(reset_project,em_fixture.id(201));
+ insert into rm_private.workshop_project_ownership(id,workshop_id) values(reset_project,em_fixture.id(1));
+ set constraints public.workshop_planning_project_origin,public.workshop_planning_cell_origin immediate;
+ set constraints public.workshop_planning_project_origin,public.workshop_planning_cell_origin deferred;
+
+ for office in 1..4 loop
+  first_cell:=em_fixture.id(200+office); second_cell:=em_fixture.id(1200+office);
+  customer:=em_fixture.id(1300+office); receiving_id:=em_fixture.id(1250+office);
+  delegation:=repeat(chr(96+office),64);
+  insert into public.rm_clientes(id,nome) values(customer,'Cliente local do recebimento de teste '||office);
+  insert into rm_private.workshop_catalog_ownership(object_kind,object_id,workshop_id) values('client',customer,em_fixture.id(office));
+  select payload||jsonb_build_object('cliente',customer) into source from rm_private.receiving_drafts where id=receiving_id;
+  args:=jsonb_build_object('p_operador_id',em_fixture.id(740+office),'p_cliente_id',customer,'p_tipo_equipamento_id',em_fixture.id(1100+office),
+   'p_chegada_equipamento','2026-12-01T12:00:00-03:00','p_descricao_equipamento','Motor local do Gantt '||office,
+   'p_equipamento','{}'::jsonb,'p_receiving_draft_id',receiving_id,'p_receiving_draft_revision',1,'p_receiving_draft_snapshot',source);
+  perform set_config('request.jwt.claim.sub',em_fixture.id(710+office)::text,true);
+  perform set_config('request.jwt.claims',jsonb_build_object('session_id',em_fixture.id(720+office),'aal','aal1')::text,true);
+  perform public.rm_authorize_mobile_receiving_workshop_v1(em_fixture.id(710+office),em_fixture.id(720+office),delegation,
+   pg_temp.workshop_restore_native_context(office,office),receiving_id,'open',args);
+  set local role authenticated;
+  receipt:=public.rm_mobile_receiving_workshop_v1(receiving_id,'open',args,delegation);
+  reset role;
+  project:=(receipt->>'projeto_id')::uuid;
+  if not (receipt->>'attachments_pending')::boolean or not (
+   pg_temp.workshop_restore_read(office,'receiving_list',jsonb_build_object('reason','without_number','q','Motor local do Gantt '||office,'page',1))->'items'
+    @> jsonb_build_array(jsonb_build_object('id',project))) then
+   raise exception 'O recebimento aberto não apareceu na sua oficina.';
+  end if;
+  args:=jsonb_build_object('projeto_id',project,'celula_id',first_cell,'expected_updated_at',
+   (select updated_at from public.rm_celulas_projeto where projeto_id=project and celula_id=first_cell),
+   'changes',jsonb_build_object('data_inicio','2026-12-07T12:00:00-03:00','data_limite','2026-12-07T12:00:00-03:00'));
+  begin
+   perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'plan_cell',args,false);
+   raise exception 'Uma alocação continuou aceitando o protocolo antigo.';
+  exception when insufficient_privilege then null;
+  end;
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'plan_cell',args);
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'plan_cell',
+   args||jsonb_build_object('celula_id',second_cell,'expected_updated_at',null,
+    'changes',jsonb_build_object('data_inicio','2026-12-09T12:00:00-03:00','data_limite','2026-12-10T12:00:00-03:00')));
+  set constraints public.workshop_planning_project_origin,public.workshop_planning_cell_origin immediate;
+  set constraints public.workshop_planning_project_origin,public.workshop_planning_cell_origin deferred;
+  select id into strict first_row from public.rm_celulas_projeto where projeto_id=project and celula_id=first_cell;
+  select id into strict second_row from public.rm_celulas_projeto where projeto_id=project and celula_id=second_cell;
+  snapshot:=pg_temp.workshop_restore_read(office,'gantt_snapshot',view_filters||jsonb_build_object('project_id',project,'include_closed',true));
+  anchor:=snapshot->'projects'->0;
+  plan:=jsonb_build_object('reason','Ajuste local no cronograma','projects',jsonb_build_array(jsonb_build_object('id',project,
+   'expected_updated_at',anchor->'updated_at','expected_plan_version',anchor->'plan_version')),
+   'items',(select jsonb_build_array(jsonb_build_object('id',id,'expected_updated_at',updated_at,'changes',jsonb_build_object('data_limite','2026-12-08')))
+    from public.rm_celulas_projeto where id=first_row),'dependencies',jsonb_build_object('projeto_id',project,
+    'links',jsonb_build_array(jsonb_build_object('predecessor_id',first_row,'successor_id',second_row,'lag_days',0))));
+  if not (snapshot->'items' @> jsonb_build_array(jsonb_build_object('id',first_row,'can_edit',true)))
+   or not (pg_temp.workshop_restore_read(office,'gantt_snapshot',view_filters||jsonb_build_object('cell_id',first_cell))->'items'
+    @> jsonb_build_array(jsonb_build_object('id',first_row)))
+   or not (pg_temp.workshop_restore_read(office,'gantt_snapshot',view_filters)->'items' @> jsonb_build_array(jsonb_build_object('id',first_row)))
+   or pg_temp.workshop_restore_read((office % 4)+1,'gantt_snapshot',view_filters||jsonb_build_object('project_id',project,'include_closed',true)) is not null then
+   raise exception 'As três visões divergiram da oficina do recebimento.';
+  end if;
+  begin
+   perform pg_temp.workshop_restore_planning_write((office % 4)+1,gen_random_uuid(),'save_gantt_plan',plan);
+   raise exception 'Uma oficina alterou o Gantt da outra.';
+  exception when insufficient_privilege then null;
+  end;
+  request_id:=gen_random_uuid();
+  perform pg_temp.workshop_restore_planning_write(office,request_id,'save_gantt_plan',plan);
+  if (pg_temp.workshop_restore_planning_write(office,request_id,'save_gantt_plan',plan)->>'idempotent_replay')::boolean is distinct from true then
+   raise exception 'O reenvio do Gantt não reconheceu o protocolo.';
+  end if;
+  settings:=jsonb_build_object('projeto_id',project,'expected_updated_at',(select updated_at from public.rm_projetos where id=project),
+   'expected_plan_version',rm_private.web_gantt_project_version_v1(project),'reason','Calendário local da oficina',
+   'calendar',jsonb_build_object('weekdays',jsonb_build_array(1,2,3,4,5),'exceptions','[]'::jsonb),'milestones','[]'::jsonb);
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_gantt_settings',settings);
+  plan:=jsonb_build_object('reason','Referência local do plano','projects',jsonb_build_array(jsonb_build_object('id',project,
+   'expected_updated_at',(select updated_at from public.rm_projetos where id=project),'expected_plan_version',rm_private.web_gantt_project_version_v1(project))),
+   'items','[]'::jsonb,'baseline',jsonb_build_object('projeto_id',project,'label','Plano local da oficina'));
+  perform pg_temp.workshop_restore_planning_write(office,gen_random_uuid(),'save_gantt_plan',plan);
+  part:=pg_temp.workshop_restore_read(office,'gantt_snapshot',view_filters||jsonb_build_object('project_id',project,'include_closed',true));
+  if part->'baseline'->>'label' is distinct from 'Plano local da oficina' or jsonb_array_length(part->'baseline'->'items')<>2
+   or jsonb_array_length(part->'links')<>1 or jsonb_array_length(part->'settings')<>1
+   or (select (data_limite at time zone 'America/Sao_Paulo')::date from public.rm_celulas_projeto where id=first_row) is distinct from '2026-12-08'::date then
+   raise exception 'Prazo, dependência, calendário ou referência não foram salvos.';
+  end if;
+ end loop;
+end
+$gantt_cutover$;
 rollback;
 select 'PASS: four offices, Gantt, capacity, availability, queue, load, execution, media; 156 denied cross-office reads, 24 crossed writes, 8 denied reads after revocation or unavailable authority' result;
 select 'PASS: engineering and photo titles in four offices; 48 denied cross-office reads, 16 crossed writes' result;
 select 'PASS: current team in four offices; 12 denied cross-office searches, 4 rejected member substitutions' result;
 select 'PASS: assignment selectors and writes in four offices; 36 denied cross-office reads and 20 denied foreign people assignments' result;
 select 'PASS: four private draft attachments recover under their original identity; 12 denied cross-office draft media reads' result;
+select 'PASS: Gantt cutover across four offices from intake through calendars, dependencies and baselines; deferred roots and legacy access checked' result;

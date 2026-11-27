@@ -9,10 +9,6 @@ export function workshopOperationReadsEnabled() {
   return process.env.EM_WORKSHOP_OPERATION_READS === 'true';
 }
 
-export function workshopGanttWritesEnabled() {
-  return workshopOperationReadsEnabled() && process.env.EM_WORKSHOP_GANTT_WRITES === 'true';
-}
-
 export function workshopFormReviewWritesEnabled() {
   return workshopOperationReadsEnabled() && process.env.EM_WORKSHOP_FORM_REVIEW_WRITES === 'true';
 }
