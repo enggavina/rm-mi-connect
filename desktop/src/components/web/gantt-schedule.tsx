@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { GanttSelectionUnavailable, getGanttSnapshot, listGanttCells, listGanttProjects, type GanttSnapshot } from '@/server/web/gantt-data';
 import { scheduleId } from '@/server/web/project-schedule-policy';
-import { workshopOperationReadsEnabled } from '@/server/web/workshop-operation-reader';
+import { workshopGanttWritesEnabled, workshopOperationReadsEnabled } from '@/server/web/workshop-operation-reader';
 import { Pagination, Empty } from './ui';
 import { GanttPlanner, type GanttScope } from './gantt-planner';
 import s from './gantt-planner.module.css';
@@ -14,7 +14,7 @@ export async function GanttSchedule({ params, canProjects, canManage }: {
   const projectId = scope === 'project' && canProjects ? scheduleId(params.project) : undefined;
   const cellId = scope === 'cell' ? scheduleId(params.cell) : undefined;
   const includeClosed = scope === 'project' || value('closed') === 'yes';
-  const readOnly = workshopOperationReadsEnabled();
+  const readOnly = workshopOperationReadsEnabled() && !workshopGanttWritesEnabled();
   const nav = <nav className={s.scopeNav} aria-label="Escopo do Gantt">
     <a href="/cronograma?view=gantt&scope=general" aria-current={scope === 'general' ? 'page' : undefined}>Gantt geral</a>
     <a href="/cronograma?view=gantt&scope=cell" aria-current={scope === 'cell' ? 'page' : undefined}>Gantt da célula</a>

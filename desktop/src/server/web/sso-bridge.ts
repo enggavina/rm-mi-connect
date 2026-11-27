@@ -8,9 +8,10 @@ import { corporateSettings, beginCorporateFlow, finishCorporateFlow, validateCor
   type CorporateFlow, type VerifiedCorporateSession, type CorporateCapability } from './sso-corporate';
 import { opaqueToken, openSso, sealSso, tokenHash } from './sso-crypto';
 import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelopes';
-import { createCatalogWorkshopAuthorizer, isScopedTemplateWrite, rootWriteCapability } from './catalog-workshop';
+import { createCatalogWorkshopAuthorizer, isScopedGanttWrite, isScopedTemplateWrite, rootWriteCapability } from './catalog-workshop';
 import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
+import { workshopGanttWritesEnabled } from './workshop-operation-reader';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -36,8 +37,9 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   if (error) throw new CorporateAuthError('CORP_UNAVAILABLE');
   return data;
 }
-const catalogWorkshops = createCatalogWorkshopAuthorizer({ mint: async value => {
+const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: workshopGanttWritesEnabled(), mint: async value => {
   const issuer = rootWriteCapability(value.operation, value.payload) ? 'rm_sso_root_creation_permit_v1'
+    : isScopedGanttWrite(value.operation) ? 'rm_sso_gantt_workshop_permit_v1'
     : isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1';
   await rpc(issuer, { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.context });

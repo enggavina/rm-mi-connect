@@ -19,13 +19,18 @@ export function rootWriteCapability(operation: string, payload: Record<string, u
   return null;
 }
 
+export function isScopedGanttWrite(operation: string): boolean {
+  return operation === 'save_gantt_plan' || operation === 'save_gantt_settings';
+}
+
 /** Request objects, not serializable session fields, retain the verified bearer.
  * The bridge calls remember only after current corporate/local SSO and MFA.
  * There is no cross-request positive decision cache or new browser credential. */
-export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContextReader(), mint, mintRead }: {
+export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContextReader(), mint, mintRead, enableGanttWrites = false }: {
   reader?: Pick<ReturnType<typeof createWorkshopContextReader>, 'readWeb'>;
   mint: (args: { sessionHash: string; submissionId: string; operation: string; payload: Record<string, unknown>; context: WorkshopContext }) => Promise<void>;
   mintRead?: (args: { sessionHash: string; requestId: string; resource: WorkshopReadResource; filters: Record<string, unknown>; context: WorkshopContext }) => Promise<void>;
+  enableGanttWrites?: boolean;
 }) {
   const verified = new WeakMap<SsoContext, VerifiedCorporateSession>();
   return {
@@ -45,7 +50,8 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
     },
     async authorize(context: SsoContext, submissionId: string, operation: string, payload: Record<string, unknown>, capability: CorporateCapability) {
       const expected = isScopedTemplateWrite(operation) ? 'em.form_templates.manage'
-        : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage' : rootWriteCapability(operation, payload);
+        : isScopedCatalogWrite(operation, payload) ? 'em.catalogs.manage'
+        : enableGanttWrites && isScopedGanttWrite(operation) ? 'em.planning.manage' : rootWriteCapability(operation, payload);
       if (!expected) return false;
       if (capability !== expected || !context.capabilities.includes(capability)) throw new CorporateAuthError('CORP_FORBIDDEN');
       const corporate = verified.get(context);

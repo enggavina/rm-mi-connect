@@ -9,6 +9,10 @@ export function workshopOperationReadsEnabled() {
   return process.env.EM_WORKSHOP_OPERATION_READS === 'true';
 }
 
+export function workshopGanttWritesEnabled() {
+  return workshopOperationReadsEnabled() && process.env.EM_WORKSHOP_GANTT_WRITES === 'true';
+}
+
 export async function readWorkshopOperations(access: WorkshopSession): Promise<WorkshopRead | undefined> {
   if (!workshopOperationReadsEnabled()) return undefined;
   if (!access.sso) throw new WorkshopContextError('WORKSHOP_FORBIDDEN');

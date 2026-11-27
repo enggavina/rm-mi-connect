@@ -54,6 +54,8 @@ execute function rm_private.require_new_workshop_root_v1();
 create constraint trigger workshop_new_cell_origin
 after insert on public.rm_celulas deferrable initially deferred for each row
 execute function rm_private.require_new_workshop_root_v1();
+alter table public.rm_projetos disable trigger workshop_new_project_origin;
+alter table public.rm_celulas disable trigger workshop_new_cell_origin;
 
 -- This separate switch is used only after the receiving pilot and the review
 -- of the remaining writers. It cannot assign workshop ownership retroactively.
@@ -70,6 +72,8 @@ begin
   or exists(select 1 from public.rm_celulas c where not exists(select 1 from rm_private.workshop_cell_ownership o where o.cell_id=c.id)) then
   raise exception 'Há criações ou origens pendentes de validação.' using errcode='PT409';
  end if;
+ alter table public.rm_projetos enable trigger workshop_new_project_origin;
+ alter table public.rm_celulas enable trigger workshop_new_cell_origin;
  update rm_private.workshop_root_enforcement set activated_at=clock_timestamp(),activated_by=session_user where singleton;
 end
 $$;

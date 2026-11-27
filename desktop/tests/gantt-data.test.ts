@@ -170,6 +170,20 @@ test('scoped Gantt sends the exact filters for all three views and rejects writa
   await assert.rejects(createGanttData(noLegacyClient, caps, async () => snapshot()).getGanttSnapshot(filters), /Não foi possível/);
 });
 
+test('scoped Gantt requests edit eligibility only when the write contract is enabled and authorized', async () => {
+  const read: WorkshopRead = async (resource, args) => {
+    assert.equal(resource, 'gantt_snapshot');
+    assert.equal(args.can_manage, true);
+    return snapshot();
+  };
+  const result = await createGanttData(noLegacyClient, caps, read, true).getGanttSnapshot(filters);
+  assert.ok(result.items.some(item => item.can_edit));
+  await assert.rejects(createGanttData(noLegacyClient, ['em.portal.read', 'em.planning.read', 'em.projects.read'], async (_, args) => {
+    assert.equal(args.can_manage, false);
+    return snapshot();
+  }, true).getGanttSnapshot(filters), /Não foi possível/);
+});
+
 test('scoped project/cell selections and authority failures never fall back to global reads', async () => {
   let fault = false;
   const read: WorkshopRead = async (resource, args) => {
