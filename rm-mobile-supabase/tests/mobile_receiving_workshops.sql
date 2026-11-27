@@ -609,7 +609,7 @@ declare
  qr uuid:=pg_temp.rx_id(990);
  offline uuid:=pg_temp.rx_id(991);
  args jsonb:=pg_temp.rx_payload(sid,'open');
- result jsonb;
+ intake jsonb;
  prior rm_private.receiving_workshop_protocols;
  foreign_args jsonb;
 begin
@@ -619,9 +619,9 @@ begin
  reset role;
  perform pg_temp.rx_check(not exists(select 1 from rm_private.receiving_openings where client_submission_id=sid),
   'a pending permit cannot be presented over the raw RPC');
- result:=pg_temp.rx_call(sid,'open',args);
+ intake:=pg_temp.rx_call(sid,'open',args);
  select * into strict prior from rm_private.receiving_workshop_protocols where submission_id=sid;
- perform pg_temp.rx_check(prior.project_id=(result->>'projeto_id')::uuid and prior.operator_id=pg_temp.rx_id(14)
+ perform pg_temp.rx_check(prior.project_id=(intake->>'projeto_id')::uuid and prior.operator_id=pg_temp.rx_id(14)
   and prior.workshop_id=pg_temp.rx_id(1) and prior.opened_at is not null and prior.completed_at is null,
   'verified opening records the original team, project and phase');
  perform pg_temp.rx_check((pg_temp.rx_call(sid,'open',args)->>'idempotent_replay')::boolean
@@ -637,8 +637,8 @@ begin
  perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,
   pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_cliente_id',pg_temp.rx_id(750))),'42501');
  reset role;
- result:=pg_temp.rx_call(sid,'complete',args);
- perform pg_temp.rx_check(prior.project_id=(result->>'projeto_id')::uuid and exists(
+ intake:=pg_temp.rx_call(sid,'complete',args);
+ perform pg_temp.rx_check(prior.project_id=(intake->>'projeto_id')::uuid and exists(
   select 1 from rm_private.receiving_workshop_protocols where submission_id=sid and opened_at=prior.opened_at and completed_at is not null),
   'authorized completion establishes both phases without creating another project');
  perform pg_temp.rx_check((pg_temp.rx_call(sid,'complete',args)->>'idempotent_replay')::boolean,
@@ -657,13 +657,13 @@ begin
  perform pg_temp.rx_reject(format('select public.rm_mobile_open_receiving_v1(%L,%L,repeat(''6'',64))',qr,
   pg_temp.rx_payload(qr,'open')||jsonb_build_object('p_projeto_id',prior.project_id)),'42501');
  reset role;
- result:=pg_temp.rx_call(offline,'complete',args);
+ intake:=pg_temp.rx_call(offline,'complete',args);
  set constraints workshop_new_project_origin immediate;
  perform pg_temp.rx_check(exists(select 1 from rm_private.receiving_workshop_protocols p
   join rm_private.mobile_mutation_receipts r on r.client_submission_id=p.submission_id and r.operator_id=p.operator_id
   join rm_private.workshop_project_ownership o on o.id=p.project_id and o.workshop_id=p.workshop_id
   where p.submission_id=offline and p.opened_at is null and p.completed_at is not null
-   and p.project_id=(result->>'projeto_id')::uuid and p.workshop_id=pg_temp.rx_id(1)),
+   and p.project_id=(intake->>'projeto_id')::uuid and p.workshop_id=pg_temp.rx_id(1)),
   'offline completion alone creates project, origin, exact receipt and evidence in one transaction');
  perform pg_temp.rx_check(not has_table_privilege('authenticated','rm_private.receiving_workshop_protocols','select')
   and not has_table_privilege('service_role','rm_private.receiving_workshop_protocols','update'),
