@@ -2957,7 +2957,7 @@ begin
   -- The portal cutover fixture revoked the first two Microsoft identities.
   if office in(3,4) then
    output:=pg_temp.workshop_restore_read(office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo'));
-   if output->>'url' is distinct from reference or coalesce(output->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
+   if output->>'file' is distinct from reference or coalesce(output->>'archive_path','') not like 'acervo-oficina/'||em_fixture.id(office)::text||'/%'
     or pg_temp.workshop_restore_read(7-office,'media_reference',jsonb_build_object('id',em_fixture.id(600+office),'source','project_photo')) is not null then
     raise exception 'O portal perdeu a referência antiga ou a mostrou a outra oficina.';
    end if;
