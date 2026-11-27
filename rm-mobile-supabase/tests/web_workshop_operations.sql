@@ -281,4 +281,51 @@ begin
 end
 $edit$;
 select 'PASS: scoped Gantt dates, calendar, read-edit eligibility, legacy permit rejection and exact retry' result;
+
+create function pg_temp.workshop_form_review(rid uuid,p jsonb,office uuid,actual jsonb default null)
+returns jsonb language plpgsql as $$
+declare result jsonb;
+begin
+ perform public.rm_sso_form_review_workshop_permit_v1(repeat('7',64),rid,'review_form',p,pg_temp.project_read_context(office));
+ set local role authenticated;
+ result:=public.rm_web_mutate_v1(rid,'review_form',coalesce(actual,p));
+ reset role;
+ return result;
+exception when others then reset role;raise;
+end$$;
+
+select rm_private.activate_form_review_workshop_writes_v1();
+insert into public.rm_questoes(id,form_id,enunciado,tipo) values
+ (pg_temp.project_read_id(801),pg_temp.project_read_id(601),'LOCAL answer','texto_curto');
+insert into public.rm_respostas(id,registro_formulario_id,questao_id,resposta) values
+ (pg_temp.project_read_id(901),pg_temp.project_read_id(701),pg_temp.project_read_id(801),'LOCAL original answer');
+do $$
+declare
+ bma uuid:=pg_temp.project_read_id(1);
+ brj uuid:=pg_temp.project_read_id(2);
+ registration uuid:=pg_temp.project_read_id(701);
+ rid uuid:=gen_random_uuid();
+ p jsonb;
+ r jsonb;
+begin
+ select jsonb_build_object('registro_formulario_id',id,'expected_updated_at',updated_at,
+  'decision','return','parecer','LOCAL revision needed','resposta_ids',jsonb_build_array(pg_temp.project_read_id(901))) into p
+ from public.rm_registros_formulario where id=registration;
+ perform public.rm_sso_action_permit_v1(repeat('7',64),rid,'review_form',p,'em.forms.review');
+ set local role authenticated;
+ perform pg_temp.project_read_deny(format('select public.rm_web_mutate_v1(%L,''review_form'',%L)',rid,p),'42501');
+ reset role;
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_form_review(%L,%L,%L)',rid,p,brj),'42501');
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_form_review(%L,%L,%L,%L)',rid,p,bma,
+  jsonb_set(p,'{parecer}','"LOCAL changed payload"')),'42501');
+ r:=pg_temp.workshop_form_review(rid,p,bma);
+ perform pg_temp.project_read_check(r->'record'->>'status'='direcionado','BMA may return its own answer for correction');
+ perform pg_temp.project_read_check((pg_temp.workshop_form_review(rid,p,bma)->>'idempotent_replay')::boolean,
+  'the same review protocol is a replay after a fresh office authorization');
+ perform pg_temp.project_read_deny(format('select pg_temp.workshop_form_review(%L,%L,%L)',rid,p,brj),'42501');
+ perform pg_temp.project_read_check((select count(*)=1 from public.rm_aprovacoes_registro where registro_formulario_id=registration)
+  and (select revisar and resposta='LOCAL original answer' from public.rm_respostas where id=pg_temp.project_read_id(901)),
+  'existing decision audit and operator answer are preserved');
+end$$;
+select 'PASS: scoped form decisions, review audit, own retry, foreign refusal and changed payload refusal' result;
 rollback;

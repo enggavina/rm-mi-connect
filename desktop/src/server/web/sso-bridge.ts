@@ -11,7 +11,7 @@ import { ssoBindingSchema, ssoFlowSchema, ssoSessionSchema } from './sso-envelop
 import { createCatalogWorkshopAuthorizer, isScopedGanttWrite, isScopedTemplateWrite, rootWriteCapability } from './catalog-workshop';
 import { workshopReadResult, type WorkshopRead } from './workshop-read-policy';
 import { WorkshopContextError } from './workshop-context';
-import { workshopGanttWritesEnabled, workshopOperationReadsEnabled } from './workshop-operation-reader';
+import { workshopFormReviewWritesEnabled, workshopGanttWritesEnabled, workshopOperationReadsEnabled } from './workshop-operation-reader';
 
 export const SSO_SESSION_COOKIE = 'em-sso-session';
 export const SSO_FLOW_COOKIE = 'em-sso-flow';
@@ -38,9 +38,10 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<any> {
   return data;
 }
 const catalogWorkshops = createCatalogWorkshopAuthorizer({ enableGanttWrites: workshopGanttWritesEnabled(),
-  enableRootEdits: workshopOperationReadsEnabled(), mint: async value => {
+  enableRootEdits: workshopOperationReadsEnabled(), enableFormReviewWrites: workshopFormReviewWritesEnabled(), mint: async value => {
   const issuer = rootWriteCapability(value.operation, value.payload, workshopOperationReadsEnabled()) ? 'rm_sso_root_creation_permit_v1'
     : isScopedGanttWrite(value.operation) ? 'rm_sso_gantt_workshop_permit_v1'
+    : value.operation === 'review_form' ? 'rm_sso_form_review_workshop_permit_v1'
     : isScopedTemplateWrite(value.operation) ? 'rm_sso_template_workshop_permit_v1' : 'rm_sso_catalog_workshop_permit_v1';
   await rpc(issuer, { p_session_hash: value.sessionHash, p_submission_id: value.submissionId,
     p_operation: value.operation, p_payload: value.payload, p_context: value.context });
