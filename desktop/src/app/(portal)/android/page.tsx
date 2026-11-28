@@ -13,7 +13,7 @@ export default async function AndroidInstallerPage() {
     <section className="panel">
       {status === 200 ? <>
         <h2>EM · Versão {release.version}</h2>
-        <p>Android ARM64 · {new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(release.bytes / 1_000_000)} MB</p>
+        <p>Android ARM64 e x86_64 · {new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(release.bytes / 1_000_000)} MB</p>
         <p>Instale sobre a versão existente para manter os rascunhos e envios pendentes.</p>
         <a href="/api/web/android/instalador" className="button primary">Baixar APK</a>
       </> : <Empty title="Instalador indisponível" detail="Abra esta página novamente para confirmar o vínculo com a oficina." icon="settings" />}

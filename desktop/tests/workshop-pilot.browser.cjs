@@ -41,7 +41,7 @@ function signedMedia(response, legacyImage) {
 }
 
 async function verifyAndroidInstaller(page, expected) {
-  assert.match(expected.file, /^em-mi-electric-brasil-(\d+\.\d+\.\d+)-arm64\.apk$/);
+  assert.match(expected.file, /^em-mi-electric-brasil-(\d+\.\d+\.\d+)-piloto\.apk$/);
   const version = expected.file.match(/\d+\.\d+\.\d+/)[0];
   assert.match(expected.sha256, /^[0-9a-f]{64}$/);
   assert.ok(Number.isInteger(expected.bytes) && expected.bytes > 0 && expected.bytes <= 52428800);
