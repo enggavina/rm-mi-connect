@@ -1,5 +1,13 @@
 # SSO corporativo do EM
 
+## Contas de gestão, dispositivos e operadores
+
+- **Portal de gestão.** Cada gestor entra com a própria conta Microsoft e recebe as permissões do EM e o vínculo de oficina em Acessos.
+- **Android.** Cada tablet físico recebe uma conta técnica exclusiva no Supabase do EM, com e-mail e senha próprios. Identifique o aparelho no inventário e vincule a conta em Acessos como **Dispositivo** da oficina. A conta do tablet permanece a mesma durante a troca de turno.
+- **Operação.** Cada pessoa se identifica com matrícula e palavra-chave. A autoria e as permissões de célula pertencem ao operador. O Operacional Web usa a mesma sequência de autenticação operacional com conta de dispositivo e identificação do operador.
+
+A conferência de 28/11/2026 encontrou duas contas ativas de dispositivo, uma na BMA e outra na BRJ, ambas com senha e distintas das contas Microsoft de gestão. A associação ao aparelho físico precisa ser conferida no inventário. O cadastro técnico Digital da BMA ainda tem delegações no fluxo legado como operador. Antes de trocar uma conta no aparelho, confira rascunhos, anexos e protocolos pendentes da conta original e preserve os dados até a confirmação dos envios.
+
 ## Ativação, suspensão e retomada de uma oficina
 
 1. Em **Acessos → Oficinas do EM → Ver vínculos**, confira o código da oficina e as identidades autorizadas. Na oficina inativa, prepare a conta Microsoft do gestor, a conta de dispositivo e a matrícula do operador com **Vínculo habilitado** desmarcado. A autorização de uso do portal EM continua sendo administrada nas permissões do aplicativo.

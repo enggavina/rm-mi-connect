@@ -235,9 +235,18 @@ async function authenticate(page, office) {
 }
 
 async function expandReviewSections(page, target) {
+  if (await target.isVisible()) return;
+  await page.waitForLoadState('load');
   for (const section of await page.locator('details.record-section').all()) {
-    if (await target.count()) break;
-    if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
+    const summary = section.locator(':scope > summary');
+    const content = section.locator(':scope > :not(summary)').first();
+    for (let attempt = 0; attempt < 2 && !(await content.isVisible()); attempt++) {
+      if (await section.evaluate(element => element.open)) await summary.click();
+      await summary.click();
+      try { await content.waitFor({ state: 'visible', timeout: 2_000 }); }
+      catch (error) { if (error.name !== 'TimeoutError') throw error; }
+    }
+    if (await target.isVisible()) return;
   }
 }
 
@@ -302,6 +311,7 @@ async function main() {
         if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
         if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
         if (step.formAnswer !== undefined) {
+          stepDescription += ' · resposta do formulário';
           assert.ok(typeof step.formAnswer === 'string' && step.formAnswer.trim());
           const answer = page.locator('.answer-value').getByText(step.formAnswer, { exact: true }).first();
           await expandReviewSections(page, answer);
