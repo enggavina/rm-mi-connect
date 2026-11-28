@@ -234,6 +234,13 @@ async function authenticate(page, office) {
   await page.waitForURL(location('/painel'), { timeout: 180_000, waitUntil: 'domcontentloaded' });
 }
 
+async function expandReviewSections(page, target) {
+  for (const section of await page.locator('details.record-section').all()) {
+    if (await target.count()) break;
+    if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
+  }
+}
+
 async function main() {
   const codes = matrix.offices.map(office => office.code);
   for (const code of codes) assert.match(code, /^[A-Z0-9_-]+$/);
@@ -294,13 +301,15 @@ async function main() {
         if (step.androidInstaller) await verifyAndroidInstaller(page, step.androidInstaller);
         if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
         if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+        if (step.formAnswer !== undefined) {
+          assert.ok(typeof step.formAnswer === 'string' && step.formAnswer.trim());
+          const answer = page.locator('.answer-value').getByText(step.formAnswer, { exact: true }).first();
+          await expandReviewSections(page, answer);
+          await answer.waitFor();
+        }
         if (step.image) {
           const image = page.locator(step.image).first();
-          const sections = await page.locator('details.record-section').all();
-          for (const section of sections) {
-            if (await image.count()) break;
-            if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
-          }
+          await expandReviewSections(page, image);
           await image.scrollIntoViewIfNeeded();
           const src = await image.getAttribute('src');
           assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
