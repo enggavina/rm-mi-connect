@@ -188,6 +188,8 @@ A regressão PostgreSQL e a matriz antes e depois da restauração confirmaram o
 
 A consulta de 27/11/2026 agrupou as cinco sessões recentes pela indicação do agente de autenticação. Três indicaram Android e duas indicaram servidor. Uma das três sessões com indicação Android tinha uma observação **1.2.26/código 29** da BMA. O emulador abriu um PDF histórico online, offline e depois de reabrir o catálogo offline com o APK publicado e SHA-256 verificado. A versão das outras duas sessões com indicação Android precisa de conferência em campo. [Consulta de versões](../../rm-mobile-supabase/scripts/workshop_android_readiness.sql) · [Teste do PDF no Android](../../mobile/tests/workshop-document-offline.py).
 
+Para repetir no aparelho do piloto, mantenha o Android desbloqueado e com a sessão da oficina aberta no EM. Confirme que o aparelho USB está autorizado com `adb -d get-state` e obtenha o serial com `adb -d get-serialno`. Use um JSON local com `cell`, `project` e `title` de um PDF existente, visível ao operador. Execute `python mobile/tests/workshop-document-offline.py caminho-do-arquivo.json --serial SERIAL --usb-device`. Mantenha o cabo conectado durante o teste. O roteiro abre o PDF online, offline e após reabrir o catálogo offline. Ele desliga temporariamente Wi-Fi e dados móveis e verifica a restauração das configurações iniciais ao final. [Teste do PDF no Android](../../mobile/tests/workshop-document-offline.py).
+
 Instalador do piloto `artifacts/em-mi-electric-brasil-1.2.24-piloto-bma.apk`, SHA-256 `ec5865afe2e02cdcd1dbacf71fccace2ac57d00d2af55c0e12f5d5234b4713b5`.
 
 ## P0.3 — Recuperação privada da foto legada sem projeto
