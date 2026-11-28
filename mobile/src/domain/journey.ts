@@ -8,6 +8,12 @@ export function allowedCells(operator: Operator | null, cells: Row[]): Row[] {
   return cells.filter(cell => canAccessCell(operator, cell.id)).sort((a, b) => (a.indice ?? a.ordem ?? 0) - (b.indice ?? b.ordem ?? 0));
 }
 
+export function cellSelectionPending(operator: Operator | null, cells: Row[], loaded: boolean): boolean {
+  if (!loaded && !cells.length) return true;
+  const cachedIds = new Set(cells.map(cell => cell.id));
+  return operator?.celulas_vinculadas.some(link => !cachedIds.has(link.celula_id)) ?? false;
+}
+
 export function isActiveProject(project: Row): boolean {
   return !project.data_real_de_entrega && !['cancelado', 'finalizando_para_faturar'].includes(project.status_pcp);
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Operator, OutboxRow, Row } from '../src/core/types';
-import { allowedCells, assignedForms, canAccessCell, canEditPhoto, canOpenForm, canReviseRecord, cellAllocations, pendingProjectPhotos, projectPhotos, requiredPhotoProgress, resolveJourneyContext } from '../src/domain/journey';
+import { allowedCells, assignedForms, canAccessCell, canEditPhoto, canOpenForm, canReviseRecord, cellAllocations, cellSelectionPending, pendingProjectPhotos, projectPhotos, requiredPhotoProgress, resolveJourneyContext } from '../src/domain/journey';
 
 const operator: Operator = { operador_id: 'person', matricula: '42', nome: 'Operador', perfil: 'mobile', perfil_assinante: [], celulas_vinculadas: [{ celula_id: 'c1', nome: 'Mecânica' }], authenticated_at: '2026-10-27T12:00:00Z' };
 const cells: Row[] = [{ id: 'c2', nome: 'Elétrica', indice: 2 }, { id: 'c1', nome: 'Mecânica', indice: 1 }];
@@ -16,6 +16,15 @@ test('cell selection uses operator identity links and preserves explicit adminis
   assert.deepEqual(allowedCells({ ...operator, celulas_vinculadas: [] }, cells), []);
   assert.deepEqual(allowedCells(null, cells), []);
   assert.equal(canAccessCell({ ...operator, perfil: 'administrador' }, undefined), false);
+});
+
+test('cell selection waits for authorized cells in the local catalog before showing an empty result', () => {
+  assert.equal(cellSelectionPending(operator, [], false), true);
+  assert.equal(cellSelectionPending(operator, [], true), true);
+  assert.equal(cellSelectionPending(operator, [cells[0]], true), true);
+  assert.equal(cellSelectionPending(operator, [cells[1]], true), false);
+  assert.equal(cellSelectionPending(operator, [cells[1]], false), false);
+  assert.equal(cellSelectionPending({ ...operator, celulas_vinculadas: [] }, [], true), false);
 });
 
 test('cell project list excludes invisible, delivered, cancelled and billing-ready projects', () => {
