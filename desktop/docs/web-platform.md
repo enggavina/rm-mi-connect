@@ -10,6 +10,12 @@ O Android **1.2.27/código 30** usa o catálogo autorizado da oficina para monta
 
 O Railway publicou o commit `c3cf49f` na implantação `a8ff6421-7ba7-46cb-ad76-4cd057878a49`. O portal respondeu no healthcheck e no login e exigiu sessão no instalador. A cópia privada do APK foi conferida por SHA-256, e o download anônimo foi recusado. [CI da publicação](https://github.com/enggavina/rm-mi-connect/actions/runs/46117166827).
 
+O Android **1.2.28/código 31** reconcilia a lista do operador ao receber novas alocações autorizadas. No Moto G84, o formulário da célula de teste abriu e aceitou uma resposta digitada offline. O Supabase confirmou o envio original e uma retentativa que devolveu o mesmo registro. A revisão no portal da BMA exibiu a resposta, o link para o formulário e o reenvio confirmado. A BMA baixou a própria foto, recebeu HTTP 404 para a foto da BRJ e não encontrou o protocolo da BRJ. O formulário de teste da BRJ também foi enviado no Operacional Web. A BRJ abriu seu recebimento sem OS no Android do emulador, com protocolo e foto próprios.
+
+O Railway publicou o commit `201e21d` na implantação `bf2ee271-fba0-4021-9384-bb28f4140769`. O instalador contém ARM64 e x86_64, conserva a assinatura anterior e usa SHA-256 `0ea881332d138809350fd089bb7c4e92e26b3cd099113e064a7050589ba48adf`. O download privado e as recusas anônimas foram conferidos. [CI da publicação](https://github.com/enggavina/rm-mi-connect/actions/runs/46118555647) · [Instalador no portal](https://em-web-production.up.railway.app/android).
+
+Em Acessos, a suspensão da BRJ recusou a identificação do operador temporário. A BMA continuou a abrir a célula própria durante a suspensão. Ao reativar a BRJ, cada par dispositivo e operador voltou a consultar a própria unidade e recebeu HTTP 404 para a célula da outra. A Central exige que outro administrador autorizado faça a transferência do vínculo Microsoft do gestor da BRJ.
+
 ## P0.6 — Operadores da célula
 
 Em **Cadastros → Células → Editar → Operadores da célula**, um administrador do EM pode conceder e remover o acesso do operador à célula da sua oficina. A concessão exige que o operador esteja ativo na equipe atual de Acessos. A remoção é limitada aos vínculos gerenciados por essa tela. Os vínculos importados aparecem identificados como legados. O Android e o Operacional Web consultam a mesma permissão de célula. [Cadastro de células em produção](https://em-web-production.up.railway.app/cadastros?kind=cells).
