@@ -10,7 +10,7 @@ import { LocalDatabase } from './database';
 import { cacheIdentity, forgetCachedIdentity, offlineIdentity, refreshCachedIdentity, secureStorage } from './secure';
 import { applyOperatorContext } from './operator-policy';
 import { operatorWorkshopDenied, readWorkshopOperatorCells } from './operator-workshop';
-import { operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows, type CatalogCursor, type CatalogSession } from './catalog-workshop';
+import { needsWorkshopCatalogReconciliation, operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows, type CatalogCursor, type CatalogSession } from './catalog-workshop';
 import { sendWorkshopMutation } from './mutation-workshop';
 import { assertReceivingDraftUnchanged, ReceivingDraftCoordinator, receivingDraftMeta, type ReceivingDraftEntry, type ReceivingDraftMeta, type ReceivingDraftRemote, type ReceivingDraftTransport } from './receiving-drafts';
 import { newReceiving, receivingPayload, restoreReceiving, type Receiving } from '../domain/receiving';
@@ -1132,6 +1132,10 @@ class MobileService {
     const partition = personal ? `${scope.workshopId}:${scope.operatorId}` : scope.workshopId;
     const cursorKey = `workshop-cursor:${partition}:${table}`;
     const reconcileKey = `workshop-reconciled:${partition}:${table}`;
+    const manifestKey = personal ? operatorCatalogKey(scope.workshopId, scope.operatorId, table) : null;
+    const manifest = manifestKey ? await this.database.local<string[]>(manifestKey) : null;
+    const knownIds = Array.isArray(manifest) ? new Set(manifest) : null;
+    const incomingIds = new Set<string>();
     const cursor = await this.database.local<CatalogCursor>(cursorKey);
     let after = cursor ? { at: new Date(Date.parse(cursor.at) - 1000).toISOString(), id: '00000000-0000-0000-0000-000000000000' } : null;
     let latest = cursor;
@@ -1143,6 +1147,7 @@ class MobileService {
       verifyOperator();
       if (rows.length) {
         await this.database.cache(table, rows);
+        if (personal) for (const row of rows) incomingIds.add(row.id);
         for (const row of rows) await this.cacheRecordMedia(table, row, scope);
         const last = rows[rows.length - 1];
         if (last.id === after?.id && last.updated_at === after.at) throw new Error('O catálogo devolveu a mesma posição de sincronização.');
@@ -1154,7 +1159,7 @@ class MobileService {
     verifyOperator();
     if (latest) await this.database.saveLocal(cursorKey, latest);
     const lastReconciled = await this.database.local<number>(reconcileKey) ?? 0;
-    if (table !== 'rm_projetos' && Date.now() - lastReconciled <= 15 * 60_000) return;
+    if (!needsWorkshopCatalogReconciliation(table, lastReconciled, Date.now(), knownIds, incomingIds)) return;
 
     const ids = new Set<string>();
     after = null;
@@ -1169,7 +1174,7 @@ class MobileService {
       const last = rows[rows.length - 1];
       after = { at: last.updated_at, id: last.id };
     }
-    if (personal) await this.database.saveLocal(operatorCatalogKey(scope.workshopId, scope.operatorId, table), [...ids]);
+    if (manifestKey) await this.database.saveLocal(manifestKey, [...ids]);
     else await this.database.removeMissing(table, ids);
     await this.database.saveLocal(reconcileKey, Date.now());
   }

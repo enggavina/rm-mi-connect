@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows } from '../src/core/catalog-workshop';
+import { needsWorkshopCatalogReconciliation, operatorCatalogKey, operatorScopedCatalogTable, readWorkshopCatalogPage, visibleOperatorCatalogRows } from '../src/core/catalog-workshop';
 import type { Operator } from '../src/core/types';
 
 const id = (n: number) => `08100000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -8,6 +8,16 @@ const session = { deviceToken: 'local-device-token', operatorToken: 'local-opera
 const updated_at = '2026-11-26T20:00:00.123456-03:00';
 const row = { id: id(4), updated_at, nome: 'Cliente local' };
 const page = { workshop_id: id(1), table: 'rm_clientes', complete: true, rows: [row] };
+
+test('new authorized allocations refresh the operator manifest during the same pull', () => {
+  const now = Date.now();
+  const previous = now - 60_000;
+  const manifest = new Set([id(7)]);
+  assert.equal(needsWorkshopCatalogReconciliation('rm_celulas_projeto', previous, now, manifest, new Set([id(7), id(8)])), true);
+  assert.equal(needsWorkshopCatalogReconciliation('rm_celulas_projeto', previous, now, manifest, new Set([id(7)])), false);
+  assert.equal(needsWorkshopCatalogReconciliation('rm_celulas_projeto', previous, now, null, new Set()), true);
+  assert.equal(needsWorkshopCatalogReconciliation('rm_clientes', previous, now, null, new Set([id(8)])), false);
+});
 
 test('scope-first catalogue preserves exact row versions and does not ask the client to choose an office', async () => {
   const result = await readWorkshopCatalogPage(session, 'rm_clientes', { at: updated_at, id: id(3) }, false,

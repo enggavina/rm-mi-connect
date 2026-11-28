@@ -8,6 +8,12 @@ export type CatalogSession = { deviceToken: string; operatorToken: string; opera
 export const operatorScopedCatalogTable = (table: string) => ['rm_celulas', 'rm_celulas_projeto', 'rm_tablet_celula_users'].includes(table);
 export const operatorCatalogKey = (workshop: string, operator: string, table: string) => `workshop-visible:${workshop}:${operator}:${table}`;
 
+export function needsWorkshopCatalogReconciliation(table: CatalogTable, lastReconciled: number, now: number,
+  knownIds: ReadonlySet<string> | null, incomingIds: ReadonlySet<string>): boolean {
+  return table === 'rm_projetos' || now - lastReconciled > 15 * 60_000
+    || (operatorScopedCatalogTable(table) && (knownIds === null || [...incomingIds].some(id => !knownIds.has(id))));
+}
+
 export function visibleOperatorCatalogRows(table: string, rows: Row[], operator: Operator, manifest: string[] | null) {
   const cells = new Set(operator.celulas_vinculadas.map(cell => cell.celula_id));
   const visible = manifest === null ? null : new Set(Array.isArray(manifest) ? manifest : []);
