@@ -80,6 +80,15 @@ export function createCatalogWorkshopAuthorizer({ reader = createWorkshopContext
       if (!corporate || corporate.user.id !== context.subject) throw new CorporateAuthError('CORP_UNAUTHORIZED');
       return reader.readWeb(corporate);
     },
+    async readCatalogTeam(context: SsoContext) {
+      if (!context.capabilities.includes('em.catalogs.read') || !context.capabilities.includes('em.catalogs.manage')) {
+        throw new CorporateAuthError('CORP_FORBIDDEN');
+      }
+      const corporate = verified.get(context);
+      if (!corporate || corporate.user.id !== context.subject) throw new CorporateAuthError('CORP_UNAUTHORIZED');
+      if (!reader.readTeam) throw new CorporateAuthError('CORP_UNAVAILABLE');
+      return reader.readTeam(corporate);
+    },
     async authorizeRead(context: SsoContext, requestId: string, resource: WorkshopReadResource, filters: Record<string, unknown>) {
       if (workshopRosterRequired(resource, filters) || !workshopReadCapabilities(resource, filters).every(capability => context.capabilities.includes(capability))
         || resource === 'project_entry' && filters.cells === true

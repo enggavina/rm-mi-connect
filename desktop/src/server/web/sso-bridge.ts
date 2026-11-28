@@ -65,6 +65,13 @@ export async function signAndroidPilotApk() {
   return error ? null : data.signedUrl;
 }
 
+export async function cellOperatorAccess(context: SsoContext, cell: string, change?: { operator: string; enabled: boolean; revision: number }) {
+  const team = await catalogWorkshops.readCatalogTeam(context);
+  return bridge().rpc('rm_sso_cell_operators_v1', {
+    p_session_hash: context.sessionHash, p_context: team.context, p_members: team.members, p_cell: cell, p_change: change ?? null,
+  });
+}
+
 export function ssoWorkshopRead(context: SsoContext, client: ReturnType<typeof localSsoClient>): WorkshopRead {
   return async (resource, args) => {
     const requestId = randomUUID();

@@ -1,5 +1,6 @@
 """Exercise Acessos and the EM in two databases in the same disposable local cluster."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from hashlib import sha256
 import importlib.util
@@ -136,9 +137,9 @@ def prepare_em(central_dsn, offices, spare_office):
             db.execute('insert into auth.users(id) values(%s),(%s)', (f['device'], f['web_auth']))
             db.execute('insert into auth.sessions(id,user_id) values(%s,%s),(%s,%s)',
                        (f['device_session'], f['device'], f['web_session'], f['web_auth']))
-            db.execute("insert into public.rm_users(id,auth_user_id,nome,perfil) values(%s,%s,'Tablet local','mobile'),"
-                       "(%s,null,'Operador local','mobile'),(%s,%s,'PCP local','administrador')",
-                       (f['tablet'], f['device'], f['operator'], f['web_profile'], f['web_auth']))
+            db.execute("insert into public.rm_users(id,auth_user_id,nome,perfil,matricula) values(%s,%s,'Tablet local','mobile',null),"
+                       "(%s,null,'Operador local','mobile',%s),(%s,%s,'PCP local','administrador',null)",
+                       (f['tablet'], f['device'], f['operator'], 'OP-' + f['code'], f['web_profile'], f['web_auth']))
             db.execute("insert into rm_private.operator_delegations(token_hash,auth_user_id,tablet_user_id,operator_id,expires_at) "
                        "values(extensions.digest(%s,'sha256'),%s,%s,%s,clock_timestamp()+interval '45 minutes')",
                        (f['delegation'], f['device'], f['tablet'], f['operator']))
@@ -149,7 +150,8 @@ def prepare_em(central_dsn, offices, spare_office):
             db.execute('insert into rm_private.workshop_project_ownership(id,workshop_id) values(%s,%s)', (f['project'], f['office']))
             db.execute('insert into public.rm_celulas(id,nome) values(%s,%s)', (f['cell'], f['code']))
             db.execute('insert into rm_private.workshop_cell_ownership(cell_id,workshop_id) values(%s,%s)', (f['cell'], f['office']))
-            db.execute('insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(%s,%s)', (f['cell'], f['operator']))
+            if f['code'] == 'BMA':
+                db.execute('insert into public.rm_tablet_celula_users(celula_id,identidade_id) values(%s,%s)', (f['cell'], f['operator']))
             db.execute("insert into public.rm_celulas_projeto(id,projeto_id,celula_id,status,visibilidade,data_inicio,data_limite) "
                        "values(%s,%s,%s,'em_dia',true,current_date,current_date+3)", (f['allocation'], f['project'], f['cell']))
     return dsn
@@ -187,12 +189,40 @@ def assert_active(client, dsn, fixture):
     reply = context(client, fixture, 'mobile')
     assert reply.status_code == 200 and reply.headers['cache-control'] == 'no-store', reply.status_code
     grant = reply.json()
+    assert operation_cells(dsn, fixture, grant) == [fixture['cell']]
+    return grant
+
+
+def operation_cells(dsn, fixture, grant):
     with psycopg.connect(dsn) as db:
         role(db, 'service_role')
         cells = rpc(db, 'rm_online_operation_read_v1', fixture['device'], fixture['device_session'], fixture['delegation'],
                     Jsonb(grant), None, None, 1)
-        assert cells['kind'] == 'cells' and [cell['id'] for cell in cells['items']] == [fixture['cell']]
-    return grant
+        assert cells['kind'] == 'cells'
+        ids = [cell['id'] for cell in cells['items']]
+        android = rpc(db, 'rm_mobile_workshop_catalog_v1', fixture['device'], fixture['device_session'],
+                      fixture['delegation'], Jsonb(grant), 'rm_celulas', None, None, False)
+        assert [cell['id'] for cell in android['rows']] == ids
+        return ids
+
+
+def cell_permissions(central_dsn, dsn, fixture, cell, change=None, local_role='service_role'):
+    with psycopg.connect(central_dsn) as central:
+        role(central, 'authenticated', fixture['viewer'])
+        team = rpc(central, 'cp_my_em_workshop_team_v1')
+    with psycopg.connect(dsn) as db:
+        role(db, local_role, fixture['web_auth'], fixture['web_session'])
+        return rpc(db, 'rm_sso_cell_operators_v1', fixture['delegation'], Jsonb(team['context']), Jsonb(team['members']),
+                   cell, Jsonb(change) if change else None)
+
+
+def deny_cell_permission(state, *args, **kwargs):
+    try:
+        cell_permissions(*args, **kwargs)
+    except psycopg.Error as error:
+        assert error.sqlstate == state, (error.sqlstate, error.diag.message_primary)
+    else:
+        raise AssertionError(f'Expected refusal {state}')
 
 
 def snapshot(dsn):
@@ -202,18 +232,23 @@ def snapshot(dsn):
             'public.rm_projetos', 'public.rm_celulas_projeto', 'public.rm_comentarios', 'rm_private.mobile_mutation_receipts')]
 
 
-def exercise(source, central_dsn, _metadata):
+def exercise(source, central_dsn, _metadata, central_source):
     with psycopg.connect(central_dsn, autocommit=True) as db:
         from scripts.prepare_em_workshops_release import release_sql
 
         db.execute(release_sql(sha256(source.PROPOSAL.read_bytes()).hexdigest(), apply=True))
         db.execute("insert into permission_private.em_workshop_service_keys(application,token_sha256,active) values('em',%s,true)",
                    (sha256(READER_KEY.encode()).hexdigest(),))
-        db.execute("insert into permission_private.permissions(app_id,code,label,kind,is_active) "
-                   "values(%s,'em.planning.read','PCP local','function',true)", (source.APP,))
-        db.execute("insert into permission_private.grants(subject,app_id,permission_code,granted_by) "
-                   "values(%s,%s,'em.planning.read',%s),(%s,%s,'em.planning.read',%s)",
-                   (source.B, source.APP, source.A, source.U, source.APP, source.A))
+        for capability in ('em.planning.read', 'em.catalogs.read'):
+            db.execute("insert into permission_private.permissions(app_id,code,label,kind,is_active) "
+                       "values(%s,%s,'Permissão local','function',true)", (source.APP, capability))
+            for viewer in (source.B, source.U):
+                db.execute("insert into permission_private.grants(subject,app_id,permission_code,granted_by) "
+                           "values(%s,%s,%s,%s)", (viewer, source.APP, capability, source.A))
+        team_contract = central_source / 'supabase/proposals/20261127_em_workshop_team.sql'
+        # The original schema capture predates the roster's MFA check.
+        db.execute('create table if not exists auth.mfa_factors (user_id uuid, factor_type text, status text)')
+        db.execute(team_contract.read_text(encoding='utf-8'))
     offices = []
     names = ('device', 'device_session', 'tablet', 'operator', 'web_auth', 'web_profile', 'web_session', 'binding', 'project', 'cell', 'allocation')
     for index, (office, code, viewer) in enumerate(((source.W1, 'BMA', source.B), (source.W2, 'BRJ', source.U)), 1):
@@ -244,6 +279,39 @@ def exercise(source, central_dsn, _metadata):
         assert context(client, brj, 'mobile').status_code == 403
         change_binding(client, brj, 'operator', brj['operator'], True, 1)
         change_binding(client, brj, 'corporate', brj['viewer'], True, 1)
+        portal_gantt(dsn, brj, context(client, brj, 'web').json())
+        assert operation_cells(dsn, brj, context(client, brj, 'mobile').json()) == []
+        row = cell_permissions(central_dsn, dsn, brj, brj['cell'])[0]
+        assert row['id'] == brj['operator'] and row['revision'] == 0 and not row['managed'] and not row['legacy']
+        grant = dict(operator=brj['operator'], enabled=True, revision=0)
+        deny_cell_permission('42501', central_dsn, dsn, brj, brj['cell'], grant, local_role='authenticated')
+        deny_cell_permission('42501', central_dsn, dsn, bma, brj['cell'], grant)
+        deny_cell_permission('42501', central_dsn, dsn, brj, brj['cell'], {**grant, 'operator': bma['operator']})
+        def concurrent_grant(_):
+            try:
+                assert cell_permissions(central_dsn, dsn, brj, brj['cell'], grant) == {'changed': True}
+                return 'granted'
+            except psycopg.Error as error:
+                return error.sqlstate
+
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            assert sorted(workers.map(concurrent_grant, range(2))) == ['PT409', 'granted']
+        deny_cell_permission('PT409', central_dsn, dsn, brj, brj['cell'], grant)
+        assert operation_cells(dsn, brj, context(client, brj, 'mobile').json()) == [brj['cell']]
+        assert cell_permissions(central_dsn, dsn, brj, brj['cell'], {**grant, 'enabled': False, 'revision': 1}) == {'changed': True}
+        assert operation_cells(dsn, brj, context(client, brj, 'mobile').json()) == []
+        assert cell_permissions(central_dsn, dsn, brj, brj['cell'], {**grant, 'revision': 2}) == {'changed': True}
+        bma_row = cell_permissions(central_dsn, dsn, bma, bma['cell'])[0]
+        assert bma_row['legacy'] and not bma_row['managed']
+        assert cell_permissions(central_dsn, dsn, bma, bma['cell'],
+                                {'operator': bma['operator'], 'enabled': False, 'revision': 0}) == {'changed': False}
+        with psycopg.connect(dsn) as db:
+            audit = db.execute('select enabled,actor_id,workshop_id from rm_private.workshop_cell_operator_events '
+                               'where operator_id=%s order by revision', (brj['operator'],)).fetchall()
+            assert [(state, str(actor), str(office)) for state, actor, office in audit] == [
+                (state, brj['web_profile'], brj['office']) for state in (True, False, True)]
+        checks.append('A fresh BRJ operator receives and loses the first cell through current roster and local admin authorization')
+
         brj_grant = assert_active(client, dsn, brj)
         assert_active(client, dsn, bma)
         checks.append('Explicit activation and bindings authorize each Gantt and operational catalog independently')
@@ -320,4 +388,4 @@ if __name__ == '__main__':
     source = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(source)
     sys.argv = [sys.argv[0], '--metadata', str(args.metadata), '--report', str(args.report)]
-    source.main(lambda dsn, metadata: exercise(source, dsn, metadata))
+    source.main(lambda dsn, metadata: exercise(source, dsn, metadata, args.central_source.resolve()))

@@ -2,9 +2,11 @@ import { notFound, redirect } from 'next/navigation';
 import { getCatalogEntry } from '@/server/web/data';
 import { requireWebUser } from '@/server/web/auth';
 import { CatalogEditor } from '@/components/web/catalog-editor';
+import { CellOperators } from '@/components/web/cell-operators';
 import { canManageCatalogs, catalogLabels, editableKind } from '@/components/web/catalog-model';
 import { Empty, PageHeading } from '@/components/web/ui';
 import { Icon } from '@/components/web/icons';
+import { getCellOperators } from '@/server/web/cell-operator-access';
 
 export default async function EditarCadastro({ params, searchParams }: { params: Promise<{ kind: string; id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const route = await params; const kind = editableKind(route.kind); if (!kind) notFound();
@@ -12,9 +14,13 @@ export default async function EditarCadastro({ params, searchParams }: { params:
   if (!canManageCatalogs(access)) redirect('/acesso?motivo=permissao');
   const entry = await getCatalogEntry(kind, route.id); if (!entry) notFound();
   const deleting = (await searchParams).acao === 'excluir';
+  const showOperators = kind === 'cells' && !deleting && access.sso;
+  const operators = showOperators ? await getCellOperators(showOperators, entry.id) : null;
   const label = catalogLabels[kind];
   return <><a className="back-link" href={`/cadastros?kind=${kind}`}><Icon name="back" size={15} />Voltar para {label.plural.toLocaleLowerCase('pt-BR')}</a>
     <PageHeading eyebrow="CADASTROS" title={`${deleting ? 'Excluir' : 'Editar'} ${label.singular}`} description={entry.nome} />
     <section className="panel"><div className="panel-header"><h2>Dados do cadastro</h2></div><div className="panel-content">{typeof entry.updated_at === 'string' ? <CatalogEditor key={`${entry.id}:${entry.updated_at}:${deleting}`} kind={kind} entry={entry} initialDeleting={deleting} /> : <Empty title="Não foi possível carregar este cadastro" detail="Recarregue a página para consultar os dados atuais." />}</div></section>
+    {showOperators && (operators ? <CellOperators cell={entry.id} operators={operators} /> :
+      <section className="panel"><Empty title="Equipe da célula indisponível" detail="Recarregue a página para confirmar os vínculos em Acessos." /></section>)}
   </>;
 }
