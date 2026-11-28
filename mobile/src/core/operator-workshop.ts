@@ -27,10 +27,16 @@ export async function readWorkshopOperatorCells(
     throw new Error('A leitura das células não corresponde a este dispositivo e operador.');
   }
   const cells = new Set<string>();
+  const links: Operator['celulas_vinculadas'] = [];
+  const previous = new Map(operator.celulas_vinculadas.map(cell => [cell.celula_id, cell]));
   for (const cell of value.data.items) {
-    if (typeof cell?.id !== 'string' || !uuid.test(cell.id) || cells.has(cell.id)) throw new Error('A lista de células da oficina está incompleta.');
+    if (typeof cell?.id !== 'string' || !uuid.test(cell.id) || typeof cell.nome !== 'string' || cells.has(cell.id)) {
+      throw new Error('A lista de células da oficina está incompleta.');
+    }
     cells.add(cell.id);
+    links.push({ ...previous.get(cell.id), celula_id: cell.id, nome: cell.nome });
   }
-  return { workshopId: value.workshop.id as string, operator: { ...operator,
-    celulas_vinculadas: operator.celulas_vinculadas.filter(cell => cells.has(cell.celula_id)) } };
+  // The scoped catalog already checks both the workshop and the operator.
+  // The legacy login may deliberately omit all cells for a new or non-BMA device.
+  return { workshopId: value.workshop.id as string, operator: { ...operator, celulas_vinculadas: links } };
 }
