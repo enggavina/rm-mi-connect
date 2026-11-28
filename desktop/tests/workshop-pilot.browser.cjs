@@ -2,13 +2,16 @@
 // URLs from the pilot, or fixtures in a disposable environment. The export request only reads planning data.
 // npm install --prefix .tmp/em-qa --no-save playwright
 // node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto.json
+// node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto.json --office=BRJ
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const { parseArgs } = require('node:util');
 
-const configuration = process.argv[2];
-assert.ok(configuration, 'Informe o caminho da matriz JSON do piloto.');
+const { positionals, values } = parseArgs({ allowPositionals: true, options: { office: { type: 'string' } } });
+assert.equal(positionals.length, 1, 'Informe o caminho da matriz JSON do piloto.');
+const [configuration] = positionals;
 const matrix = JSON.parse(readFileSync(configuration, 'utf8'));
 const { chromium } = require(resolve(process.env.EM_QA_PLAYWRIGHT_PATH ?? '.tmp/em-qa/node_modules/playwright'));
 const origin = new URL(matrix.origin);
@@ -232,130 +235,134 @@ async function authenticate(page, office) {
 }
 
 async function main() {
+  const codes = matrix.offices.map(office => office.code);
+  for (const code of codes) assert.match(code, /^[A-Z0-9_-]+$/);
+  assert.equal(new Set(codes).size, codes.length, 'Use uma entrada por oficina na matriz.');
+  if (values.office !== undefined) assert.ok(codes.includes(values.office), 'A oficina selecionada não está na matriz.');
   const protocols = matrix.offices.map(androidProtocols);
   const allCodes = protocols.flat().map(({ code }) => code);
   assert.equal(new Set(allCodes).size, allCodes.length, 'Cada protocolo deve identificar uma única unidade na matriz.');
   const browser = await chromium.launch({ channel: 'chrome', headless: false });
   try {
+    const sessions = [];
     for (const [officeIndex, office] of matrix.offices.entries()) {
-      assert.match(office.code, /^[A-Z0-9_-]+$/);
+      if (values.office !== undefined && values.office !== office.code) continue;
       assert.ok(Array.isArray(office.allowed));
       assert.ok(Array.isArray(office.denied));
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      stepDescription = `${office.code} · autenticação Microsoft`;
+      await authenticate(page, office);
+      sessions.push({ officeIndex, office, context, page });
+    }
+    for (const { officeIndex, office, context, page } of sessions) {
       const receipt = receiptChecks(office.receipt, true);
       const otherReceipts = matrix.offices.filter(other => other !== office).flatMap(other => receiptChecks(other.receipt, false));
       const ownProtocols = protocols[officeIndex];
       const foreignProtocols = protocols.filter((_, index) => index !== officeIndex).flat();
       assert.ok(office.allowed.length + receipt.length + ownProtocols.length > 0);
-      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-      try {
-        const page = await context.newPage();
-        stepDescription = `${office.code} · autenticação Microsoft`;
-        await authenticate(page, office);
-        if (office.allocationExport) {
-          stepDescription = `${office.code} · exportação de alocações`;
-          const otherExports = matrix.offices.filter(other => other !== office && other.allocationExport)
-            .map(other => other.allocationExport);
-          await verifyAllocationExport(context, office.allocationExport, otherExports);
-          process.stdout.write(`PASS ${office.code} exportação de alocações\n`);
+      if (office.allocationExport) {
+        stepDescription = `${office.code} · exportação de alocações`;
+        const otherExports = matrix.offices.filter(other => other !== office && other.allocationExport)
+          .map(other => other.allocationExport);
+        await verifyAllocationExport(context, office.allocationExport, otherExports);
+        process.stdout.write(`PASS ${office.code} exportação de alocações\n`);
+      }
+      for (const [index, result] of ownProtocols.entries()) {
+        stepDescription = `${office.code} · protocolo Android próprio ${index + 1}`;
+        await verifyAndroidProtocol(page, result, true);
+        process.stdout.write(`PASS ${office.code} protocolo Android próprio ${index + 1}\n`);
+      }
+      for (const [index, step] of [...office.allowed, ...receipt].entries()) {
+        stepDescription = `${office.code} · consulta própria ${index + 1}`;
+        const expected = location(step.path);
+        const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
+        assert.equal(page.url(), expected, 'A navegação foi redirecionada.');
+        assert.equal(response?.status(), 200);
+        await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
+        if (step.selector) {
+          const state = step.selectorState ?? 'visible';
+          assert.ok(['visible', 'attached'].includes(state));
+          await page.locator(step.selector).first().waitFor({ state });
         }
-        for (const [index, result] of ownProtocols.entries()) {
-          stepDescription = `${office.code} · protocolo Android próprio ${index + 1}`;
-          await verifyAndroidProtocol(page, result, true);
-          process.stdout.write(`PASS ${office.code} protocolo Android próprio ${index + 1}\n`);
+        if (step.scope) {
+          await page.locator(step.selector).getByRole('button', { name: /Abrir datas/ }).waitFor();
+          await page.getByRole('navigation', { name: 'Escopo do Gantt' })
+            .locator(`a[href$="scope=${step.scope}"][aria-current="page"]`).waitFor();
         }
-        for (const [index, step] of [...office.allowed, ...receipt].entries()) {
-          stepDescription = `${office.code} · consulta própria ${index + 1}`;
-          const expected = location(step.path);
-          const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
-          assert.equal(page.url(), expected, 'A navegação foi redirecionada.');
-          assert.equal(response?.status(), 200);
-          await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
-          if (step.selector) {
-            const state = step.selectorState ?? 'visible';
-            assert.ok(['visible', 'attached'].includes(state));
-            await page.locator(step.selector).first().waitFor({ state });
+        if (step.previewAllocation) await verifyGanttPreview(page, step.previewAllocation);
+        if (step.androidInstaller) await verifyAndroidInstaller(page, step.androidInstaller);
+        if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
+        if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+        if (step.image) {
+          const image = page.locator(step.image).first();
+          const sections = await page.locator('details.record-section').all();
+          for (const section of sections) {
+            if (await image.count()) break;
+            if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
           }
-          if (step.scope) {
-            await page.locator(step.selector).getByRole('button', { name: /Abrir datas/ }).waitFor();
-            await page.getByRole('navigation', { name: 'Escopo do Gantt' })
-              .locator(`a[href$="scope=${step.scope}"][aria-current="page"]`).waitFor();
+          await image.scrollIntoViewIfNeeded();
+          const src = await image.getAttribute('src');
+          assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
+          await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
+          const preview = await context.request.get(location(src), { maxRedirects: 0 });
+          if (preview.status() === 303) signedMedia(preview, step.legacyImage);
+          else {
+            assert.equal(step.legacyImage, undefined);
+            assert.equal(preview.status(), 200);
+            assert.match(preview.headers()['content-type'] ?? '', /^image\//);
+            assert.equal(preview.headers().location, undefined);
           }
-          if (step.previewAllocation) await verifyGanttPreview(page, step.previewAllocation);
-          if (step.androidInstaller) await verifyAndroidInstaller(page, step.androidInstaller);
-          if (step.marker) await page.getByText(step.marker, { exact: true }).first().waitFor();
-          if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
-          if (step.image) {
-            const image = page.locator(step.image).first();
-            const sections = await page.locator('details.record-section').all();
-            for (const section of sections) {
-              if (await image.count()) break;
-              if (!(await section.evaluate(element => element.open))) await section.locator('summary').click();
-            }
-            await image.scrollIntoViewIfNeeded();
-            const src = await image.getAttribute('src');
-            assert.match(src ?? '', /^\/api\/web\/media\/[0-9a-f-]{36}\?/);
-            await page.waitForFunction(element => element.complete && element.naturalWidth > 0, await image.elementHandle());
-            const preview = await context.request.get(location(src), { maxRedirects: 0 });
-            if (preview.status() === 303) signedMedia(preview, step.legacyImage);
-            else {
-              assert.equal(step.legacyImage, undefined);
-              assert.equal(preview.status(), 200);
-              assert.match(preview.headers()['content-type'] ?? '', /^image\//);
-              assert.equal(preview.headers().location, undefined);
-            }
-            await preview.dispose();
-          }
-          if (step.document) {
-            const doc = typeof step.document === 'string' ? { path: step.document, type: 'docx' } : step.document;
-            const link = await context.request.get(location(doc.path), { maxRedirects: 0 });
-            if (doc.unavailable) {
-              assert.equal(link.status(), 404);
-              assert.equal(link.headers().location, undefined);
-              assert.equal((await link.json()).error, 'Este documento ainda não possui um arquivo disponível para leitura.');
-            } else {
-              const mime = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf' }[doc.type];
-              assert.ok(mime, 'Tipo de documento não suportado na matriz.');
-              const copy = signedMedia(link);
-              assert.ok(copy.pathname.toLowerCase().endsWith(`.${doc.type}`));
-              const file = await context.request.get(copy.href, { maxRedirects: 0 });
-              assert.equal(file.status(), 200);
-              assert.equal(file.headers()['content-type']?.split(';')[0], mime);
-              const body = await file.body();
-              const magic = doc.type === 'pdf' ? Buffer.from('%PDF-') : Buffer.from('504b0304', 'hex');
-              assert.deepEqual(body.subarray(0, magic.length), magic);
-              if (doc.sha256) assert.equal(createHash('sha256').update(body).digest('hex'), doc.sha256);
-              await file.dispose();
-            }
-            await link.dispose();
-          }
-          if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
-          if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
-          process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
+          await preview.dispose();
         }
-        for (const [index, value] of [...office.denied, ...otherReceipts].entries()) {
-          stepDescription = `${office.code} · consulta cruzada ${index + 1}`;
-          const step = typeof value === 'string' ? { path: value } : value;
-          const expected = location(step.path);
-          const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
-          assert.equal(page.url(), expected, 'A rota testada deve permanecer no endereço esperado.');
-          if (step.searchOnly) assert.equal(response?.status(), 200);
-          if (response?.status() === 200 && step.heading) {
-            // Next can emit the not-found view after sending the portal shell.
-            await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
+        if (step.document) {
+          const doc = typeof step.document === 'string' ? { path: step.document, type: 'docx' } : step.document;
+          const link = await context.request.get(location(doc.path), { maxRedirects: 0 });
+          if (doc.unavailable) {
+            assert.equal(link.status(), 404);
+            assert.equal(link.headers().location, undefined);
+            assert.equal((await link.json()).error, 'Este documento ainda não possui um arquivo disponível para leitura.');
           } else {
-            assert.ok([403, 404].includes(response?.status()), 'A consulta de outra unidade deve devolver uma recusa.');
+            const mime = { docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf' }[doc.type];
+            assert.ok(mime, 'Tipo de documento não suportado na matriz.');
+            const copy = signedMedia(link);
+            assert.ok(copy.pathname.toLowerCase().endsWith(`.${doc.type}`));
+            const file = await context.request.get(copy.href, { maxRedirects: 0 });
+            assert.equal(file.status(), 200);
+            assert.equal(file.headers()['content-type']?.split(';')[0], mime);
+            const body = await file.body();
+            const magic = doc.type === 'pdf' ? Buffer.from('%PDF-') : Buffer.from('504b0304', 'hex');
+            assert.deepEqual(body.subarray(0, magic.length), magic);
+            if (doc.sha256) assert.equal(createHash('sha256').update(body).digest('hex'), doc.sha256);
+            await file.dispose();
           }
-          if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
-          if (step.absentSelector) assert.equal(await page.locator(step.absentSelector).count(), 0);
-          process.stdout.write(`PASS ${office.code} consulta cruzada ${index + 1}\n`);
+          await link.dispose();
         }
-        for (const [index, result] of foreignProtocols.entries()) {
-          stepDescription = `${office.code} · protocolo Android cruzado ${index + 1}`;
-          await verifyAndroidProtocol(page, result, false);
-          process.stdout.write(`PASS ${office.code} protocolo Android cruzado ${index + 1}\n`);
+        if (step.plant === true) await page.getByRole('button', { name: 'Oficina 3D' }).waitFor();
+        if (step.plant === false) assert.equal(await page.getByRole('button', { name: 'Oficina 3D' }).count(), 0);
+        process.stdout.write(`PASS ${office.code} consulta própria ${index + 1}\n`);
+      }
+      for (const [index, value] of [...office.denied, ...otherReceipts].entries()) {
+        stepDescription = `${office.code} · consulta cruzada ${index + 1}`;
+        const step = typeof value === 'string' ? { path: value } : value;
+        const expected = location(step.path);
+        const response = await page.goto(expected, { waitUntil: 'domcontentloaded' });
+        assert.equal(page.url(), expected, 'A rota testada deve permanecer no endereço esperado.');
+        if (step.searchOnly) assert.equal(response?.status(), 200);
+        if (response?.status() === 200 && step.heading) {
+          // Next can emit the not-found view after sending the portal shell.
+          await page.getByRole('heading', { name: step.heading, exact: true }).first().waitFor();
+        } else {
+          assert.ok([403, 404].includes(response?.status()), 'A consulta de outra unidade deve devolver uma recusa.');
         }
-      } finally {
-        await context.close();
+        if (step.absent) assert.equal(await page.getByText(step.absent, { exact: true }).count(), 0);
+        if (step.absentSelector) assert.equal(await page.locator(step.absentSelector).count(), 0);
+        process.stdout.write(`PASS ${office.code} consulta cruzada ${index + 1}\n`);
+      }
+      for (const [index, result] of foreignProtocols.entries()) {
+        stepDescription = `${office.code} · protocolo Android cruzado ${index + 1}`;
+        await verifyAndroidProtocol(page, result, false);
+        process.stdout.write(`PASS ${office.code} protocolo Android cruzado ${index + 1}\n`);
       }
     }
   } finally {
