@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.4 e P0.6 — Instalador Android no portal
+
+**Aplicativo Android** está no painel para administradores do EM com sessão Microsoft e vínculo ativo de oficina. O EM consulta Acessos ao abrir a página e ao iniciar o download. A migração **134** cria um bucket privado e bloqueia o acesso direto de usuários ao arquivo. O portal emite um link de 60 segundos para o APK publicado. O aplicativo instalado continua usando a conta do dispositivo e a identificação do operador. [Instalador no portal](https://em-web-production.up.railway.app/android) · [Migração](../../rm-mobile-supabase/migrations/134_rm_private_android_distribution.sql).
+
+O APK **1.2.26/código 29** contém bibliotecas ARM64 e x86_64, ocupa **38.739.216 bytes** e preserva a assinatura do APK anterior do piloto. SHA-256 `78043549a0d9af89f5b8640c2ddc1b9b729444c268e48d0bf023ec946f8081d2`. A compilação empacotou as bibliotecas com extração na instalação (`-Pexpo.useLegacyPackaging=true`) e preservou os 49 arquivos de execução comparados com o APK 1.2.26 anterior. O hash do APK baixado do Supabase e do APK instalado no emulador conferiu. A atualização passou com o operador da BMA, um rascunho de recebimento e um formulário existente, com e sem rede. O recebimento voltou a abrir após reconectar. [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46085729013).
+
+O instalador está no Railway EM na implantação `7dd62986-5b4e-4a70-b908-2e8269e2c480`, commit `093d95e`, e no Supabase `oficina-em-mi-off`. Em navegador isolado, o gestor acessou o link e as recusas de vínculo, perfil e sessão foram conferidas. Passaram 12 verificações em produção, incluindo a recusa do instalador sem sessão Microsoft e o acesso do operador às células e aos formulários da BMA. A conferência do download com SSO real pode usar `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-android.json`. A matriz confere o arquivo baixado e seu SHA-256. A instalação em aparelho físico e o primeiro envio real continuam no aceite de campo. [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 e P0.5 — Consulta de recebimentos legados por protocolo
 
 A migração **133** amplia **Projetos → Protocolo do Android**. Um protocolo de recebimento antigo passa a aparecer na oficina de origem quando o vínculo histórico do tablet, a autoria, o projeto e o equipamento conferem. A consulta mostra a abertura pendente ou o envio confirmado conforme o registro original. O histórico continua acessível à oficina depois da retirada do tablet. [Migração](../../rm-mobile-supabase/migrations/133_rm_legacy_receiving_protocol_lookup.sql).
