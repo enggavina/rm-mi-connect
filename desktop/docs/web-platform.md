@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0.6 — Operadores da célula
+
+Em **Cadastros → Células → Editar → Operadores da célula**, um administrador do EM pode conceder e remover o acesso do operador à célula da sua oficina. A concessão exige que o operador esteja ativo na equipe atual de Acessos. A remoção é limitada aos vínculos gerenciados por essa tela. Os vínculos importados aparecem identificados como legados. O Android e o Operacional Web consultam a mesma permissão de célula. [Cadastro de células em produção](https://em-web-production.up.railway.app/cadastros?kind=cells).
+
+A migração **135** está ativa no Supabase `oficina-em-mi-off`. A API exige sessão administrativa e consulta recente à Central. Cada concessão ou remoção registra oficina, célula, operador, autor e revisão. Uma alteração simultânea com revisão antiga é recusada. A publicação preservou as 152 tabelas auditadas e partiu com zero novos vínculos. O Railway publicou o commit `9409255` na implantação `dd691a07-23f5-4a36-af9c-5379420fca18`. [Migração](../../rm-mobile-supabase/migrations/135_rm_workshop_cell_operator_permissions.sql) · [CI web e mobile](https://github.com/enggavina/rm-mi-connect/actions/runs/46087580552).
+
+No ensaio com dois bancos isolados, a BRJ começou sem células disponíveis para o operador. A concessão apareceu nos catálogos Android e Operacional Web. A remoção retirou a célula dos dois catálogos. O ensaio conferiu a concorrência, as recusas cruzadas e a preservação do vínculo legado da BMA. Passaram ainda quatro verificações em navegador isolado, a restauração em quatro oficinas e 12 verificações no portal em produção. O emulador Android 1.2.26 abriu um rascunho e um formulário real da BMA com e sem conexão. Para conferir a seção com sessão Microsoft da BMA em produção, execute `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-operadores-celula.json`. [Ensaio](../../rm-mobile-supabase/tests/workshop-lifecycle.py) · [Roteiro de navegador](../tests/workshop-pilot.browser.cjs).
+
 ## P0.4 e P0.6 — Instalador Android no portal
 
 **Aplicativo Android** está no painel para administradores do EM com sessão Microsoft e vínculo ativo de oficina. O EM consulta Acessos ao abrir a página e ao iniciar o download. A migração **134** cria um bucket privado e bloqueia o acesso direto de usuários ao arquivo. O portal emite um link de 60 segundos para o APK publicado. O aplicativo instalado continua usando a conta do dispositivo e a identificação do operador. [Instalador no portal](https://em-web-production.up.railway.app/android) · [Migração](../../rm-mobile-supabase/migrations/134_rm_private_android_distribution.sql).
