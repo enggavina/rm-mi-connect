@@ -16,6 +16,8 @@ O Railway publicou o commit `201e21d` na implantação `bf2ee271-fba0-4021-9384-
 
 Em Acessos, a suspensão da BRJ recusou a identificação do operador temporário. A BMA continuou a abrir a célula própria durante a suspensão. Ao reativar a BRJ, cada par dispositivo e operador voltou a consultar a própria unidade e recebeu HTTP 404 para a célula da outra. A Central exige que outro administrador autorizado faça a transferência do vínculo Microsoft do gestor da BRJ.
 
+O roteiro de navegador usa `allocationExport` com `cellId` e `marker` por oficina. Com login Microsoft da BMA, a planilha gerada continha a célula temporária da BMA, e a tentativa de exportar a célula da BRJ retornou HTTP 403. A matriz local `.tmp/oficinas-piloto-bma-brj-261128.json` reúne essa conferência com os três Gantts, as fotos, os protocolos, o QR e o gêmeo digital das duas oficinas. Para executar com os dois gestores vinculados, use `node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto-bma-brj-261128.json`. [Executor](../tests/workshop-pilot.browser.cjs).
+
 ## P0.6 — Operadores da célula
 
 Em **Cadastros → Células → Editar → Operadores da célula**, um administrador do EM pode conceder e remover o acesso do operador à célula da sua oficina. A concessão exige que o operador esteja ativo na equipe atual de Acessos. A remoção é limitada aos vínculos gerenciados por essa tela. Os vínculos importados aparecem identificados como legados. O Android e o Operacional Web consultam a mesma permissão de célula. [Cadastro de células em produção](https://em-web-production.up.railway.app/cadastros?kind=cells).

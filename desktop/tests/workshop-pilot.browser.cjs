@@ -1,5 +1,5 @@
 // Run on the workstation that can complete Microsoft sign-in. Use real project
-// URLs from the pilot, or fixtures in a disposable environment. GET checks only.
+// URLs from the pilot, or fixtures in a disposable environment. The export request only reads planning data.
 // npm install --prefix .tmp/em-qa --no-save playwright
 // node desktop/tests/workshop-pilot.browser.cjs .tmp/oficinas-piloto.json
 const assert = require('node:assert/strict');
@@ -25,6 +25,45 @@ function location(path) {
   const url = new URL(path, origin);
   assert.equal(url.origin, origin.origin, 'A matriz só pode navegar pelo portal apontado.');
   return url.href;
+}
+
+async function verifyAllocationExport(context, own, others) {
+  assert.match(own.cellId, uuid);
+  assert.ok(typeof own.marker === 'string' && own.marker.trim() && own.marker.length <= 200);
+  const exportCell = cellId => context.request.post(location('/api/web/planning/export'), {
+    headers: { Origin: origin.origin },
+    data: { cell_ids: [cellId], fields: ['cell_name', 'equipment_description'] },
+    maxRedirects: 0,
+  });
+  const response = await exportCell(own.cellId);
+  try {
+    assert.equal(response.status(), 200);
+    assert.match(response.headers()['content-type'] ?? '', /^application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+    const workbook = new (require('exceljs').Workbook)();
+    await workbook.xlsx.load(await response.body());
+    const cells = new Set();
+    for (const sheet of workbook.worksheets) {
+      sheet.eachRow(row => row.eachCell(cell => cells.add(cell.text)));
+    }
+    assert.ok(cells.has(own.marker), 'A planilha não contém a célula autorizada.');
+    for (const other of others) {
+      assert.match(other.cellId, uuid);
+      assert.notEqual(other.cellId, own.cellId);
+      assert.notEqual(other.marker, own.marker);
+      assert.ok(!cells.has(other.marker), 'A planilha contém uma célula de outra oficina.');
+    }
+  } finally {
+    await response.dispose();
+  }
+  for (const other of others) {
+    const denied = await exportCell(other.cellId);
+    try {
+      assert.equal(denied.status(), 403);
+      assert.equal(denied.headers()['content-disposition'], undefined);
+    } finally {
+      await denied.dispose();
+    }
+  }
 }
 
 function signedMedia(response, legacyImage) {
@@ -212,6 +251,13 @@ async function main() {
         const page = await context.newPage();
         stepDescription = `${office.code} · autenticação Microsoft`;
         await authenticate(page, office);
+        if (office.allocationExport) {
+          stepDescription = `${office.code} · exportação de alocações`;
+          const otherExports = matrix.offices.filter(other => other !== office && other.allocationExport)
+            .map(other => other.allocationExport);
+          await verifyAllocationExport(context, office.allocationExport, otherExports);
+          process.stdout.write(`PASS ${office.code} exportação de alocações\n`);
+        }
         for (const [index, result] of ownProtocols.entries()) {
           stepDescription = `${office.code} · protocolo Android próprio ${index + 1}`;
           await verifyAndroidProtocol(page, result, true);
