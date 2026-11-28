@@ -1,5 +1,13 @@
 # Portal web EM · MI Electric Brasil
 
+## P0 — Homologação com registros temporários da BMA e da BRJ
+
+O piloto usa cadastros e registros marcados com o identificador `QA-EM-261128-A200F2`. A Central registrou o operador temporário da BMA e o par tablet/operador temporário da BRJ com validade de 12 horas. A BMA continuou ativa. O Operacional Web autenticou as duas oficinas, abriu a célula própria e recusou a célula da outra com HTTP 404. O formulário da BMA foi preenchido no Operacional Web e recebeu o registro de envio `0001`.
+
+No Moto G84, o recebimento sem OS da BMA abriu o projeto enquanto a foto ainda estava na fila. Depois de interromper e restabelecer a conexão, o Android confirmou a sincronização. O Supabase conferiu a origem da BMA, uma conclusão e uma foto com o mesmo protocolo. O rascunho preexistente do operador foi preservado por meio de uma matrícula temporária.
+
+O Android **1.2.27/código 30** usa o catálogo autorizado da oficina para montar a lista de células do operador. O retorno da autenticação legada pode vir vazio para novos operadores e para outras oficinas. O catálogo confirma tanto o vínculo do operador com a célula quanto a oficina autorizada para o par tablet/operador. No Moto G84, a mesma matrícula temporária passou de zero para uma célula, a única vinculada. A compilação inclui ARM64 e x86_64 e mantém a assinatura da versão anterior. [CI](https://github.com/enggavina/rm-mi-connect/actions/runs/46116778077) · [Instalador no portal](https://em-web-production.up.railway.app/android).
+
 ## P0.6 — Operadores da célula
 
 Em **Cadastros → Células → Editar → Operadores da célula**, um administrador do EM pode conceder e remover o acesso do operador à célula da sua oficina. A concessão exige que o operador esteja ativo na equipe atual de Acessos. A remoção é limitada aos vínculos gerenciados por essa tela. Os vínculos importados aparecem identificados como legados. O Android e o Operacional Web consultam a mesma permissão de célula. [Cadastro de células em produção](https://em-web-production.up.railway.app/cadastros?kind=cells).
