@@ -17,6 +17,8 @@ def main():
     parser.add_argument('--serial', required=True, help='Número de série do Android, conforme adb devices.')
     parser.add_argument('--usb-device', action='store_true',
                         help='Executa no aparelho físico conectado via USB. O teste desliga Wi-Fi e dados temporariamente.')
+    parser.add_argument('--files-by-google', action='store_true',
+                        help='Abre o PDF no Files do Google quando o Android exibir o seletor de aplicativos.')
     args = parser.parse_args()
     is_emulator = bool(re.fullmatch(r'emulator-\d+', args.serial))
     if args.usb_device:
@@ -112,13 +114,33 @@ def main():
         return next((line for line in adb('shell', 'dumpsys', 'activity', 'activities').splitlines()
                      if 'topResumedActivity' in line), '')
 
+    def tap(node):
+        x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.attrib['bounds']))
+        adb('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
+
     def open_pdf(require_cache):
         button, is_cached = wait_for(find_document, 'O documento não apareceu com seu botão de abertura.')
         if require_cache and not is_cached:
             raise RuntimeError('A cópia do PDF não está disponível no catálogo offline.')
-        x1, y1, x2, y2 = map(int, re.findall(r'\d+', button.attrib['bounds']))
-        adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
-        wait_for(lambda: 'PdfViewerActivity' in active_activity(), 'O visualizador de PDF não abriu.')
+        tap(button)
+
+        def viewer_opened():
+            activity = active_activity()
+            if 'PdfViewerActivity' in activity:
+                return True
+            if not args.files_by_google:
+                return False
+            if 'com.google.android.apps.nbu.files/' in activity and 'FilePreviewActivity' in activity:
+                return visible('Visualização em PDF')
+            if 'ResolverActivity' in activity or 'ChooserActivity' in activity:
+                options = dict(labels())
+                if (choice := options.get('Files do Google')) is not None:
+                    tap(choice)
+                elif (other := options.get('Usar outro app')) is not None:
+                    tap(other)
+            return False
+
+        wait_for(viewer_opened, 'O visualizador de PDF não abriu.')
         adb('shell', 'input', 'keyevent', '4')
         wait_for(lambda: package in active_activity(), 'O aplicativo não retomou após fechar o PDF.')
 
